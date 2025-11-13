@@ -1,0 +1,146 @@
+
+/* Anchos del sidebar */
+#sidebar {
+  width: 180px;               /* abierto */
+  transition: width 0.2s ease;
+}
+body.sidebar-collapsed #sidebar {
+  width: 70px;                /* colapsado */
+}
+
+/* Ocultar etiquetas (texto) cuando está colapsado */
+body.sidebar-collapsed #sidebar .nav-link .label,
+body.sidebar-collapsed #sidebar .navbar-brand { 
+  display: none;
+}
+
+/* Centrar los iconos cuando está colapsado */
+body.sidebar-collapsed #sidebar .nav-link {
+  justify-content: center;            /* icono centrado */
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+/* Tamaño/espaciado de iconos */
+#sidebar .nav-link .icon {
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+
+/* Asegurar que el botón de toggle se vea bien en ambas vistas */
+#btn-toggle-sidebar {
+  line-height: 1;
+}
+
+/* Mantener altura completa del contenedor del sidebar */
+#sidebar > .d-flex.flex-column.h-100 {
+  min-height: calc(100vh - 56px); /* ajusta si tu header es distinto */
+}
+
+/* Accesibilidad: foco visible */
+#sidebar .nav-link:focus {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: 2px;
+}
+
+/* Altura compacta y separación limpia */
+#topbar .navbar-brand { margin-right: .5rem; }
+#topbar { min-height: 50px; }
+
+/* Si tu layout tiene un contenedor de contenido principal, asegúrate de que no quede oculto */
+.content-wrapper { padding-top: .75rem; }
+
+/* Reloj en móviles: quepa a la derecha si se colapsa el centro */
+@media (max-width: 767.98px) {
+  #clock { font-variant-numeric: tabular-nums; }
+}
+
+/* Borra cualquier caret/pseudo-elemento, incluso si algún tema lo añade */
+#btn-options::after,
+#btn-options::before,
+.dropdown-toggle::after,
+.dropdown-toggle::before,
+button[data-bs-toggle="dropdown"]::after,
+button[data-bs-toggle="dropdown"]::before {
+  content: none !important;
+  display: none !important;
+  border: 0 !important;
+  background: none !important;
+}
+
+/* Por si algún tema usa background-image como caret */
+#btn-options {
+  background-image: none !important;
+}
+
+/* Quita el punto/halo que algunos temas muestran en :focus/:active */
+#btn-options:focus,
+#btn-options:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Contenedor principal del calendario */
+.cal2w {
+  max-width: 1100px;
+  margin-bottom: 1.5rem;
+}
+
+/* Rejilla de días: 5 columnas grandes */
+.cal2w-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+/* Cada día del calendario */
+.cal2w .day {
+  min-height: 260px;
+  height: auto;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0,0,0,0.08);
+  background-color: rgba(255,255,255,0.7);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Por si en algún sitio toqueteaste .day.today */
+.cal2w .day.today {
+  min-height: 260px;
+  height: auto;
+  border: 1px solid rgba(0,0,0,0.08);
+  background-color: rgba(255,255,255,0.7);
+}
+
+/* Cabecera de fecha dentro del día */
+.cal2w .day .date {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+/* Texto tipo “lunes”, “martes” */
+.cal2w .day .meta {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+/* Contenedor de cursos en el día */
+.cal2w .day .content {
+  margin-top: 0.35rem;
+  /* si quieres que NO se corte nunca nada: */
+  overflow: visible;
+  /* si prefieres scroll cuando haya 20 cursos:
+     max-height: 220px;
+     overflow-y: auto;
+  */
+}
+
+/* Badges de curso */
+.cal2w .day .badge {
+  font-size: 0.75rem;
+  margin-bottom: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -1,0 +1,140 @@
+{# app/templates/devices/form.html #}
+{% extends "base.html" %}
+{% block content %}
+
+<h2 class="mb-3">
+  {{ page_title or (device and device.id and 'Edit device' or 'New device') }}
+</h2>
+
+<form method="post" action="">
+
+  {% if csrf_token is defined %}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% endif %}
+
+  <div class="row g-3">
+
+    <div class="col-md-6">
+      <label for="name" class="form-label">Device name</label>
+      <input id="name"
+             name="name"
+             type="text"
+             class="form-control"
+             maxlength="120"
+             value="{{ device.name if device else '' }}">
+    </div>
+
+    {# UID (NOT NULL en DB normalmente) #}
+    <div class="col-md-6">
+      <label for="uid" class="form-label">
+        UID <span class="text-danger">*</span>
+      </label>
+      <input id="uid"
+             name="uid"
+             type="text"
+             class="form-control"
+             maxlength="64"
+             required
+             value="{{ device.uid if device else '' }}">
+      <div class="form-text">Unique device identifier.</div>
+    </div>
+
+    {# Name (nullable en DB) #}
+
+    {# Type (NOT NULL, default 'guest') #}
+    {% set _types = DEVICE_TYPES if DEVICE_TYPES is defined else ['guest','sensor','reader','fixed','mobile'] %}
+    {% set current_type = (device.type if device and device.type else 'guest') %}
+    <div class="col-md-6">
+      <label for="type" class="form-label">Type</label>
+      <select id="type" name="type" class="form-select">
+        {% if current_type not in _types %}
+          <option value="{{ current_type }}" selected>{{ current_type }}</option>
+        {% endif %}
+        {% for t in _types %}
+          <option value="{{ t }}" {{ 'selected' if current_type == t else '' }}>
+            {{ t }}
+          </option>
+        {% endfor %}
+      </select>
+      <div class="form-text">Use <code>guest</code> as default.</div>
+    </div>
+
+    {# Status (NOT NULL, default 'available') #}
+    {% set _statuses = DEVICE_STATUSES if DEVICE_STATUSES is defined else ['available','in_use','maintenance','retired'] %}
+    {% set current_status = (device.status if device and device.status else 'available') %}
+    <div class="col-md-6">
+      <label for="status" class="form-label">Status</label>
+      <select id="status" name="status" class="form-select">
+        {% if current_status not in _statuses %}
+          <option value="{{ current_status }}" selected>{{ current_status }}</option>
+        {% endif %}
+        {% for s in _statuses %}
+          <option value="{{ s }}" {{ 'selected' if current_status == s else '' }}>
+            {{ s }}
+          </option>
+        {% endfor %}
+      </select>
+      <div class="form-text">Use <code>available</code> as default value.</div>
+    </div>
+
+    {# Active (NOT NULL, default true) #}
+    <div class="col-md-6 d-flex align-items-center">
+      <div class="form-check mt-2">
+        <input class="form-check-input"
+               type="checkbox"
+               id="active"
+               name="active"
+               value="1"
+               {% if device %}
+                 {{ 'checked' if device.active else '' }}
+               {% else %}
+                 checked
+               {% endif %}>
+        <label class="form-check-label" for="active">
+          Active
+        </label>
+      </div>
+    </div>
+
+    {# Notes (nullable, 255) #}
+    <div class="col-12">
+      <label for="notes" class="form-label">Comments</label>
+      <textarea id="notes"
+                name="notes"
+                rows="3"
+                maxlength="255"
+                class="form-control">{{ device.notes if device else '' }}</textarea>
+    </div>
+
+    {# Solo lectura: timestamps cuando edites #}
+    {% if device and (device.created_at or device.updated_at) %}
+      <div class="col-md-6">
+        <label class="form-label">Created</label>
+        <input type="text"
+               class="form-control"
+               value="{{ device.created_at }}"
+               disabled>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Laste update</label>
+        <input type="text"
+               class="form-control"
+               value="{{ device.updated_at }}"
+               disabled>
+      </div>
+    {% endif %}
+
+  </div>
+
+  <div class="mt-4 d-flex justify-content-end gap-2">
+    <a href="{{ url_for('devices.index') }}" class="btn btn-outline-secondary">
+      Cancel
+    </a>
+    <button type="submit" class="btn btn-primary">
+      Save
+    </button>
+  </div>
+
+</form>
+
+{% endblock %}

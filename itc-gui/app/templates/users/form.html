@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 class="mb-3">{{ page_title or (user and 'Edit user' or 'New user') }}</h2>
+
+<form method="post" action="">
+
+  <div class="row g-3">
+    <div class="col-md-6">
+      <label class="form-label">Name</label>
+      <input type="text" name="name" class="form-control" required
+             value="{{ user.name if user else '' }}">
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Surname</label>
+      <input type="text" name="surname" class="form-control"
+             value="{{ user.surname if user else '' }}">
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Username</label>
+      <input type="text" name="username" class="form-control" required
+             value="{{ user.username if user else '' }}">
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Email</label>
+      <input type="email" name="email" class="form-control"
+             value="{{ user.email if user else '' }}">
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">UID</label>
+      <div class="input-group">
+        <input
+          type="text"
+          id="uid-input"
+          name="uid"
+          class="form-control"
+          value="{{ user.uid if user else '' }}"
+          placeholder="P.ej. 04AABBCCDD"
+          autocomplete="off"
+        >
+        <button class="btn btn-outline-primary" type="button" id="btn-read-uid">
+          <span id="btn-read-icon">📡</span> Leer tarjeta
+        </button>
+      </div>
+      <div id="uid-status" class="form-text mt-1 text-muted">Acerca la tarjeta y pulsa <strong>Leer tarjeta</strong>.</div>
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Role</label>
+      <input type="text" name="role" class="form-control"
+             value="{{ user.role if user else '' }}">
+      {# aquí podrías poner un <select> si más adelante lo tipas #}
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">
+        Password{% if not user %} *{% endif %}
+      </label>
+      <input type="password" name="password" class="form-control"
+             {% if not user %}required{% endif %}>
+      {% if user %}
+        <div class="form-text">Leave blank to keep the current password.</div>
+      {% endif %}
+    </div>
+    <div class="col-md-6 align-items-center">
+      <div class="form-check mt-4">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          id="active"
+          name="active"
+          value="1"
+          {% if not user or user.active %}checked{% endif %}
+        >
+        <label class="form-check-label" for="active">
+          Active user
+        </label>
+      </div>
+    </div>
+  
+  <div class="mt-4 d-flex justify-content-end gap-2">
+    <a href="{{ url_for('users.index') }}" class="btn btn-outline-secondary">Cancel</a>
+    <button class="btn btn-primary">Save</button>
+  </div>
+</form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  console.log("users/form NFC JS cargado");
+
+  const btn    = document.getElementById("btn-read-uid");
+  const status = document.getElementById("uid-status");
+  const input  = document.getElementById("uid-input");
+  const icon   = document.getElementById("btn-read-icon");
+
+  if (!btn || !status || !input || !icon) {
+    console.warn("Elementos UID NFC no encontrados en el DOM");
+    return;
+  }
+
+  async function readOnce() {
+    btn.disabled = true;
+    icon.textContent = "⌛";
+    status.classList.remove("text-danger", "text-success");
+    status.classList.add("text-muted");
+    status.textContent = "Intentando leer tarjeta…";
+
+    try {
+      const resp = await fetch("{{ url_for('users.read_uid_once') }}", {
+        method: "POST",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({})
+      });
+
+      const data = await resp.json().catch(() => ({}));
+      console.log("Respuesta NFC:", data);
+
+      if (data.success) {
+        input.value = data.uid;
+        status.classList.remove("text-muted", "text-danger");
+        status.classList.add("text-success");
+        status.textContent = "UID leído: " + data.uid + ". Ahora guarda el formulario.";
+      } else {
+        status.classList.remove("text-muted", "text-success");
+        status.classList.add("text-danger");
+
+        if (data.reason === "no_card") {
+          status.textContent = "No se detectó tarjeta. Acerca la tarjeta e inténtalo de nuevo.";
+        } else if (data.reason === "nfc_unavailable") {
+          status.textContent = "NFC no disponible en el servidor.";
+        } else if (data.reason === "reader_error") {
+          status.textContent = data.error || "Error del lector NFC.";
+        } else {
+          status.textContent = data.error || "No se pudo leer la tarjeta.";
+        }
+      }
+    } catch (e) {
+      console.error("Error fetch NFC:", e);
+      status.classList.remove("text-muted", "text-success");
+      status.classList.add("text-danger");
+      status.textContent = "Error de comunicación con el servidor.";
+    } finally {
+      btn.disabled = false;
+      icon.textContent = "📡";
+    }
+  }
+
+  btn.addEventListener("click", readOnce);
+});
+</script>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for cat, msg in messages %}
+      <div class="alert alert-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+{% endblock %}
+

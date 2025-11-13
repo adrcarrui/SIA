@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h2 class="mb-0">Users</h2>
+    <div class="d-flex align-items-center">
+  <form class="d-inline-flex p-2" method="get" action="{{ url_for('users.index') }}">
+    <input name="q" value="{{ q }}" class="form-control form-control-sm me-2" placeholder="Search user...">
+    <button class="btn btn-sm btn-outline-primary ms-2">🔎</button>
+  </form>
+    <a href="{{ url_for('users.new_user') }}" class="btn btn-primary btn-sm">New user</a>
+  </div>
+  </div>
+  
+  
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>ID</th><th>Name</th><th>Surname</th><th>Username</th>
+          <th>Email</th><th>UID</th><th>Role</th><th>Active</th><th>Created</th><th class="text-end" style="width:150px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.id }}</td>
+          <td>{{ u.name }}</td>
+          <td>{{ u.surname or '—' }}</td>
+          <td>{{ u.username or '—' }}</td>
+          <td>{{ u.email or '—' }}</td>
+          <td><code>{{ u.uid }}</code></td>
+          <td>{{ u.role }}</td>
+          <td>
+            {% if u.active %}<span class="badge text-bg-success">Yes</span>
+            {% else %}<span class="badge text-bg-secondary">No</span>{% endif %}
+          </td>
+          <td>{{ u.created_at }}</td>
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <a class="btn btn-secondary btn-sm"
+                href="{{ url_for('users.edit_user', user_id=u.id) }}">Edit</a>
+                <form method="post" action="{{ url_for('users.delete_user', user_id=u.id) }}" class="d-inline">
+                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Borrar usuario {{ u.username }}?')">Borrar</button>
+              </form>
+            </div>
+            </td>
+        </tr>
+        {% endfor %}
+        {% if not users %}
+        <tr><td colspan="9" class="text-center text-body-secondary">Sin resultados</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <nav aria-label="Paginación">
+    <ul class="pagination">
+      <li class="page-item {% if not has_prev %}disabled{% endif %}">
+        <a class="page-link" href="{{ url_for('users.index', q=q, page=(page-1 if page>1 else 1), per_page=per_page) }}">«</a>
+      </li>
+      <li class="page-item active"><span class="page-link">{{ page }}</span></li>
+      <li class="page-item {% if not has_next %}disabled{% endif %}">
+        <a class="page-link" href="{{ url_for('users.index', q=q, page=(page+1 if has_next else page), per_page=per_page) }}">»</a>
+      </li>
+    </ul>
+  </nav>
+
+{% endblock %}

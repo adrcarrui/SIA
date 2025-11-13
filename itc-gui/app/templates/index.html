@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-3">
+
+  <!-- Si quieres mostrar también calendario en esta vista, déjalo; si no, bórralo -->
+  <h2 class="mb-3">Course calendar</h2>
+  <div id="calendar-2w" class="cal2w">
+    <div class="cal2w-head" id="cal2w-head"></div>
+    <div class="cal2w-grid" id="cal2w-grid"></div>
+  </div>
+
+{% endblock %}
