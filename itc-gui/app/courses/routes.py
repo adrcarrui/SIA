@@ -7,7 +7,6 @@ import app.models as models
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timedelta
-from app.utils import log_movement
 
 PER_PAGE = 20  # ajusta a tu gusto
 

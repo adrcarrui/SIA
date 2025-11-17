@@ -6,7 +6,6 @@ from app.db import SessionLocal
 import app.models as models
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
-from app.utils import log_movement
 from math import ceil
 from datetime import datetime,timezone
 

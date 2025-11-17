@@ -6,10 +6,9 @@ from sqlalchemy import or_
 import bcrypt
 from app.nfc.acr122 import ACR122
 from smartcard.Exceptions import NoCardException
-from app.utils import log_movement
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from flask_login import login_required, current_user
-
+from app.scripts import log_movement
 
 # === NFC: imports y flag de disponibilidad ===
 try:
@@ -60,6 +59,7 @@ def index():
         db.close()
 
 @bp.route("/new", methods=["GET", "POST"])
+@login_required
 def new_user():
     if request.method == "POST":
         #id=request.form["id"].strip()
@@ -79,7 +79,7 @@ def new_user():
         email = raw_email or None
         role = raw_role or 'User'
         db = SessionLocal()
-
+        actor_id = getattr(current_user, "id", None)
         #db.add(u)
         #db.flush()  # para que u.id exista antes del commit
 
@@ -95,6 +95,24 @@ def new_user():
                 active=active,
             )
             db.add(new_user)
+            #db.commit()
+            db.flush()
+            log_movement(
+                    db,
+                    user_id=actor_id,
+                    entity_type="user",
+                    entity_id=new_user.id,
+                    action="create",
+                    after_data={
+                        "id": new_user.id,
+                        "username": new_user.username,
+                        "email": new_user.email,
+                        "role": new_user.role,
+                        "active": new_user.active,
+                    },
+                    description=f"User '{new_user.username}' created",
+                    user_agent=request.user_agent.string,
+                )
             db.commit()
             flash("✅ User created successfully", "success")
             return redirect(url_for("users.index"))
@@ -106,40 +124,108 @@ def new_user():
 
     return render_template("users/form.html", page_title="New User", user=None)
 
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+import bcrypt
+
 @bp.route("/<int:user_id>/edit", methods=["GET", "POST"])
+@login_required
 def edit_user(user_id):
     db = SessionLocal()
-    user = db.query(models.User).get(user_id)
+    try:
+        user = db.query(models.User).get(user_id)
 
-    if not user:
-        flash("User not found", "danger")
-        return redirect(url_for("users.index"))
+        if not user:
+            flash("User not found", "danger")
+            return redirect(url_for("users.index"))
 
-    if request.method == "POST":
-        user.old_username=user.username
-        user.name = request.form["name"]
-        user.surname = request.form.get("surname", "")
-        user.uid = request.form["uid"]
-        user.username = request.form.get("username", "")
-        raw_email = request.form.get("email", "")
-        user.role = request.form.get("role", "user")
-        user.active = bool(request.form.get("active", ""))
-        # solo actualizar password si el campo no está vacío
-        new_password = request.form.get("password", "")
+        if request.method == "POST":
+            actor_id = getattr(current_user, "id", None)
 
-        user.email=raw_email or None
-        if new_password:
-            user.password_hash = bcrypt.hashpw(
-                new_password.encode("utf-8"), bcrypt.gensalt()
-            ).decode("utf-8")
+            # Estado ANTES
+            before_data = {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "role": user.role,
+                "active": user.active,
+                "uid": user.uid,
+            }
 
+            user.name = request.form["name"]
+            user.surname = request.form.get("surname", "")
 
-        db.commit()
-        flash("✅ User updated successfully", "success")
-        return redirect(url_for("users.index"))
+            # UID saneado
+            raw_uid = (request.form.get("uid") or "").strip()
+            if raw_uid == "" or raw_uid.lower() in ("none", "null"):
+                user.uid = None
+            else:
+                user.uid = raw_uid
 
-    db.close()
-    return render_template("users/form.html", page_title="Edit user", user=user)
+            user.username = request.form.get("username", "").strip()
+            raw_email = request.form.get("email", "").strip()
+            user.email = raw_email or None
+            user.role = request.form.get("role", "user")
+            user.active = bool(request.form.get("active", ""))
+
+            new_password = request.form.get("password", "")
+            if new_password:
+                user.password_hash = bcrypt.hashpw(
+                    new_password.encode("utf-8"), bcrypt.gensalt()
+                ).decode("utf-8")
+
+            # Estado DESPUÉS
+            after_data = {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "role": user.role,
+                "active": user.active,
+                "uid": user.uid,
+            }
+
+            try:
+                # registrar movimiento
+                log_movement(
+                    db,
+                    user_id=actor_id,
+                    entity_type="user",
+                    entity_id=user.id,
+                    action="update",
+                    before_data=before_data,
+                    after_data=after_data,
+                    description=f"User '{user.username}' updated",
+                    user_agent=request.user_agent.string,
+                )
+
+                db.commit()
+                flash("✅ User updated successfully", "success")
+                return redirect(url_for("users.index"))
+
+            except IntegrityError as e:
+                db.rollback()
+                detail = str(getattr(e, "orig", e))
+
+                print("IntegrityError on edit_user:", detail)
+
+                if "users_uid_key" in detail:
+                    flash("UID ya está en uso por otro usuario.", "danger")
+                elif "users_username_key" in detail:
+                    flash("Username ya está en uso por otro usuario.", "danger")
+                elif "users_email_key" in detail:
+                    flash("Email ya está en uso por otro usuario.", "danger")
+                else:
+                    print(e)
+                    flash("Error de integridad en BD (constraint UNIQUE).", "danger")
+            except SQLAlchemyError as e:
+                db.rollback()
+                print("SQLAlchemyError on edit_user:", e)
+                flash("Error de base de datos al actualizar el usuario.", "danger")
+
+        # GET o POST con error: mostramos el formulario con el user aún ligado a la sesión
+        return render_template("users/form.html", page_title="Edit user", user=user)
+
+    finally:
+        db.close()
 
 @bp.route("/<int:user_id>/delete", methods=["POST"])
 @login_required
@@ -156,7 +242,31 @@ def delete_user(user_id):
             flash("No puedes borrarte a ti mismo.", "warning")
             return redirect(url_for("users.index"))
 
+        actor_id = getattr(current_user, "id", None)
+
+        # estado ANTES de borrar
+        before_data = {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role": user.role,
+            "active": user.active,
+        }
+
         username = user.username
+
+        log_movement(
+            db,
+            user_id=actor_id,
+            entity_type="user",
+            entity_id=user.id,
+            action="delete",
+            before_data=before_data,
+            after_data=None,
+            description=f"User '{username}' deleted",
+            user_agent=request.user_agent.string,
+        )
+
         db.delete(user)
         db.commit()
 

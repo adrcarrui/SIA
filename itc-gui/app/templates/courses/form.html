@@ -3,59 +3,62 @@
 
 <h2 class="mb-3">{{ page_title or (c and 'Edit course' or 'New course') }}</h2>
 
-<form method="post" action="">
+<div class="course-form">
+  <form method="post" action="">
 
-  <div class="row g-3">
-    <div class="col-md-6">
-      <label class="form-label">Course</label>
-      <input name="course" class="form-control" required value="{{ c.course if c else '' }}">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Course</label>
+        <input name="course" class="form-control" required value="{{ c.course if c else '' }}">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Name</label>
+        <input name="name" class="form-control" value="{{ c.name if c else '' }}">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Start date</label>
+        <input type="date" name="start_date" class="form-control"
+               value="{{ c.start_date if c and c.start_date else '' }}">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">End date</label>
+        <input type="date" name="end_date" class="form-control"
+               value="{{ c.end_date if c and c.end_date else '' }}">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Trainees</label>
+        <input name="trainees" class="form-control" value="{{ c.trainees if c else '' }}">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Status</label>
+        <select name="status" class="form-select">
+          {% set STATUS_OPTIONS = ['planned', 'active', 'finished', 'cancelled'] %}
+          {% for s in STATUS_OPTIONS %}
+            <option value="{{ s }}" {{ 'selected' if c and c.status == s else '' }}>
+              {{ s.capitalize() }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Notes</label>
+        <textarea name="notes" rows="3" class="form-control">{{ c.notes if c else '' }}</textarea>
+      </div>
     </div>
 
-    <div class="col-md-6">
-      <label class="form-label">Name</label>
-      <input name="name" class="form-control" value="{{ c.name if c else '' }}">
+    <div class="mt-4 d-flex justify-content-end gap-2">
+      <a href="{{ url_for('courses.index') }}" class="btn btn-outline-secondary">Cancel</a>
+      <button class="btn btn-primary">Save</button>
     </div>
+  </form>
+</div>
 
-    <div class="col-md-6">
-      <label class="form-label">Start date</label>
-      <input type="date" name="start_date" class="form-control"
-             value="{{ c.start_date if c and c.start_date else '' }}">
-    </div>
-
-    <div class="col-md-6">
-      <label class="form-label">End date</label>
-      <input type="date" name="end_date" class="form-control"
-             value="{{ c.end_date if c and c.end_date else '' }}">
-    </div>
-
-    <div class="col-md-6">
-      <label class="form-label">Trainees</label>
-      <input name="trainees" class="form-control" value="{{ c.trainees if c else '' }}">
-    </div>
-
-    <div class="col-md-6">
-      <label class="form-label">Status</label>
-      <select name="status" class="form-select">
-        {% set STATUS_OPTIONS = ['planned', 'active', 'finished', 'cancelled'] %}
-        {% for s in STATUS_OPTIONS %}
-          <option value="{{ s }}" {{ 'selected' if c and c.status == s else '' }}>
-            {{ s.capitalize() }}
-          </option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div class="col-12">
-      <label class="form-label">Notes</label>
-      <textarea name="notes" rows="3" class="form-control">{{ c.notes if c else '' }}</textarea>
-    </div>
-  </div>
-
-  <div class="mt-4 d-flex justify-content-end gap-2">
-    <a href="{{ url_for('courses.index') }}" class="btn btn-outline-secondary">Cancel</a>
-    <button class="btn btn-primary">Save</button>
-  </div>
-</form>
 {% with messages = get_flashed_messages(with_categories=true) %}
   {% if messages %}
     {% for cat, msg in messages %}
