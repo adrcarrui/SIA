@@ -8,6 +8,7 @@ from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Bool
 from sqlalchemy.orm import relationship
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, text
 from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import JSONB
 
 class User(db.Model, UserMixin):
     __tablename__ = "users"
@@ -21,6 +22,11 @@ class User(db.Model, UserMixin):
     role = db.Column(db.String(50))
     active = db.Column(db.Boolean, default=True, nullable=False)
 
+    movements = relationship(
+        "Movements",
+        back_populates="user",
+        passive_deletes=False
+    )
         # helpers opcionales
     def get_id(self):
         return str(self.id)
@@ -95,3 +101,24 @@ class Course(db.Model):
 
         # Por si acaso
         return "Planned"
+
+class Movements(db.Model):
+    __tablename__="movements"
+
+    id = Column(Integer, primary_key=True,index=True)
+
+    user_id = Column(Integer,ForeignKey("users.id", ondelete="RESTRICT"),nullable=False)
+    entity_type = Column(String(50),nullable=False)
+    entity_id = Column(Integer,nullable=True)
+    action = Column(String(20),nullable=False)
+    before_data = Column(JSONB,nullable=True)
+    after_data = Column(JSONB,nullable=True)
+    success = Column(Boolean,nullable=False,default=True)
+    description = Column(Text,nullable=False)
+    user_agent = Column(Text,nullable=False)
+    created_at = Column(DateTime(timezone=True),nullable=False,default=datetime.utcnow)
+
+    user = relationship("User", back_populates="movements")
+
+    def __repr__(self):
+        return f"<Movement id={self.id} user_id={self.user_id} action={self.action} entity_type={self.entity_type} entity_id={self.entity_id}>"

@@ -1,14 +1,15 @@
 from flask import render_template, request, redirect, url_for, flash
-from flask_login import login_required
+from flask_login import login_required, current_user
 from . import bp
 
 from app.db import SessionLocal
 import app.models as models
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
-from app.utils import log_movement
 from math import ceil
 from datetime import datetime,timezone
+
+from app.scripts import log_movement
 
 # Opciones (ajústalas si usas ENUM en la DB)
 DEVICE_TYPES = ["vending", "canteen", "instructor", "guest"]
@@ -106,6 +107,29 @@ def new_device():
             )
 
             db.add(d)
+            db.flush()
+
+            log_movement(
+                db,
+                user_id=getattr(current_user, "id", None),
+                entity_type="device",
+                entity_id=d.id,
+                action="create",
+                before_data=None,
+                after_data={
+                    "id": d.id,
+                    "name": d.name,
+                    "uid": d.uid,
+                    "type": d.type,
+                    "status": d.status,
+                    "active": d.active,
+                    "notes": d.notes,
+                },
+                description=f"Device '{d.name or d.uid}' created",
+                success=True,
+                user_agent=request.user_agent.string,
+            )
+
             try:
                 db.commit()
             except IntegrityError as e:
@@ -149,6 +173,16 @@ def edit_device(device_id):
 
         if request.method == "POST":
             # JAMÁS tocar d.id ni leer 'id' del form
+            before_data = {
+                "id": d.id,
+                "name": d.name,
+                "uid": d.uid,
+                "type": d.type,
+                "status": d.status,
+                "active": d.active,
+                "notes": d.notes,
+            }
+
             uid    = (request.form.get("uid") or "").strip()
             name   = (request.form.get("name") or "").strip()
             dtype  = (request.form.get("type") or "guest").strip() or "guest"
@@ -163,6 +197,14 @@ def edit_device(device_id):
                                        device=d,
                                        DEVICE_TYPES=DEVICE_TYPES,
                                        DEVICE_STATUSES=DEVICE_STATUSES)
+            
+            if dtype not in DEVICE_TYPES:
+                flash("Tipo inválido. Se usará 'guest'.", "warning")
+                dtype = "guest"
+
+            if status not in DEVICE_STATUSES:
+                flash("Estado inválido. Se usará 'available'.", "warning")
+                status = "available"
 
             # Normaliza valores
             d.uid    = uid
@@ -177,7 +219,40 @@ def edit_device(device_id):
             if hasattr(d, "updated_at"):
                 d.updated_at = datetime.now(timezone.utc)
 
-            db.commit()
+            db.flush()
+            after_data = {
+                "id": d.id,
+                "name": d.name,
+                "uid": d.uid,
+                "type": d.type,
+                "status": d.status,
+                "active": d.active,
+                "notes": d.notes,
+            }
+            log_movement(
+                db,
+                user_id=getattr(current_user, "id", None),
+                entity_type="device",
+                entity_id=d.id,
+                action="update",
+                before_data=before_data,
+                after_data=after_data,
+                description=f"Device '{d.name or d.uid}' updated",
+                success=True,
+                user_agent=request.user_agent.string,
+            )
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                flash("No se pudo actualizar el dispositivo. Revisa UID y valores únicos.", "danger")
+                return render_template(
+                    "devices/form.html",
+                    page_title="Edit device",
+                    device=d,
+                    DEVICE_TYPES=DEVICE_TYPES,
+                    DEVICE_STATUSES=DEVICE_STATUSES,
+                )
             flash("Dispositivo actualizado.", "success")
             return redirect(url_for("devices.index"))
 
@@ -196,12 +271,45 @@ def delete_device(device_id):
     try:
         d = db.query(models.Device).get(device_id)
         if not d:
-            flash("Device no encontrado.", "warning")
-        else:
-            db.delete(d)
-            db.commit()
+            flash("Device no encontrado.", "danger")
+            return redirect(url_for("devices.index"))
 
-            flash("Device eliminado.", "info")
+        # Snapshot ANTES de borrar
+        before_data = {
+            "id": d.id,
+            "name": d.name,
+            "uid": d.uid,
+            "type": d.type,
+            "status": d.status,
+            "active": d.active,
+            "notes": d.notes,
+        }
+
+        db.delete(d)
+        db.flush()
+
+        log_movement(
+            db,
+            user_id=getattr(current_user, "id", None),
+            entity_type="device",
+            entity_id=device_id,
+            action="delete",
+            before_data=before_data,
+            after_data=None,
+            description=f"Device '{before_data['name'] or before_data['uid']}' deleted",
+            success=True,
+            user_agent=request.user_agent.string,
+        )
+
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            flash("No se pudo eliminar el dispositivo. Puede estar referenciado en otros registros.", "danger")
+            return redirect(url_for("devices.index"))
+
+        flash("Device eliminado.", "success")
         return redirect(url_for("devices.index"))
+
     finally:
         db.close()

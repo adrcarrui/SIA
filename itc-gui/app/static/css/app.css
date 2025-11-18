@@ -144,3 +144,28 @@ button[data-bs-toggle="dropdown"]::before {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+:root,
+[data-bs-theme="light"] {
+  --bs-heading-color: #222222;  /* el color que quieras */
+}
+
+/* Si también usas tema oscuro y quieres otro color ahí */
+[data-bs-theme="dark"] {
+  --bs-heading-color: #f5f5f5;  /* o el que te dé la gana */
+}
+
+.user-form .form-label,
+.user-form .form-check-label {
+  color: #000000 !important;
+}
+
+.course-form .form-label
+.course-form .form-check-label {
+  color: #000000 !important;
+}
+
+.device-form .form-label
+.device-form .form-check-label {
+  color: #000000 !important;
+}

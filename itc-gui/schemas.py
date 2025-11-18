@@ -1,7 +1,7 @@
 ﻿# schemas.py
 from pydantic import BaseModel, Field
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, Literal, Any
 
 # USERS
 class UserBase(BaseModel):
@@ -70,3 +70,27 @@ class DeviceOut(DeviceBase):
 
     class Config:
         from_attributes = True
+
+#MOVEMENTS
+
+class MovementBase(BaseModel):
+    entity_type: Literal["user","device","course"]
+    entity_id: Optional[int] = None
+    action: Literal["create","update","delete"]
+    description: Optional[str] = None
+    before_data: Optional[dict[str, Any]] = None
+    after_data: Optional[dict[str, Any]] = None
+    success: bool = True
+
+class MovementRead(MovementBase):
+    id: int
+    user_id: int
+    user_agent: Optional[str] = None
+    create_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class MovementList(MovementBase):
+    #Dame el historial de X
+    movement: list[MovementRead]
