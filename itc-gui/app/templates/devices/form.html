@@ -25,19 +25,30 @@
                value="{{ device.name if device else '' }}">
       </div>
 
-      {# UID (NOT NULL en DB normalmente) #}
+      {# UID con lector NFC, igual que en users #}
       <div class="col-md-6">
-        <label for="uid" class="form-label">
+        <label class="form-label">
           UID <span class="text-danger">*</span>
         </label>
-        <input id="uid"
-               name="uid"
-               type="text"
-               class="form-control"
-               maxlength="64"
-               required
-               value="{{ device.uid if device else '' }}">
-        <div class="form-text">Unique device identifier.</div>
+        <div class="input-group">
+          <input
+            type="text"
+            id="uid-input"
+            name="uid"
+            class="form-control"
+            maxlength="64"
+            required
+            value="{{ device.uid if device else '' }}"
+            placeholder="P.ej. 04AABBCCDD"
+            autocomplete="off"
+          >
+          <button class="btn btn-outline-primary" type="button" id="btn-read-uid">
+            <span id="btn-read-icon">📡</span> Leer tarjeta
+          </button>
+        </div>
+        <div id="uid-status" class="form-text mt-1 text-muted">
+          Acerca el dispositivo y pulsa <strong>Leer tarjeta</strong>.
+        </div>
       </div>
 
       {# Type (NOT NULL, default 'guest') #}
@@ -115,7 +126,7 @@
                  disabled>
         </div>
         <div class="col-md-6">
-          <label class="form-label">Laste update</label>
+          <label class="form-label">Last update</label>
           <input type="text"
                  class="form-control"
                  value="{{ device.updated_at }}"
@@ -136,5 +147,72 @@
 
   </form>
 </div>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  console.log("devices/form NFC JS cargado");
+
+  const btn    = document.getElementById("btn-read-uid");
+  const status = document.getElementById("uid-status");
+  const input  = document.getElementById("uid-input");
+  const icon   = document.getElementById("btn-read-icon");
+
+  if (!btn || !status || !input || !icon) {
+    console.warn("Elementos UID NFC (devices) no encontrados en el DOM");
+    return;
+  }
+
+  async function readOnce() {
+    btn.disabled = true;
+    icon.textContent = "⌛";
+    status.classList.remove("text-danger", "text-success");
+    status.classList.add("text-muted");
+    status.textContent = "Intentando leer tarjeta…";
+
+    try {
+      const resp = await fetch("{{ url_for('users.read_uid_once') }}", {
+        method: "POST",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({})
+      });
+
+      const data = await resp.json().catch(() => ({}));
+      console.log("Respuesta NFC devices:", data);
+
+      if (data.success) {
+        input.value = data.uid;
+        status.classList.remove("text-muted", "text-danger");
+        status.classList.add("text-success");
+        status.textContent = "UID leído: " + data.uid + ". Ahora guarda el formulario.";
+      } else {
+        status.classList.remove("text-muted", "text-success");
+        status.classList.add("text-danger");
+
+        if (data.reason === "no_card") {
+          status.textContent = "No se detectó tarjeta. Acerca la tarjeta e inténtalo de nuevo.";
+        } else if (data.reason === "nfc_unavailable") {
+          status.textContent = "NFC no disponible en el servidor.";
+        } else if (data.reason === "reader_error") {
+          status.textContent = data.error || "Error del lector NFC.";
+        } else {
+          status.textContent = data.error || "No se pudo leer la tarjeta.";
+        }
+      }
+    } catch (e) {
+      console.error("Error fetch NFC (devices):", e);
+      status.classList.remove("text-muted", "text-success");
+      status.classList.add("text-danger");
+      status.textContent = "Error de comunicación con el servidor.";
+    } finally {
+      btn.disabled = false;
+      icon.textContent = "📡";
+    }
+  }
+
+  btn.addEventListener("click", readOnce);
+});
+</script>
 
 {% endblock %}
