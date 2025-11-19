@@ -28,6 +28,7 @@ def create_app():
     from .devices import bp as devices_bp
     from .courses import bp as courses_bp
     from .movements import bp as movements_bp
+    from .assignments import bp as assignments_bp
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(main_bp)
@@ -35,6 +36,7 @@ def create_app():
     app.register_blueprint(courses_bp, url_prefix="/courses")
     app.register_blueprint(devices_bp, url_prefix="/devices")
     app.register_blueprint(movements_bp, url_prefix="/movements")
+    app.register_blueprint(assignments_bp, url_prefix="/assignments")
 
     with app.app_context():
         print("\n== URL MAP ==")

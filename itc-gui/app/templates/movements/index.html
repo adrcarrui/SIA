@@ -4,147 +4,151 @@
 
 {% block content %}
 
-<h2 class="mb-3">Audit history</h2>
-
-<p class="text-muted">
-  Total movements: {{ total }}
-</p>
-
-<div class="card">
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-sm table-striped align-middle mb-0">
-        <thead>
-          <tr>
-            <th scope="col">Date</th>
-            <th scope="col">User</th>
-            <th scope="col">Action</th>
-            <th scope="col">Entity</th>
-            <th scope="col">Description</th>
-            <th scope="col">Result</th>
-            <th scope="col">IP</th>
-            <th scope="col">User agent</th>
-          </tr>
-        </thead>
-        <tbody>
-        {% if movements %}
-          {% for m in movements %}
-          <tr>
-            <!-- Fecha / hora -->
-            <td>
-              {% if m.created_at %}
-                {{ m.created_at.strftime("%Y-%m-%d %H:%M:%S") }}
-              {% else %}
-                -
-              {% endif %}
-            </td>
-
-            <!-- Usuario -->
-            <td>
-              {% if m.user %}
-                {{ m.user.username or ("User #" ~ m.user_id) }}
-              {% else %}
-                User #{{ m.user_id }}
-              {% endif %}
-            </td>
-
-            <!-- Acción -->
-            <td>
-              {% if m.action == "create" %}
-                <span class="badge bg-success">create</span>
-              {% elif m.action == "update" %}
-                <span class="badge bg-warning text-dark">update</span>
-              {% elif m.action == "delete" %}
-                <span class="badge bg-danger">delete</span>
-              {% else %}
-                <span class="badge bg-secondary">{{ m.action }}</span>
-              {% endif %}
-            </td>
-
-            <!-- Entidad -->
-            <td>
-              {{ m.entity_type }}
-              {% if m.entity_id is not none %}
-                #{{ m.entity_id }}
-              {% endif %}
-            </td>
-
-            <!-- Descripción -->
-            <td>
-              {% if m.description %}
-                {{ m.description }}
-              {% else %}
-                <span class="text-muted">No description</span>
-              {% endif %}
-            </td>
-
-            <!-- Resultado -->
-            <td>
-              {% if m.success %}
-                <span class="badge bg-success">OK</span>
-              {% else %}
-                <span class="badge bg-danger">Error</span>
-              {% endif %}
-            </td>
-
-            <!-- IP -->
-            <td>
-              {% if m.ip_address %}
-                {{ m.ip_address }}
-              {% else %}
-                <span class="text-muted">-</span>
-              {% endif %}
-            </td>
-
-            <!-- User agent (cortado para que no destroce la tabla) -->
-            <td>
-              {% if m.user_agent %}
-                <span title="{{ m.user_agent }}">
-                  {{ m.user_agent[:30] }}{% if m.user_agent|length > 30 %}...{% endif %}
-                </span>
-              {% else %}
-                <span class="text-muted">-</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        {% else %}
-          <tr>
-            <td colspan="8" class="text-center text-muted">
-              No movements registered.
-            </td>
-          </tr>
-        {% endif %}
-        </tbody>
-      </table>
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h2 class="mb-0">Audit history</h2>
+    <div class="d-flex align-items-center">
+      <form class="d-inline-flex p-2" method="get" action="{{ url_for('movements.index') }}">
+        <input name="q" value="{{ q }}" class="form-control form-control-sm me-2" placeholder="Search movement...">
+        <button class="btn btn-sm btn-outline-primary ms-2">🔎</button>
+      </form>
     </div>
   </div>
-</div>
 
-<!-- Paginación -->
-<nav class="mt-3" aria-label="Audit history pagination">
-  <ul class="pagination">
-    <li class="page-item {% if not has_prev %}disabled{% endif %}">
-      <a class="page-link"
-         href="{{ url_for('movements.index', page=page-1, per_page=per_page) }}"
-         tabindex="-1">
-        Previous
-      </a>
-    </li>
+  <p class="text-muted">
+    Total movements: {{ total }}
+  </p>
 
-    <li class="page-item disabled">
-      <span class="page-link">
-        Page {{ page }}
-      </span>
-    </li>
+  <div class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle mb-0">
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">User</th>
+              <th scope="col">Action</th>
+              <th scope="col">Entity</th>
+              <th scope="col">Description</th>
+              <th scope="col">Result</th>
+              <th scope="col">User agent</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% if movements %}
+            {% for m in movements %}
+            <tr>
+              <!-- Fecha / hora -->
+              <td>
+                {% if m.created_at %}
+                  {{ m.created_at.strftime("%Y-%m-%d %H:%M:%S") }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
 
-    <li class="page-item {% if not has_next %}disabled{% endif %}">
-      <a class="page-link"
-         href="{{ url_for('movements.index', page=page+1, per_page=per_page) }}">
-        Next
-      </a>
-    </li>
-  </ul>
-</nav>
+              <!-- Usuario -->
+              <td>
+                {% if m.user %}
+                  {{ m.user.username or ("User #" ~ m.user_id) }}
+                {% else %}
+                  User #{{ m.user_username or m.user_id }}
+                {% endif %}
+              </td>
+
+              <!-- Acción (manteniendo colores) -->
+              <td>
+                {% if m.action == "create" %}
+                  <span class="badge bg-success">create</span>
+                {% elif m.action == "update" %}
+                  <span class="badge bg-warning text-dark">update</span>
+                {% elif m.action == "delete" %}
+                  <span class="badge bg-danger">delete</span>
+                {% else %}
+                  <span class="badge bg-secondary">{{ m.action }}</span>
+                {% endif %}
+              </td>
+
+              <!-- Entidad -->
+              <td>
+                {{ m.entity_type }}
+                {% if m.entity_id is not none %}
+                  #{{ m.entity_id }}
+                {% endif %}
+              </td>
+
+              <!-- Descripción -->
+              <td>
+                {% if m.description %}
+                  {{ m.description }}
+                {% else %}
+                  <span class="text-muted">No description</span>
+                {% endif %}
+              </td>
+
+              <!-- Resultado (manteniendo colores) -->
+              <td>
+                {% if m.success %}
+                  <span class="badge bg-success">OK</span>
+                {% else %}
+                  <span class="badge bg-danger">Error</span>
+                {% endif %}
+              </td>
+
+              <!-- User agent (cortado para que no destroce la tabla) -->
+              <td>
+                {% if m.user_agent %}
+                  <span title="{{ m.user_agent }}">
+                    {{ m.user_agent[:30] }}{% if m.user_agent|length > 30 %}...{% endif %}
+                  </span>
+                {% else %}
+                  <span class="text-muted">-</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="8" class="text-center text-muted">
+                No movements registered.
+              </td>
+            </tr>
+          {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Paginación estilo users, con q incluido -->
+  <nav class="mt-3" aria-label="Audit history pagination">
+    <ul class="pagination">
+      <li class="page-item {% if not has_prev %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('movements.index',
+                            q=q,
+                            page=(page-1 if page > 1 else 1),
+                            per_page=per_page) }}"
+           tabindex="-1">
+          «
+        </a>
+      </li>
+
+      <li class="page-item active">
+        <span class="page-link">
+          {{ page }}
+        </span>
+      </li>
+
+      <li class="page-item {% if not has_next %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('movements.index',
+                            q=q,
+                            page=(page+1 if has_next else page),
+                            per_page=per_page) }}">
+          »
+        </a>
+      </li>
+    </ul>
+  </nav>
 
 {% endblock %}

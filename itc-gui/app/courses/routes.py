@@ -1,13 +1,15 @@
 from math import ceil
-from flask import render_template, request, redirect, url_for, flash,jsonify
+from flask import render_template, request, redirect, url_for, flash,jsonify, abort
 from flask_login import login_required, current_user
 from . import bp
 from app.db import SessionLocal
+from sqlalchemy.orm import joinedload
 import app.models as models
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timedelta
 from app.scripts import log_movement
+from app.models import Assignment, Course
 
 PER_PAGE = 20  # ajusta a tu gusto
 
@@ -344,8 +346,58 @@ def calendar_data():
                 "end_date":   (c.end_date or c.start_date).isoformat(),
                 "status": c.auto_status,
                 "trainees": c.trainees,
+                "detail_url": url_for("courses.detail_fragment", course_id=c.id),
             })
 
         return jsonify(data)
     finally:
         db.close()
+
+
+@bp.route("/<int:course_id>")
+@login_required
+def detail(course_id):
+    db = SessionLocal()
+    course = (
+        db.query(Course)
+        .options(
+            joinedload(Course.assignments).joinedload(Assignment.device),
+        )
+        .get(course_id)
+    )
+    if not course:
+        abort(404)
+
+    active_assignments = [
+        a for a in course.assignments
+        if a.status == "active" and a.device is not None
+    ]
+
+    return render_template("courses/detail.html",
+                           course=course,
+                           active_assignments=active_assignments)
+
+@bp.route("/<int:course_id>/fragment")
+@login_required
+def detail_fragment(course_id):
+    db = SessionLocal()
+    course = (
+        db.query(Course)
+        .options(
+            joinedload(Course.assignments).joinedload(Assignment.device),
+        )
+        .get(course_id)
+    )
+    if not course:
+        abort(404)
+
+    active_assignments = [
+        a for a in course.assignments
+        if a.status == "active" and a.device is not None
+    ]
+
+    return render_template(
+        "courses/_detail_fragment.html",
+        course=course,
+        active_assignments=active_assignments,
+    )
