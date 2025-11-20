@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-3">
+  <h4 class="mb-3">Associate devices to course</h4>
+
+  <form method="post" id="bulk-assign-form">
+    {# CSRF si lo usas #}
+    {% if csrf_token is defined %}
+      {{ csrf_token() }}
+    {% endif %}
+
+    <!-- Curso -->
+    <div class="mb-3">
+      <label class="form-label">Course</label>
+      <input type="text" class="form-control"
+             value="{{ course.course or course.name or ('Course #' ~ course.id) }}"
+             readonly>
+      <input type="hidden" name="course_id" value="{{ course.id }}">
+    </div>
+
+    <!-- “Botón” NFC + estado (ahora solo indicador) -->
+    <div class="mb-3 d-flex align-items-center gap-3">
+      <button type="button" id="btn-read-uid" class="btn btn-primary btn-sm" disabled>
+        <span id="btn-read-icon">📡</span>
+        <span>Reading cards…</span>
+      </button>
+      <small id="uid-status" class="text-muted">
+        Approach cards to the reader. New cards will be added automatically.
+      </small>
+    </div>
+
+    <!-- Tabla de devices -->
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Device name</th>
+            <th>UID</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="devices-table-body">
+          <!-- Filas generadas por JS al leer tarjetas -->
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-flex justify-content-between mt-3">
+      <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
+        Cancel
+      </a>
+        <button type="submit" class="btn btn-primary" id="submit-btn">Save assignments</button>
+    </div>
+  </form>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  console.log("assignments bulk NFC JS cargado (auto-poll)");
+
+  const btn    = document.getElementById("btn-read-uid");
+  const status = document.getElementById("uid-status");
+  const icon   = document.getElementById("btn-read-icon");
+  const tbody  = document.getElementById("devices-table-body");
+  const submit = document.getElementById("submit-btn");
+
+  if (!btn || !status || !icon || !tbody || !submit) {
+    console.warn("Elementos NFC (assignments bulk) no encontrados en el DOM");
+    return;
+  }
+
+  // Para evitar duplicados
+  const addedUids = new Set();
+  let polling = true;
+  const POLL_DELAY_MS = 1000;  // 1s entre lecturas
+
+  function refreshSubmitState() {
+    submit.disabled = (tbody.rows.length === 0);
+  }
+
+  function addRowFromUid(data) {
+    console.log("addRowFromUid data:", data);
+
+    const uid = data.uid;
+    if (!uid) {
+      status.classList.remove("text-success", "text-muted", "text-warning");
+      status.classList.add("text-danger");
+      status.textContent = "Respuesta sin UID válido.";
+      return;
+    }
+
+    if (addedUids.has(uid)) {
+      // No molestes al usuario cada vez si la tarjeta sigue puesta
+      console.log("UID duplicado ignorado:", uid);
+      return;
+    }
+
+    addedUids.add(uid);
+
+    const rowIndex = tbody.rows.length + 1;
+    const tr = document.createElement("tr");
+
+    const deviceName = data.device_name || ("Device for UID " + uid);
+    const deviceId   = data.device_id || "";  // si lo devuelves desde el backend
+
+    tr.innerHTML = `
+      <td>${rowIndex}</td>
+      <td>${deviceName}</td>
+      <td>${uid}</td>
+      <td class="text-end">
+        <button type="button" class="btn btn-sm btn-outline-danger btn-remove-device">
+          Remove
+        </button>
+        <input type="hidden" name="uids[]" value="${uid}">
+        ${deviceId ? `<input type="hidden" name="device_ids[]" value="${deviceId}">` : ""}
+      </td>
+    `;
+
+    tbody.appendChild(tr);
+    refreshSubmitState();
+
+    status.classList.remove("text-danger", "text-muted", "text-warning");
+    status.classList.add("text-success");
+    status.textContent = "Card added: " + uid;
+  }
+
+  // Delegación para los botones "Remove"
+  tbody.addEventListener("click", function (ev) {
+    if (!ev.target.classList.contains("btn-remove-device")) return;
+
+    const tr = ev.target.closest("tr");
+    if (!tr) return;
+
+    const uidInput = tr.querySelector('input[name="uids[]"]');
+    if (uidInput) {
+      addedUids.delete(uidInput.value);
+    }
+
+    tr.remove();
+
+    // Renumerar filas
+    Array.from(tbody.rows).forEach((row, idx) => {
+      row.cells[0].textContent = idx + 1;
+    });
+
+    refreshSubmitState();
+  });
+
+  async function readOnce() {
+    if (!polling) return;
+
+    icon.textContent = "⌛";
+    // No machacamos el texto todo el rato si está leyendo en bucle
+    status.classList.remove("text-danger");
+    if (!status.classList.contains("text-success")) {
+      status.classList.add("text-muted");
+      status.textContent = "Waiting for card…";
+    }
+
+    try {
+      const resp = await fetch("{{ url_for('users.read_uid_once') }}", {
+        method: "POST",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({})
+      });
+
+      const data = await resp.json().catch(() => ({}));
+      console.log("Respuesta NFC assignments:", data);
+
+      if (data.success) {
+        addRowFromUid(data);
+      } else {
+        // Solo mostramos error "gordo" si es algo más que "no_card"
+        if (data.reason && data.reason !== "no_card") {
+          status.classList.remove("text-muted", "text-success", "text-warning");
+          status.classList.add("text-danger");
+
+          if (data.reason === "nfc_unavailable") {
+            status.textContent = "NFC not available on server.";
+          } else if (data.reason === "reader_error") {
+            status.textContent = data.error || "NFC reader error.";
+          } else {
+            status.textContent = data.error || "Could not read card.";
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Error fetch NFC (assignments):", e);
+      status.classList.remove("text-muted", "text-success", "text-warning");
+      status.classList.add("text-danger");
+      status.textContent = "Communication error with server.";
+      // Si quieres que pare de intentar cuando hay error gordo:
+      // polling = false;
+    } finally {
+      icon.textContent = "📡";
+      // Programamos la siguiente lectura
+      if (polling) {
+        setTimeout(readOnce, POLL_DELAY_MS);
+      }
+    }
+  }
+
+  // Arrancamos el bucle automáticamente
+  readOnce();
+});
+</script>
+{% endblock %}

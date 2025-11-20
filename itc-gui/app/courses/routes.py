@@ -80,12 +80,12 @@ def new_course():
             except ValueError:
                 trainees = 0
 
-            if not course:
-                flash("El campo 'course' es obligatorio.", "warning")
-                return render_template("courses/form.html", page_title="New course", c=None)
+            #if not course:
+            #    flash("El campo 'course' es obligatorio.", "warning")
+            #    return render_template("courses/form.html", page_title="New course", c=None)
 
             new_course = models.Course(
-                course=course,
+                course=course or None,
                 name=name or None,
                 status=status,          # evita None
                 notes=notes or None,            # evita None
@@ -368,14 +368,21 @@ def detail(course_id):
     if not course:
         abort(404)
 
+    # 🔹 recalcular estados de las asignaciones vivas antes de pintar
+    update_assignment_overdue_status_for_course(db, course)
+
     active_assignments = [
         a for a in course.assignments
-        if a.status == "active" and a.device is not None
+        if a.status in ("active", "overdue_1", "overdue_2")
+        and a.device is not None
     ]
 
-    return render_template("courses/detail.html",
-                           course=course,
-                           active_assignments=active_assignments)
+    return render_template(
+        "courses/detail.html",
+        course=course,
+        active_assignments=active_assignments,
+    )
+
 
 @bp.route("/<int:course_id>/fragment")
 @login_required
@@ -391,9 +398,13 @@ def detail_fragment(course_id):
     if not course:
         abort(404)
 
+    # 🔹 igual aquí: el fragmento es lo que ves en la ventanita
+    update_assignment_overdue_status_for_course(db, course)
+
     active_assignments = [
         a for a in course.assignments
-        if a.status == "active" and a.device is not None
+        if a.status in ("active", "overdue_1", "overdue_2")
+        and a.device is not None
     ]
 
     return render_template(
@@ -401,3 +412,57 @@ def detail_fragment(course_id):
         course=course,
         active_assignments=active_assignments,
     )
+
+PER_PAGE = 20  # ajusta a tu gusto
+
+COURSE_STATUSES = ["planned", "active", "finished", "cancelled"]
+
+# Umbral de días de retraso para overdue_1
+OVERDUE_1_DAYS = 7
+
+
+OVERDUE_1_DAYS = 7  # 1..7 días -> overdue_1
+
+def update_assignment_overdue_status_for_course(db, course):
+    """
+    Actualiza Assignment.status para las asignaciones 'vivas' de un curso
+    según la fecha de fin del curso y la fecha actual.
+
+    Estados:
+      - active
+      - overdue_1  (1..OVERDUE_1_DAYS días tarde)
+      - overdue_2  (> OVERDUE_1_DAYS días tarde)
+    """
+    print("Llamada funcion update fecha")
+    today = date.today()
+
+    # Si el curso no tiene fecha fin, todas las "vivas" se quedan en active
+    if not course.end_date:
+        for a in course.assignments:
+            if a.status in ("active", "overdue_1", "overdue_2"):
+                a.status = "active"
+                # atributo dinámico para la plantilla, no es columna
+                a.days_late = 0
+        return
+
+    days_late = (today - course.end_date).days
+
+    for a in course.assignments:
+        # Solo tocamos las asignaciones vivas
+        if a.status not in ("active", "overdue_1", "overdue_2"):
+            continue
+
+        if days_late <= 0:
+            new_status = "active"
+            dl = 0
+        elif days_late <= OVERDUE_1_DAYS:
+            new_status = "overdue_1"
+            dl = days_late
+        else:
+            new_status = "overdue_2"
+            dl = days_late
+
+        a.status = new_status
+        print("status: " + new_status)
+        # atributo ad-hoc para usar en la plantilla
+        a.days_late = dl

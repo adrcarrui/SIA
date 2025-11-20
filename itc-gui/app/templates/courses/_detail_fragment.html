@@ -1,5 +1,15 @@
 <div>
-  <h5 class="mb-2">{{ course.name }} <span class="text-muted">(#{{ course.id }})</span></h5>
+  <h5 class="mb-2">
+    Course:
+    <span class="text-muted">{{ course.course or course.name }}</span>
+    {% set status_color = {
+      'active':'success',
+      'finished':'secondary',
+      'cancelled':'danger',
+      'planned':'dark'
+    }.get((course.auto_status or '')|lower, 'light') %}
+    <span class="badge text-bg-{{ status_color }}">{{ course.auto_status or '—' }}</span>
+  </h5>
 
   <p class="small text-muted mb-3">
     {% if course.start_date %}{{ course.start_date }}{% else %}–{% endif %}
@@ -13,45 +23,102 @@
 
   <hr>
 
-  <h6 class="mb-2">Devices asignados (activos)</h6>
+  <div class="d-flex align-items-center mb-2">
+    <h6 class="mb-0">ASSIGNED DEVICES</h6>
+
+    <div class="ms-auto d-flex gap-2">
+      <a href="{{ url_for('assignments.new_bulk', course_id=course.id) }}"
+         class="btn btn-sm btn-primary">
+        Associate
+      </a>
+
+      <a href="{{ url_for('assignments.bulk_return', course_id=course.id) }}"
+         class="btn btn-sm btn-warning">
+        Return
+      </a>
+    </div>
+  </div>
 
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
       <thead>
         <tr>
-          <th>Assignment</th>
-          <th>Device</th>
-          <th>UID</th>
-          <th>Status</th>
-          <th>Assigned at</th>
+          <th class="text-center">Assignment Nº</th>
+          <th class="text-center">Device name</th>
+          <th class="text-center">Status</th>
+          <th class="text-center">Assigned at</th>
+          <th class="text-center">Assigned by</th>
+          <th class="text-center">Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for a in active_assignments %}
-        <tr>
-          <td>#{{ a.id }}</td>
-          <td>{{ a.device.name if a.device else "Device #" ~ a.device_id }}</td>
-          <td>
-            {% if a.device and a.device.uid %}
-              <code>{{ a.device.uid }}</code>
+        <tr
+          {% if a.status == 'overdue_1' %}
+            class="table-warning"
+          {% elif a.status == 'overdue_2' %}
+            class="table-danger"
+          {% endif %}
+        >
+          <td class="text-center">#{{ a.id }}</td>
+
+          <td class="text-center">
+            {{ a.device.name if a.device else "Device #" ~ a.device_id }}
+          </td>
+
+          <td class="text-center">
+            {% if a.status == 'active' %}
+              <span class="badge bg-success">Active</span>
+            {% elif a.status == 'overdue_1' %}
+              <span class="badge bg-warning text-dark">
+                Overdue_1 ({{ a.days_late }} día{% if a.days_late != 1 %}s{% endif %})
+              </span>
+            {% elif a.status == 'overdue_2' %}
+              <span class="badge bg-danger">
+                Lost ({{ a.days_late }} día{% if a.days_late != 1 %}s{% endif %})
+              </span>
             {% else %}
-              <span class="text-muted">–</span>
+              <span class="badge bg-secondary">{{ a.status }}</span>
             {% endif %}
           </td>
-          <td>{{ a.status }}</td>
-          <td>
+
+          <td class="text-center">
             {% if a.assigned_at %}
               {{ a.assigned_at.strftime("%Y-%m-%d %H:%M") }}
             {% else %}
               –
             {% endif %}
           </td>
+
+          <td class="text-center">
+            {{ a.creator.username if a.creator else "—" }}
+          </td>
+
+          <td class="text-center">
+            <div class="d-flex justify-content-center align-items-center gap-2 w-100">
+              <a class="btn btn-secondary btn-sm"
+                 href="{{ url_for('assignments.edit', id=a.id) }}">
+                Edit
+              </a>
+
+              <form method="post"
+                    action="{{ url_for('assignments.delete', id=a.id) }}"
+                    class="d-inline">
+                <button type="submit"
+                        class="btn btn-sm btn-danger"
+                        onclick="return confirm('¿Delete assign #{{ a.id }}?')">
+                  Delete
+                </button>
+              </form>
+            </div>
+          </td>
         </tr>
         {% endfor %}
+
         {% if not active_assignments %}
         <tr>
-          <td colspan="5" class="text-center text-muted">
-            No hay devices asignados activos a este curso.
+          <td colspan="6" class="text-center text-muted">
+            There are no active assigned devices for this course.
           </td>
         </tr>
         {% endif %}

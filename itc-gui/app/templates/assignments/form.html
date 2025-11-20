@@ -38,9 +38,9 @@
     <label for="status" class="form-label">Estado</label>
     <select name="status" id="status" class="form-select">
       <option value="active"        {% if assignment.status == 'active' %}selected{% endif %}>Active</option>
-      <option value="closed"        {% if assignment.status == 'closed' %}selected{% endif %}>Closed</option>
-      <option value="expired"       {% if assignment.status == 'expired' %}selected{% endif %}>Expired</option>
-      <option value="forced_return" {% if assignment.status == 'forced_return' %}selected{% endif %}>Forced return</option>
+      <option value="returned"        {% if assignment.status == 'closed' %}selected{% endif %}>Returned</option>
+      <option value="lost"       {% if assignment.status == 'expired' %}selected{% endif %}>Lost</option>
+      <option value="cancelled" {% if assignment.status == 'forced_return' %}selected{% endif %}>Cancelled</option>
     </select>
   </div>
   {% endif %}

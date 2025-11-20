@@ -1,13 +1,44 @@
+{# templates/main/index.html #}
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container py-3">
+<div class="container-fluid py-3">
+  <div class="row g-3">
+    {# IZQUIERDA: calendario, ocupa la mayor parte #}
+    <div class="col-xl-9 col-lg-8">
+      <h2 class="mb-3">Course calendar</h2>
 
-  <!-- Si quieres mostrar también calendario en esta vista, déjalo; si no, bórralo -->
-  <h2 class="mb-3">Course calendar</h2>
-  <div id="calendar-2w" class="cal2w">
-    <div class="cal2w-head" id="cal2w-head"></div>
-    <div class="cal2w-grid" id="cal2w-grid"></div>
+      <div id="calendar-2w" class="cal2w">
+        <div class="cal2w-head" id="cal2w-head"></div>
+        <div class="cal2w-grid" id="cal2w-grid"></div>
+      </div>
+    </div>
+
+    {# DERECHA: panel de alertas, pegado al calendario #}
+    <div class="col-xl-3 col-lg-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-header">
+          <span>Alerts</span>
+        </div>
+        <div class="card-body p-2">
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th class="text-end">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Overdue devices</td>
+                <td class="text-end">{{ overdue_total or 0 }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
   </div>
-
+</div>
 {% endblock %}

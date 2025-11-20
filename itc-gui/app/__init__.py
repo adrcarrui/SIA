@@ -3,9 +3,26 @@ from flask import Flask, redirect, url_for
 from .extensions import db as sqla_db, login_manager, bcrypt   # ← instancia de Flask-SQLAlchemy
 from .db import DATABASE_URL                                   # ← tu URL de SQLAlchemy puro
 from flask_login import current_user
+from app.scripts.get_overdue_assignments import get_overdue_assignments
+from app.db import SessionLocal
 
 def create_app():
     app = Flask(__name__)
+
+    @app.context_processor
+    def inject_overdue_counter():
+        db = SessionLocal()
+        try:
+            overdue = get_overdue_assignments(db)
+            total_overdue_1 = sum(1 for o in overdue if o["overdue_level"] == "overdue_1")
+            total_overdue_2 = sum(1 for o in overdue if o["overdue_level"] == "overdue_2")
+            return {
+                "overdue_total": len(overdue),
+                "overdue_1_count": total_overdue_1,
+                "overdue_2_count": total_overdue_2,
+            }
+        finally:
+            db.close()
 
     # Config
     app.config["SECRET_KEY"] = "cambia-esto"
@@ -60,3 +77,4 @@ def create_app():
         return dict(current_user=current_user)
 
     return app
+

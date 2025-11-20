@@ -1,5 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
+  {# 🔔 PINTAR MENSAJES FLASH #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
+          {{ msg }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
 <h2>{{ course.name }} (ID {{ course.id }})</h2>
 
 <div class="mb-3 text-muted">
