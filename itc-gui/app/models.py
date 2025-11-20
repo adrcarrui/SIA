@@ -27,6 +27,11 @@ class User(db.Model, UserMixin):
         back_populates="user",
         passive_deletes=False
     )
+    assignments_created = relationship(
+    "Assignment",
+    back_populates="creator",
+    foreign_keys="Assignment.created_by",
+    )
         # helpers opcionales
     def get_id(self):
         return str(self.id)
@@ -47,7 +52,7 @@ class Device(db.Model):
     updated_at = db.Column(
         db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
     )
-
+    assignments = relationship("Assignment", back_populates="device")
     def __repr__(self):
         return f"<Device id={self.id} uid={self.uid} type={self.type} status={self.status}>"
 
@@ -64,7 +69,7 @@ class Course(db.Model):
     notes = db.Column(db.String(255), nullable=True)
     trainees = db.Column(db.Integer, nullable=False)
     name = db.Column(db.String(255), nullable=True)
-
+    assignments = relationship("Assignment", back_populates="course")
     def __repr__(self):
         return f"<Course id={self.id} course={self.course!r} name={self.name!r}>"
     
@@ -122,3 +127,79 @@ class Movements(db.Model):
 
     def __repr__(self):
         return f"<Movement id={self.id} user_id={self.user_id} action={self.action} entity_type={self.entity_type} entity_id={self.entity_id}>"
+
+class Assignment(db.Model):
+    __tablename__ = "assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    device_id = Column(
+        Integer,
+        ForeignKey("devices.id", onupdate="CASCADE", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    course_id = Column(
+        Integer,
+        ForeignKey("courses.id", onupdate="CASCADE", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    assigned_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+    )
+
+    released_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    status = Column(
+        String(20),
+        nullable=False,
+        default="active",
+    )
+
+    created_by = Column(
+        Integer,
+        ForeignKey("users.id", onupdate="CASCADE", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    notes = Column(
+        String(255),
+        nullable=True,
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+    )
+
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    # Relaciones
+    device = relationship("Device", back_populates="assignments")
+    course = relationship("Course", back_populates="assignments")
+
+    # usuario que creó el assignment
+    creator = relationship(
+        "User",
+        back_populates="assignments_created",
+        foreign_keys=[created_by],
+    )
+
+    def __repr__(self):
+        return (
+            f"<Assignment id={self.id} "
+            f"device_id={self.device_id} course_id={self.course_id} "
+            f"status={self.status} created_by={self.created_by}>"
+        )

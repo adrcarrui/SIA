@@ -96,11 +96,11 @@
 
           <!-- Assigns -->
           <li class="nav-item">
-            <a href="#"
+            <a href="{{ url_for('assignments.index') }}"
               class="nav-link d-flex align-items-center gap-2"
               title="Assigns">
               <span class="icon" aria-hidden="true">🔗</span>
-              <span class="label">Assigns</span>
+              <span class="label">Assignments</span>
             </a>
           </li>
         </ul>
@@ -148,11 +148,50 @@
         {% block content %}
           {% block default_content %}
           <div class="container py-3">
-            <h2 class="mb-3">Calendario (2 semanas desde hoy)</h2>
+            <div class="row">
+              <!-- IZQUIERDA: calendario -->
+              <div class="col-lg-9 mb-3">
+                <h2 class="mb-3">Course calendar</h2>
 
-            <div id="calendar-2w" class="cal2w">
-              <div class="cal2w-head" id="cal2w-head"></div>
-              <div class="cal2w-grid" id="cal2w-grid"></div>
+                <div id="calendar-2w" class="cal2w">
+                  <div class="cal2w-head" id="cal2w-head"></div>
+                  <div class="cal2w-grid" id="cal2w-grid"></div>
+                </div>
+              </div>
+
+              <!-- DERECHA: tabla de alertas -->
+              <div class="col-lg-3 mb-3">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th scope="col">#</th>
+                      <th scope="col">First</th>
+                      <th scope="col">Last</th>
+                      <th scope="col">Handle</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th scope="row">1</th>
+                      <td>Mark</td>
+                      <td>Otto</td>
+                      <td>@mdo</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">2</th>
+                      <td>Jacob</td>
+                      <td>Thornton</td>
+                      <td>@fat</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">3</th>
+                      <td>John</td>
+                      <td>Doe</td>
+                      <td>@social</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
           {% endblock %}
@@ -241,11 +280,8 @@
       if (!head) return;
       head.innerHTML = '';
       for(let i=0; i<5; i++){
-        const d = days[i];
-        const k = d.getDay();
         const div = document.createElement('div');
         div.className = 'hcell';
-        //div.textContent = DAY_LETTERS[k] || '';
         head.appendChild(div);
       }
     }
@@ -254,12 +290,10 @@
       const grid = document.getElementById('cal2w-grid');
       if (!grid) return;
       grid.innerHTML = '';
-      const today = new Date();
-      today.setHours(0,0,0,0);
 
       days.forEach((d, idx) => {
         const cell = document.createElement('div');
-        cell.className = 'day';// + (d.getTime() === today.getTime() ? ' today' : '');
+        cell.className = 'day';
         cell.setAttribute('data-idx', idx);
         cell.setAttribute('data-date', iso(d));
 
@@ -281,7 +315,7 @@
       });
     }
 
-      function statusClass(status) {
+    function statusClass(status) {
       const base = 'badge d-block text-start mb-1 ';
 
       if (!status) {
@@ -290,31 +324,26 @@
 
       const s = String(status).toLowerCase();
 
-      // planned → amarillo
       if (s === 'planned') {
         return base + 'bg-warning-subtle text-warning-emphasis';
       }
 
-      // active → verde
-      if (s === 'active' || s === 'running') {  // por si aún hay datos viejos con "running"
+      if (s === 'active' || s === 'running') {
         return base + 'bg-success-subtle text-success-emphasis';
       }
 
-      // finished → gris
-      if (s === 'finished' || s === 'done') {   // por si tienes "done" en la BD
+      if (s === 'finished' || s === 'done') {
         return base + 'bg-secondary-subtle text-secondary-emphasis';
       }
 
-      // cancelled → rojo
       if (s === 'cancelled' || s === 'canceled' || s.includes('cancel')) {
         return base + 'bg-danger-subtle text-danger-emphasis';
       }
 
-      // cualquier cosa rara → badge neutra
       return base + 'bg-light text-body';
     }
 
-
+    // Pintar cursos en el calendario; cada curso será clicable (.course-link)
     function renderCourses(days, courses) {
       const grid = document.getElementById('cal2w-grid');
       if (!grid) return;
@@ -331,14 +360,19 @@
           const start = c.start_date;
           const end   = c.end_date || c.start_date;
           if (dIso >= start && dIso <= end) {
-            const item = document.createElement('div');
-            item.className = statusClass(c.status);
+            const link = document.createElement('a');
+            link.className = statusClass(c.status) + " text-decoration-none d-block course-link";
+            link.href = "#";
+            link.dataset.detailUrl = c.detail_url;   // viene en el JSON
+            link.title = "Ver detalle del curso";
+
             let label = c.name || ('Curso #' + c.id);
             if (c.trainees !== null && c.trainees !== undefined && c.trainees !== "") {
               label += " (" + c.trainees + ")";
             }
-            item.textContent = label;
-            content.appendChild(item);
+            link.textContent = label;
+
+            content.appendChild(link);
           }
         });
       });
@@ -349,14 +383,12 @@
       const from = iso(days[0]);
       const to   = iso(days[days.length - 1]);
 
-      console.log("Cargando cursos para calendario:", from, "->", to);
-
       fetch("{{ url_for('courses.calendar_data') }}?from=" + from + "&to=" + to, {
         headers: { "X-Requested-With": "XMLHttpRequest" }
       })
       .then(r => r.json())
       .then(data => {
-        console.log("Cursos recibidos:", data);
+        console.log("Cursos para calendario:", data);
         renderCourses(days, data);
       })
       .catch(err => {
@@ -383,9 +415,64 @@
       renderGrid(d2);
       loadCourses(d2);
     }, msUntilMidnight + 1000);
+
+    // Clic en curso → cargar fragmento y abrir modal
+    document.addEventListener('click', function (ev) {
+      const link = ev.target.closest('.course-link');
+      if (!link) return;
+
+      ev.preventDefault();
+
+      const url = link.dataset.detailUrl;
+      if (!url) return;
+
+      const modalEl = document.getElementById('courseDetailModal');
+      const bodyEl  = document.getElementById('courseDetailBody');
+      if (!modalEl || !bodyEl) return;
+
+      bodyEl.innerHTML = '<div class="text-center text-muted py-3">Loading...</div>';
+
+      fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(r => {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.text();
+      })
+      .then(html => {
+        bodyEl.innerHTML = html;
+        console.log("Mostrando modal de curso:", url);
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+      })
+      .catch(err => {
+        console.error(err);
+        bodyEl.innerHTML = '<div class="text-danger">Error loading course detail.</div>';
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+      });
+    });
   })();
 </script>
 
 
+<script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
+
+<!-- Modal detalle de curso -->
+<div class="modal fade" id="courseDetailModal" tabindex="-1" aria-labelledby="courseDetailLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="courseDetailLabel">Course detail</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body" id="courseDetailBody">
+        <!-- Aquí cargaremos el contenido por AJAX -->
+        <div class="text-center text-muted py-3">
+          Loading...
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
 </body>
 </html>

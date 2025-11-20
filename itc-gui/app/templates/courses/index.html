@@ -44,7 +44,8 @@
             'active':'success',
             'finished':'secondary',
             'lost':'warning',
-            'cancelled':'danger'
+            'cancelled':'danger',
+            'planned':"dark"
           }.get((c.auto_status or '')|lower, 'light') %}
           <span class="badge text-bg-{{ status_color }}">{{ c.auto_status or '—' }}</span>
         </td>

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>{{ title }}</h2>
+
+<form method="post" class="mt-3">
+
+  <div class="mb-3">
+    <label for="device_id" class="form-label">Device</label>
+    <select name="device_id" id="device_id" class="form-select" required>
+      <option value="" disabled {% if not assignment %}selected{% endif %}>Selecciona un device</option>
+      {% for d in devices %}
+        <option value="{{ d.id }}"
+          {% if assignment and d.id == assignment.device_id %}selected{% endif %}
+        >
+          {{ d.name }} <!--(ID {{ d.id }})-->
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="mb-3">
+    <label for="course_id" class="form-label">Course</label>
+    <select name="course_id" id="course_id" class="form-select" required>
+      <option value="" disabled {% if not assignment %}selected{% endif %}>Selecciona un curso</option>
+      {% for c in courses %}
+        <option value="{{ c.course }}"
+          {% if assignment and c.id == assignment.course_id %}selected{% endif %}
+        >
+          {{ c.course }} <!--(ID {{ c.id }})-->
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  {% if assignment %}
+  <div class="mb-3">
+    <label for="status" class="form-label">Estado</label>
+    <select name="status" id="status" class="form-select">
+      <option value="active"        {% if assignment.status == 'active' %}selected{% endif %}>Active</option>
+      <option value="returned"        {% if assignment.status == 'closed' %}selected{% endif %}>Returned</option>
+      <option value="lost"       {% if assignment.status == 'expired' %}selected{% endif %}>Lost</option>
+      <option value="cancelled" {% if assignment.status == 'forced_return' %}selected{% endif %}>Cancelled</option>
+    </select>
+  </div>
+  {% endif %}
+
+  <div class="mb-3">
+    <label for="notes" class="form-label">Notas</label>
+    <input
+      type="text"
+      id="notes"
+      name="notes"
+      class="form-control"
+      value="{{ assignment.notes if assignment and assignment.notes else '' }}"
+    >
+  </div>
+
+  <div class="d-flex gap-2">
+    <button class="btn btn-primary" type="submit">
+      {% if assignment %}Guardar cambios{% else %}Crear asignación{% endif %}
+    </button>
+    <a href="{{ url_for('assignments.index') }}" class="btn btn-secondary">Cancelar</a>
+  </div>
+
+</form>
+
+{% endblock %}
