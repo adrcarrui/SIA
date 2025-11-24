@@ -355,172 +355,181 @@ def new_bulk():
 def bulk_return():
     db = SessionLocal()
 
-    # GET → mostrar formulario de Return
-    if request.method == "GET":
-        course_id = request.args.get("course_id", type=int)
-        if not course_id:
-            abort(400, "course_id is required")
-
-        course = db.query(Course).get(course_id)
-        if not course:
-            abort(404, "Course not found")
-
-        return render_template("assignments/bulk_return.html", course=course)
-
-    # POST → procesar devoluciones
-    course_id = request.form.get("course_id", type=int)
-    if not course_id:
-        abort(400, "course_id is required")
-
-    course = db.query(Course).get(course_id)
-    if not course:
-        abort(404, "Course not found")
-
-    course_id_value = course.id
-    uids = request.form.getlist("uids[]")
-
-    if not uids:
-        flash("No cards received to return.", "warning")
-        db.close()
-        return redirect(url_for("courses.detail", course_id=course_id_value))
-
     try:
-        # Buscar devices por UID
-        devices = db.query(Device).filter(Device.uid.in_(uids)).all()
+        # GET → mostrar formulario genérico de devoluciones
+        if request.method == "GET":
+            return render_template("assignments/bulk_return.html")
+
+        # POST → procesar devoluciones
+        raw_uids = (request.form.get("uids") or "").strip()
+        if not raw_uids:
+            flash("No card UIDs received.", "warning")
+            return render_template("assignments/bulk_return.html")
+
+        # Una UID por línea
+        uids = [u.strip() for u in raw_uids.splitlines() if u.strip()]
+
+        # Buscar dispositivos existentes
+        devices = (
+            db.query(Device)
+            .filter(Device.uid.in_(uids))
+            .all()
+        )
         devices_by_uid = {d.uid: d for d in devices}
 
+        processed = []           # detalle por tarjeta
+        per_course = {}          # course_id -> {course, returned, pending}
+        skipped_not_found = []   # UIDs sin device
+        skipped_no_assignment = []  # devices sin asignación activa
         returned_count = 0
-        skipped_not_found = []
-        skipped_other_course = []     # (device, assignment en otro curso)
-        skipped_no_assignment = []    # sin assignment activa en este curso
+
+        now = datetime.utcnow()
 
         for uid in uids:
             device = devices_by_uid.get(uid)
 
-            # 1) UID sin device
+            # 1) UID no encontrado en devices
             if not device:
                 skipped_not_found.append(uid)
+                processed.append({
+                    "uid": uid,
+                    "status": "unknown_device",
+                    "device": None,
+                    "course": None,
+                    "message": "Card not found in devices table.",
+                })
                 continue
 
-            # 2) ¿Asignado ACTIVAMENTE en OTRO curso?
-            asig_other = (
-                db.query(Assignment)
-                .filter(
-                    Assignment.device_id == device.id,
-                    Assignment.status == "active",
-                    Assignment.course_id != course_id_value,
-                )
-                .first()
-            )
-            if asig_other:
-                skipped_other_course.append((device, asig_other))
-                continue
-
-            # 3) ¿Tiene asignación activa en ESTE curso?
-            asig_course = (
-                db.query(Assignment)
-                .filter(
-                    Assignment.device_id == device.id,
-                    Assignment.course_id == course_id_value,
-                    Assignment.status == "active",
-                )
-                .first()
+            # 2) Buscar asignación activa (released_at IS NULL)
+            q = db.query(Assignment).filter(
+                Assignment.device_id == device.id,
+                Assignment.released_at.is_(None),
             )
 
-            if not asig_course:
+            # Preferir las 'active'
+            q = q.order_by(
+                (Assignment.status == "active").desc(),
+                Assignment.assigned_at.desc(),
+            )
+
+            assignment = q.first()
+
+            if not assignment:
                 skipped_no_assignment.append(device)
+                processed.append({
+                    "uid": uid,
+                    "status": "no_active_assignment",
+                    "device": device,
+                    "course": None,
+                    "message": "Card has no active assignment.",
+                })
                 continue
 
-            # 4) Devolución correcta:
-            #    - borrar assignment
-            #    - pasar device a available
-            before = {
-                "assignment": {
-                    "id": asig_course.id,
-                    "course_id": asig_course.course_id,
-                    "device_id": asig_course.device_id,
-                    "status": asig_course.status,
-                    "assigned_at": asig_course.assigned_at.isoformat()
-                    if asig_course.assigned_at else None,
-                },
+            course = assignment.course
+
+            # BEFORE (antes de devolver)
+            before_data = {
+                "assignment_status": assignment.status,
+                "released_at": assignment.released_at.isoformat()
+                    if assignment.released_at else None,
                 "device_status": getattr(device, "status", None),
             }
 
-            # Borrar assignment (tabla viva)
-            db.delete(asig_course)
+            # 3) Marcar devolución
+            assignment.status = "closed"
+            assignment.released_at = now
 
-            # Actualizar estado del device
             old_device_status = getattr(device, "status", None)
-            device.status = "available"
+            if hasattr(Device, "status"):
+                device.status = "available"
 
-            after = {
-                "assignment": None,  # ya no existe
-                "device_status": device.status,
+            # AFTER (después de devolver)
+            after_data = {
+                "assignment_status": assignment.status,
+                "released_at": assignment.released_at.isoformat()
+                    if assignment.released_at else None,
+                "device_status": getattr(device, "status", None),
             }
 
-            # AUDITORÍA
+            # AUDITORÍA: movimiento de devolución
             log_movement_assignment(
                 db,
                 user_id=current_user.id,
-                assignment=asig_course,
+                assignment=assignment,
                 device=device,
                 course=course,
-                action="return",
-                before=before,
-                after=after,
+                action="returned",
+                before=before_data,
+                after=after_data,
                 success=True,
             )
 
             returned_count += 1
 
+            # Acumular resumen por curso
+            if course.id not in per_course:
+                per_course[course.id] = {
+                    "course": course,
+                    "returned": 0,
+                    "pending": 0,
+                }
+            per_course[course.id]["returned"] += 1
+
+            processed.append({
+                "uid": uid,
+                "status": "returned",
+                "device": device,
+                "course": course,
+                "message": "Assignment closed and device returned to stock.",
+            })
+
+        # Calcular cuántas quedan pendientes por curso
+        for cid, info in per_course.items():
+            pending = (
+                db.query(Assignment)
+                .filter(
+                    Assignment.course_id == cid,
+                    Assignment.released_at.is_(None),
+                )
+                .count()
+            )
+            info["pending"] = pending
+
         db.commit()
 
-        # Mensajes
+        # Mensajes flash como antes
         if returned_count:
-            flash(f"{returned_count} devices returned successfully.", "success")
-
-        if skipped_other_course:
-            detalles = []
-            for device, asig in skipped_other_course:
-                other_course = getattr(asig, "course", None)
-                if not other_course:
-                    other_course = db.query(Course).get(asig.course_id)
-
-                curso_text = (
-                    f"{other_course.name} (ID {other_course.id})"
-                    if (other_course and other_course.name)
-                    else f"Course ID {asig.course_id}"
-                )
-                device_text = device.name or f"Device #{device.id}"
-                detalles.append(f"{device_text} → {curso_text}")
-
-            flash(
-                "These devices are assigned to another active course and cannot be returned here: "
-                + "; ".join(detalles),
-                "danger",
-            )
+            flash(f"{returned_count} devices returned.", "success")
 
         if skipped_no_assignment:
-            for d in skipped_no_assignment:
-                flash(
-                    f"Device {d.name or f'Device #{d.id}'} has no active assignment for this course.",
-                    "warning",
-                )
+            names = ", ".join(
+                f"{d.name or 'Device #' + str(d.id)}" for d in skipped_no_assignment
+            )
+            flash(
+                f"Some devices had no active assignment and were skipped: {names}",
+                "warning",
+            )
 
         if skipped_not_found:
             flash(
-                "Unknown cards: " + ", ".join(skipped_not_found),
-                "danger",
+                f"Some UIDs did not match any device and were skipped: {', '.join(skipped_not_found)}",
+                "warning",
             )
+
+        # Renderizar la misma plantilla con el resumen
+        return render_template(
+            "assignments/bulk_return.html",
+            processed=processed,
+            per_course=list(per_course.values()),
+        )
 
     except Exception as e:
         db.rollback()
         print("Error in bulk_return:", e)
         flash("Error returning devices.", "danger")
+        return render_template("assignments/bulk_return.html")
     finally:
         db.close()
-
-    return redirect(url_for("courses.detail", course_id=course_id_value))
 
 @bp.route("/overdue")
 @login_required

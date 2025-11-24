@@ -15,6 +15,6 @@ def index():
         db.close()
 
     return render_template(
-        "main/index.html",
+        "index.html",
         overdue=overdue,  # lista de dicts: {assignment, course, device, days_late, overdue_level}
     )

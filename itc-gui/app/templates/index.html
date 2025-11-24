@@ -14,27 +14,86 @@
       </div>
     </div>
 
-    {# DERECHA: panel de alertas, pegado al calendario #}
-    <div class="col-xl-3 col-lg-3">
-      <div class="card shadow-sm h-100">
-        <div class="card-header">
+{# DERECHA: alertas #}
+    <div class="col-lg-4 col-xl-3">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
           <span>Alerts</span>
+          <span class="badge text-bg-danger">{{ overdue|length or 0 }}</span>
         </div>
+
         <div class="card-body p-2">
-          <table class="table table-sm mb-0">
+          {# Tabla principal de alertas #}
+          <table class="table table-sm mb-3">
             <thead>
               <tr>
-                <th>Type</th>
-                <th class="text-end">Total</th>
+                <th>Device name</th>
+                <th>Course</th>
+                <th>End date</th>
+                <th class="text-end">Days late</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>Overdue devices</td>
-                <td class="text-end">{{ overdue_total or 0 }}</td>
-              </tr>
+              {% if overdue and overdue|length > 0 %}
+                {% for o in overdue %}
+                  <tr
+                    {% if o.overdue_level == 'overdue_2' %}
+                      class="table-danger"
+                    {% elif o.overdue_level == 'overdue_1' %}
+                      class="table-warning"
+                    {% endif %}
+                  >
+                    <td>{{ o.device.name or ('Device #' ~ o.device.id) }}</td>
+                    <td>{{ o.course.name or ('Course #' ~ o.course.id) }}</td>
+                    <td>{{ o.course.end_date or '—' }}</td>
+                    <td class="text-end">{{ o.days_late }}</td>
+                  </tr>
+                {% endfor %}
+              {% else %}
+                <tr>
+                  <td colspan="4" class="text-center text-muted">
+                    No overdue devices.
+                  </td>
+                </tr>
+              {% endif %}
             </tbody>
           </table>
+
+          {# Resumen por nivel #}
+          {% set overdue_1 = overdue | selectattr("overdue_level", "equalto", "overdue_1") | list %}
+          {% set overdue_2 = overdue | selectattr("overdue_level", "equalto", "overdue_2") | list %}
+
+          <div class="small">
+            <strong>Overdue level 1:</strong>
+            {% if overdue_1 %}
+              <ul class="mb-2 ps-3">
+                {% for o in overdue_1 %}
+                  <li>
+                    {{ o.device.name or ('Device #' ~ o.device.id) }}
+                    → {{ o.course.name or ('Course #' ~ o.course.id) }}
+                    ({{ o.days_late }} day{% if o.days_late != 1 %}s{% endif %})
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <span class="text-muted">none</span>
+            {% endif %}
+
+            <strong>Overdue level 2:</strong>
+            {% if overdue_2 %}
+              <ul class="mb-0 ps-3">
+                {% for o in overdue_2 %}
+                  <li>
+                    {{ o.device.name or ('Device #' ~ o.device.id) }}
+                    → {{ o.course.name or ('Course #' ~ o.course.id) }}
+                    ({{ o.days_late }} day{% if o.days_late != 1 %}s{% endif %})
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <span class="text-muted">none</span>
+            {% endif %}
+          </div>
         </div>
       </div>
     </div>
