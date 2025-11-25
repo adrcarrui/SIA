@@ -19,6 +19,7 @@
         <th style="width:70px;">ID</th>
         <th>Course</th>
         <th>Name</th>
+        <th>Client</th>
         <th>Start</th>
         <th>End</th>
         <th>Status</th>
@@ -33,6 +34,7 @@
         <td class="text-muted">{{ c.id }}</td>
         <td>{{ c.course }}</td>
         <td>{{ c.name or '—' }}</td>
+        <td>{{ c.client or '—' }}</td>
         <td class="text-nowrap">
           {{ c.start_date if c.start_date is not none else '—' }}
         </td>

@@ -111,6 +111,7 @@
     <!-- Contenido principal -->
     <!-- AQUÍ EL CAMBIO: quitar bg-contenty y poner bg-content -->
     <main class="flex-grow-1 bg-content">
+      {% if not hide_topbar %}
       <header id="topbar" class="navbar navbar-expand bg-body border-bottom sticky-top">
         <div class="container-fluid">
           <!-- Izquierda: título -->
@@ -143,7 +144,7 @@
           </div>
         </div>
       </header>
-
+      {% endif %}
       <section class="p-4">
         {% block content %}
           {% block default_content %}

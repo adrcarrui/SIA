@@ -1,42 +1,56 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="container py-5" style="max-width: 480px;">
-  <div class="card shadow-sm">
-    <div class="card-body">
+<div class="d-flex justify-content-center align-items-center" style="min-height: calc(100vh - 56px);">
+  <div class="container" style="max-width: 480px;">
+    <div class="card shadow-sm">
+      <div class="card-body">
 
-      <h2 class="h4 mb-3 text-center">Iniciar sesión</h2>
+        <h2 class="h4 mb-3 text-center">Login</h2>
 
-      <div class="mb-4 text-center">
-        <div class="display-4 mb-2">📡</div>
-        <p class="text-muted mb-1" id="nfc-message">
-          Acerca tu tarjeta NFC al lector para iniciar sesión...
-        </p>
-        <p class="small text-muted">
-          La lectura se realiza automáticamente, sin pulsar ningún botón.
-        </p>
-        <div id="nfc-error" class="small text-danger mt-1"></div>
+        <div class="mb-4 text-center">
+          <div class="display-4 mb-2">📡</div>
+          <p class="text-muted mb-1" id="nfc-message">
+            Bring your NFC card close to the reader to log in…
+          </p>
+          <p class="small text-muted">
+            Reading is performed automatically, without pressing any button.
+          </p>
+          <div id="nfc-error" class="small text-danger mt-1"></div>
+        </div>
+
+        <hr>
+
+        <!-- Classic login as an alternative -->
+        <form method="post" action="{{ url_for('auth.login') }}">
+          <div class="mb-3">
+            <label class="form-label">Username or email</label>
+            <input type="text"
+                   name="username"
+                   class="form-control"
+                   required
+                   autocomplete="username"
+                   oninvalid="this.setCustomValidity('This field is required')"
+                   oninput="this.setCustomValidity('')">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input type="password"
+                   name="password"
+                   class="form-control"
+                   required
+                   autocomplete="current-password"
+                   oninvalid="this.setCustomValidity('This field is required')"
+                   oninput="this.setCustomValidity('')">
+          </div>
+
+          <button type="submit" class="btn btn-outline-secondary w-100">
+            Login
+          </button>
+        </form>
+
       </div>
-
-      <hr>
-
-      <!-- Login clásico como alternativa -->
-      <form method="post" action="{{ url_for('auth.login') }}">
-        <div class="mb-3">
-          <label class="form-label">Usuario o email</label>
-          <input type="text" name="username" class="form-control" autocomplete="username">
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label">Contraseña</label>
-          <input type="password" name="password" class="form-control" autocomplete="current-password">
-        </div>
-
-        <button type="submit" class="btn btn-outline-secondary w-100">
-          Iniciar sesión con usuario y contraseña
-        </button>
-      </form>
-
     </div>
   </div>
 </div>
@@ -70,16 +84,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
       // Manejo según razón
       if (data.reason === 'no_card') {
-        // Nada: seguir intentando silenciosamente
         err.textContent = '';
       } else if (data.reason === 'unknown_uid') {
         err.textContent = data.error || 'Tarjeta no reconocida.';
       } else if (data.reason === 'nfc_unavailable') {
         err.textContent = data.error || 'NFC no disponible en el servidor.';
-        // Aquí podrías decidir parar:
-        // stopPolling = true;
       } else if (data.reason === 'reader_error') {
-        err.textContent = data.error || 'Error del lector NFC.';
+        err.textContent = data.error || 'Error NFC reader.';
       } else {
         err.textContent = 'No se ha podido iniciar sesión con la tarjeta.';
       }
@@ -87,9 +98,8 @@ document.addEventListener('DOMContentLoaded', function () {
     } catch (e) {
       err.textContent = 'Error de comunicación con el servidor.';
     } finally {
-      // Repetir después de un pequeño delay, salvo que se haya detenido
       if (!stopPolling) {
-        setTimeout(pollNFC, 1000);  // 1 segundo entre intentos para no freír el servidor
+        setTimeout(pollNFC, 1000);
       }
     }
   }

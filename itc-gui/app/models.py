@@ -69,6 +69,7 @@ class Course(db.Model):
     notes = db.Column(db.String(255), nullable=True)
     trainees = db.Column(db.Integer, nullable=False)
     name = db.Column(db.String(255), nullable=True)
+    client = db.Column(db.String(255), nullable=True)
     assignments = relationship("Assignment", back_populates="course")
     def __repr__(self):
         return f"<Course id={self.id} course={self.course!r} name={self.name!r}>"

@@ -226,7 +226,7 @@ button[data-bs-toggle="dropdown"]::before {
   top: 18px;
   width: 80px;
   height: 80px;
-  background-image: url("/static/img/users-watermark.png");
+  /*background-image: url("/static/img/users-watermark.png");*/
   background-repeat: no-repeat;
   background-size: contain;
   opacity: 0.15;              /* nivel de “marca de agua” */

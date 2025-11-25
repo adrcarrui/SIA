@@ -7,14 +7,21 @@
   <form method="post" action="">
 
     <div class="row g-3">
-      <div class="col-md-6">
-        <label class="form-label">Course</label>
-        <input name="course" class="form-control" value="{{ c.course if c else '' }}">
-      </div>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Course</label>
+          <input name="course" class="form-control" value="{{ c.course if c else '' }}">
+        </div>
 
-      <div class="col-md-6">
-        <label class="form-label">Name</label>
-        <input name="name" class="form-control" value="{{ c.name if c else '' }}">
+        <div class="col-md-4">
+          <label class="form-label">Name</label>
+          <input name="name" class="form-control" value="{{ c.name if c else '' }}">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Client</label>
+          <input name="client" class="form-control" value="{{ c.client if c else '' }}">
+        </div>
       </div>
 
       <div class="col-md-6">
@@ -60,11 +67,4 @@
   </form>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for cat, msg in messages %}
-      <div class="alert alert-{{ cat }}">{{ msg }}</div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
 {% endblock %}

@@ -7,9 +7,9 @@ class ACR122:
     def __init__(self, reader_index=0):
         available = readers()
         if not available:
-            raise RuntimeError("No hay lectores disponibles.")
+            raise RuntimeError("No readers available.")
         if reader_index >= len(available):
-            raise IndexError("Índice de lector fuera de rango.")
+            raise IndexError("Reader index out of range.")
         self.reader = available[reader_index]
         self.conn = None
 
@@ -45,4 +45,4 @@ class ACR122:
                 "sw": f"{sw1:02X}{sw2:02X}"
             }
         else:
-            raise RuntimeError(f"Error leyendo UID. SW={sw1:02X}{sw2:02X}")
+            raise RuntimeError(f"Error reading UID. SW={sw1:02X}{sw2:02X}")

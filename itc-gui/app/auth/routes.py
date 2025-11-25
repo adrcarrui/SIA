@@ -75,9 +75,10 @@ def login():
 
     return render_template(
         "auth/login.html",
-        page_title="Acceder",
+        page_title="Login",
         hide_sidebar=True,
         error=error,
+        hide_topbar=True,
     )
 
 @bp.route("/logout")

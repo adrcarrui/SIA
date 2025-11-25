@@ -123,7 +123,7 @@ def new_user():
         finally:
             db.close()
 
-    return render_template("users/form.html", page_title="New User", user=None)
+    return render_template("users/form.html", page_title="New user", user=None)
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 import bcrypt

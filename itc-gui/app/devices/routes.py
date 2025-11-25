@@ -48,7 +48,7 @@ def index():
         )
         pages = ceil(total / per_page) if total else 1
         return render_template("devices/index.html",
-                               page_title="Devices",
+                               page_title="TCO GUI",
                                devices=devices,
                                q=q,
                                page=page, per_page=per_page, total=total, pages=pages,
