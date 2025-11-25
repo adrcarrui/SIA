@@ -61,10 +61,6 @@ def create_app():
             print(f"{r.rule:30s} -> {r.endpoint}")
         print("== FIN URL MAP ==\n")
 
-    @app.route("/")
-    def root_redirect_to_login():
-        return redirect(url_for("auth.login"))
-
     # user_loader (usa la sesión de Flask-SQLAlchemy)
     from .models import User
     @login_manager.user_loader

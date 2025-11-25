@@ -24,7 +24,7 @@
         <th>Status</th>
         <th>Trainees</th>
         <th>Notes</th>
-        <th class="text-end" style="width:150px;">Actions</th>
+        <th style="width:150px;">Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -55,6 +55,10 @@
         </td>
         <td class="text-end">
           <div class="d-flex align-items-center gap-2">
+                  <a href="{{ url_for('assignments.new_bulk', course_id=c.id) }}"
+                class="btn btn-sm btn-primary">
+                Associate
+              </a>
             <a href="{{ url_for('courses.edit_course', course_id=c.id) }}" class="btn btn-secondary btn-sm">Edit</a>
             <form action="{{ url_for('courses.delete_course', course_id=c.id) }}" method="post" onsubmit="return confirm('¿Delete course #{{ c.id }}?');">
               <button type="submit" class="btn btn-danger btn-sm">Delete</button>

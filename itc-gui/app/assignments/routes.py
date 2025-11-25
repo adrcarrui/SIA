@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, jsonify
 from flask_login import login_required, current_user
 from sqlalchemy.orm import joinedload
 from sqlalchemy import or_, cast, String
@@ -7,6 +7,8 @@ from app.db import SessionLocal
 from app.models import Assignment, Device, Course, User, Movements
 from datetime import date, datetime, timedelta
 from app.scripts import get_overdue_assignments
+
+from app.models import Device, Assignment
 
 def log_movement_assignment(db, *, user_id, assignment, device, course, action, before, after, success=True):
     """
@@ -96,9 +98,35 @@ def new():
     courses = db.query(Course).all()
 
     if request.method == "POST":
-        device_id = request.form.get("device_id")
-        course_id = request.form.get("course_id")
-        notes = request.form.get("notes") or None
+        # Leer SIEMPRE como int
+        device_id = request.form.get("device_id", type=int)
+        course_id = request.form.get("course_id", type=int)
+        notes = (request.form.get("notes") or "").strip() or None
+
+        if not device_id or not course_id:
+            flash("Device and course are mandatory.", "danger")
+            return render_template(
+                "assignments/form.html",
+                title="New assignment",
+                form_action=url_for("assignments.new"),
+                assignment=None,
+                devices=devices,
+                courses=courses,
+            )
+
+        # Opcional: comprobar que existen
+        device = db.query(Device).get(device_id)
+        course = db.query(Course).get(course_id)
+        if not device or not course:
+            flash("Device or course is invalid.", "danger")
+            return render_template(
+                "assignments/form.html",
+                title="New assignment",
+                form_action=url_for("assignments.new"),
+                assignment=None,
+                devices=devices,
+                courses=courses,
+            )
 
         a = Assignment(
             device_id=device_id,
@@ -106,23 +134,23 @@ def new():
             status="active",
             created_by=current_user.id,
             notes=notes,
+            assigned_at=datetime.utcnow(),  # si tienes este campo
         )
 
         db.add(a)
         db.commit()
-        flash("Asignación creada correctamente.", "success")
+        flash("Assignment created.", "success")
         return redirect(url_for("assignments.index"))
 
     # GET → mostrar formulario
     return render_template(
         "assignments/form.html",
-        title="Nueva asignación",
+        title="New assignment",
         form_action=url_for("assignments.new"),
         assignment=None,
         devices=devices,
         courses=courses,
     )
-
 
 @bp.route("/<int:id>/edit", methods=["GET", "POST"])
 @login_required
@@ -130,7 +158,7 @@ def edit(id):
     db = SessionLocal()
     a = db.query(Assignment).get(id)
     if not a:
-        flash("Asignación no encontrada.", "danger")
+        flash("Assignment not found.", "danger")
         return redirect(url_for("assignments.index"))
 
     devices = db.query(Device).all()
@@ -143,13 +171,13 @@ def edit(id):
         a.status = request.form.get("status")
 
         db.commit()
-        flash("Asignación actualizada.", "success")
+        flash("Updated assignment.", "success")
         return redirect(url_for("assignments.index"))
 
     # GET → mostrar formulario con datos
     return render_template(
         "assignments/form.html",
-        title=f"Editar asignación #{a.id}",
+        title=f"Edit assignment #{a.id}",
         form_action=url_for("assignments.edit", id=a.id),
         assignment=a,
         devices=devices,
@@ -163,12 +191,12 @@ def delete(id):
     db = SessionLocal()
     a = db.query(Assignment).get(id)
     if not a:
-        flash("Asignación no encontrada.", "danger")
+        flash("Assignment not found.", "danger")
         return redirect(url_for("assignments.index"))
 
     db.delete(a)
     db.commit()
-    flash("Asignación eliminada.", "success")
+    flash("Assignment deleted.", "success")
     return redirect(url_for("assignments.index"))
 
 
@@ -531,6 +559,7 @@ def bulk_return():
     finally:
         db.close()
 
+
 @bp.route("/overdue")
 @login_required
 def overdue_list():
@@ -541,3 +570,216 @@ def overdue_list():
         "assignments/overdue_list.html",
         overdue=overdue,
     )
+
+@bp.route("/bulk-returns", methods=["GET", "POST"])
+@login_required
+def bulk_returns():
+    db = SessionLocal()
+    try:
+        if request.method == "GET":
+            # Pantalla de devolución masiva
+            return render_template("assignments/bulk_returns.html")
+
+        # POST → procesar devoluciones (borrado de asociaciones)
+        raw_ids = request.form.getlist("assignment_ids")
+        assignment_ids = [int(x) for x in raw_ids if x.strip()]
+
+        if not assignment_ids:
+            flash("No cards selected for return.", "warning")
+            return redirect(url_for("assignments.bulk_returns"))
+
+        assignments = (
+            db.query(Assignment)
+              .filter(Assignment.id.in_(assignment_ids))
+              .all()
+        )
+
+        if not assignments:
+            flash("No matching assignments found.", "warning")
+            return redirect(url_for("assignments.bulk_returns"))
+
+        user_agent = request.headers.get("User-Agent", "")
+
+        for a in assignments:
+            device = a.device  # relación Assignment.device
+
+            # Snapshot antes de borrar la asignación
+            before_assignment = {
+                "id": a.id,
+                "device_id": a.device_id,
+                "course_id": a.course_id,
+                "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+                "released_at": a.released_at.isoformat() if a.released_at else None,
+            }
+
+            # Snapshot del device antes
+            before_device = {
+                "id": device.id,
+                "status": device.status,
+                "uid": device.uid,
+                "name": device.name,
+            }
+
+            # 1) Poner el device como disponible
+            device.status = "available"
+
+            after_device = {
+                **before_device,
+                "status": device.status,
+            }
+
+            # 2) Movimiento para la asignación: acción delete
+            db.add(
+                Movements(
+                    user_id=current_user.id,
+                    entity_type="Assignment",
+                    entity_id=a.id,
+                    action="delete",
+                    before_data=before_assignment,
+                    after_data=None,
+                    success=True,
+                    description=f"Assignment for device '{device.name}' deleted on bulk return.",
+                    user_agent=user_agent,
+                )
+            )
+
+            # 3) Movimiento para el device: pasa a available
+            db.add(
+                Movements(
+                    user_id=current_user.id,
+                    entity_type="Device",
+                    entity_id=device.id,
+                    action="update",
+                    before_data=before_device,
+                    after_data=after_device,
+                    success=True,
+                    description=f"Device '{device.name}' set to available on bulk return.",
+                    user_agent=user_agent,
+                )
+            )
+
+            # 4) Borrar la asociación de la base de datos
+            db.delete(a)
+
+        db.commit()
+        flash(f"{len(assignments)} card associations deleted and devices set to available.", "success")
+        return redirect(url_for("assignments.bulk_returns"))
+
+    finally:
+        db.close()
+
+@bp.route("/bulk-return/find", methods=["POST"])
+@login_required
+def bulk_return_find():
+    """
+    Dado un UID de tarjeta, devuelve la ÚLTIMA asignación asociada a ese device,
+    esté activa o no. Sirve para mostrar a qué curso ha estado vinculada la tarjeta.
+
+    Respuesta tipo:
+    {
+      "ok": true,
+      "data": {
+        "uid": "ABC123",
+        "device_name": "...",
+        "device_id": 5,
+        "assignment_id": 42,           # o null si nunca ha tenido asignaciones
+        "course_name": "Course X",     # o null / "Not linked"
+        "course_end_date": "2025-12-31",
+        "overdue_days": 3,
+        "status": "assigned" | "released" | "never_assigned" | "unknown_device"
+      }
+    }
+    """
+    db = SessionLocal()
+    try:
+        payload = request.get_json(silent=True) or {}
+        uid = (payload.get("uid") or "").strip()
+
+        if not uid:
+            return jsonify({
+                "ok": False,
+                "error": "Empty UID."
+            }), 400
+
+        # 1) Buscar device por UID
+        device = (
+            db.query(Device)
+              .filter(Device.uid == uid)
+              .first()
+        )
+
+        if not device:
+            # Tarjeta no registrada como device
+            return jsonify({
+                "ok": True,
+                "data": {
+                    "uid": uid,
+                    "device_name": None,
+                    "device_id": None,
+                    "assignment_id": None,
+                    "course_name": None,
+                    "course_end_date": None,
+                    "overdue_days": 0,
+                    "status": "unknown_device",
+                }
+            })
+
+        # 2) Buscar la ÚLTIMA asignación que haya tenido ese device
+        assignment = (
+            db.query(Assignment)
+              .options(joinedload(Assignment.course))
+              .filter(Assignment.device_id == device.id)
+              .order_by(Assignment.assigned_at.desc())
+              .first()
+        )
+
+        if not assignment:
+            # Device existe pero jamás ha tenido assignments
+            return jsonify({
+                "ok": True,
+                "data": {
+                    "uid": uid,
+                    "device_name": device.name,
+                    "device_id": device.id,
+                    "assignment_id": None,
+                    "course_name": None,
+                    "course_end_date": None,
+                    "overdue_days": 0,
+                    "status": "never_assigned",
+                }
+            })
+
+        course = assignment.course
+
+        # Sacar fecha de fin del curso (si existe)
+        course_end_date = getattr(course, "end_date", None)
+        if isinstance(course_end_date, datetime):
+            course_end_date = course_end_date.date()
+
+        overdue_days = 0
+        if isinstance(course_end_date, date):
+            today = date.today()
+            if today > course_end_date:
+                overdue_days = (today - course_end_date).days
+
+        # Estado "lógico" de la asignación solo a título informativo
+        if assignment.released_at is None:
+            status = "assigned"
+        else:
+            status = "released"
+
+        return jsonify({
+            "ok": True,
+            "data": {
+                "uid": uid,
+                "device_name": device.name,
+                "device_id": device.id,
+                "assignment_id": assignment.id,
+                "course_name": course.name if course else None,
+                "course_end_date": course_end_date.isoformat() if course_end_date else None,
+                "overdue_days": overdue_days,
+                "status": status,
+            }
+        })
+    finally:
+        db.close()

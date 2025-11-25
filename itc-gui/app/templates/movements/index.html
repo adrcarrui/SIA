@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Audit history{% endblock %}
+{% block title %}Movements history{% endblock %}
 
 {% block content %}
 
   <div class="d-flex align-items-center justify-content-between mb-3">
-    <h2 class="mb-0">Audit history</h2>
+    <h2 class="mb-0">Movements history</h2>
     <div class="d-flex align-items-center">
       <form class="d-inline-flex p-2" method="get" action="{{ url_for('movements.index') }}">
         <input name="q" value="{{ q }}" class="form-control form-control-sm me-2" placeholder="Search movement...">

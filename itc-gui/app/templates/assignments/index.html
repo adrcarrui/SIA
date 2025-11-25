@@ -17,7 +17,7 @@
     </form>
 
     <a class="btn btn-primary btn-sm ms-2" href="{{ url_for('assignments.new') }}">
-      Nueva asignación
+      New assignment
     </a>
   </div>
 </div>
@@ -30,9 +30,9 @@
         <th>Device</th>
         <th>Course</th>
         <th>Status</th>
-        <th>Creado por</th>
-        <th>Notas</th>
-        <th class="text-end" style="width: 160px;">Acciones</th>
+        <th>Created by</th>
+        <th>Notes</th>
+        <th class="text-end" style="width: 160px;">Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -65,14 +65,14 @@
         <td class="text-end">
           <div class="d-flex justify-content-end gap-2">
             <a href="{{ url_for('assignments.edit', id=a.id) }}" class="btn btn-sm btn-warning">
-              Editar
+              Edit
             </a>
             <form action="{{ url_for('assignments.delete', id=a.id) }}"
                   method="post"
                   class="d-inline">
               <button class="btn btn-sm btn-danger"
                       onclick="return confirm('¿Seguro que quieres eliminar la asignación #{{ a.id }}?');">
-                Eliminar
+                Delete
               </button>
             </form>
           </div>
@@ -83,7 +83,7 @@
       {% if not assigns %}
       <tr>
         <td colspan="7" class="text-center text-body-secondary">
-          Sin resultados
+          No results
         </td>
       </tr>
       {% endif %}

@@ -2,102 +2,275 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-  <div class="row g-3">
-    {# IZQUIERDA: calendario, ocupa la mayor parte #}
-    <div class="col-xl-9 col-lg-8">
-      <h2 class="mb-3">Course calendar</h2>
+<h2>Dashboard</h2>
 
-      <div id="calendar-2w" class="cal2w">
-        <div class="cal2w-head" id="cal2w-head"></div>
-        <div class="cal2w-grid" id="cal2w-grid"></div>
+{# FILA DE 4 CUADRADOS ROJOS #}
+<div class="row mb-4 g-3 row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-5">
+
+  {# 1. Users #}
+  <div class="col">
+    <div class="card text-white border-0 stat-card stat-card-users bg-users">
+      <div class="card-body position-relative p-3">
+        <div class="fs-3 fw-bold">
+          {{ "{:,}".format(total_users or 0) }}
+        </div>
+        <div class="small">Users</div>
+
+        {# marca de agua si la usas con ::after en CSS #}
+
+        <div class="stat-card-footer mt-3 pt-2 text-center">
+          <a href="{{ url_for('users.index') }}"
+            class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
+            <span>view all</span>
+            <i class="bi bi-arrow-right-circle"></i>
+          </a>
+        </div>
       </div>
     </div>
+  </div>
 
-{# DERECHA: alertas #}
-    <div class="col-lg-4 col-xl-3">
-      <div class="card shadow-sm">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <span>Alerts</span>
-          <span class="badge text-bg-danger">{{ overdue|length or 0 }}</span>
+  {# 2. Devices #}
+  <div class="col">
+    <div class="card text-white border-0 stat-card stat-card-licenses bg-devices">
+      <div class="card-body position-relative p-3">
+        <div class="fs-3 fw-bold">{{ "{:,}".format(total_devices or 0) }}</div>
+        <div class="small">Devices</div>
+
+        <div class="stat-card-footer mt-3 pt-2 text-center">
+          <a href="{{ url_for('devices.index') }}"
+            class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
+            <span>view all</span>
+            <i class="bi bi-arrow-right-circle"></i>
+          </a>
         </div>
+      </div>
+    </div>
+  </div>
 
-        <div class="card-body p-2">
-          {# Tabla principal de alertas #}
-          <table class="table table-sm mb-3">
-            <thead>
-              <tr>
-                <th>Device name</th>
-                <th>Course</th>
-                <th>End date</th>
-                <th class="text-end">Days late</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% if overdue and overdue|length > 0 %}
-                {% for o in overdue %}
-                  <tr
+  {# 3. Courses #}
+  <div class="col">
+    <div class="card text-white border-0 stat-card stat-card-accessories bg-courses">
+      <div class="card-body position-relative p-3">
+        <div class="fs-3 fw-bold">{{ "{:,}".format(total_courses or 0) }}</div>
+        <div class="small">Courses</div>
+
+        <div class="stat-card-footer mt-3 pt-2 text-center">
+          <a href="{{ url_for('courses.index') }}"
+            class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
+            <span>view all</span>
+            <i class="bi bi-arrow-right-circle"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# 4. Assignments #}
+  <div class="col">
+    <div class="card text-white border-0 stat-card stat-card-components bg-assignments">
+      <div class="card-body position-relative p-3">
+        <div class="fs-3 fw-bold">{{ "{:,}".format(total_assignments or 0) }}</div>
+        <div class="small">Assignments</div>
+
+        <div class="stat-card-footer mt-3 pt-2 text-center">
+          <a href="{{ url_for('assignments.index') }}"
+            class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
+            <span>view all</span>
+            <i class="bi bi-arrow-right-circle"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# 5. Movements #}
+  <div class="col">
+    <div class="card text-white border-0 stat-card stat-card-people bg-movements">
+      <div class="card-body position-relative p-3">
+        <div class="fs-3 fw-bold">{{ "{:,}".format(total_movements or 0) }}</div>
+        <div class="small">Movements</div>
+
+        <div class="stat-card-footer mt-3 pt-2 text-center">
+          <a href="{{ url_for('movements.index') }}"
+            class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
+            <span>view all</span>
+            <i class="bi bi-arrow-right-circle"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+{# FILA PRINCIPAL: CALENDARIO + ALERTAS #}
+<div class="row">
+  <div class="col-lg-12">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Course calendar</span>
+      </div>
+      <div class="card-body">
+        <div id="calendar-2w" class="cal2w">
+          <div class="cal2w-head" id="cal2w-head"></div>
+          <div class="cal2w-grid" id="cal2w-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+<div class="card-body p-2">
+  <div class="row g-3">
+    {# ---------- BLOQUE DISPOSITIVOS + ALERTAS, UNA AL LADO DE LA OTRA ---------- #}
+<div class="row g-3">
+  {# IZQUIERDA: resumen dispositivos #}
+  <div class="col-md-5">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Devices summary</span>
+      </div>
+      <div class="card-body p-2">
+        <table class="table table-sm mb-2">
+          <thead>
+            <tr>
+              <th>Summary</th>
+              <th class="text-end">Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Total devices</td>
+              <td class="text-end">{{ total_devices }}</td>
+            </tr>
+            <tr>
+              <td>Assigned devices</td>
+              <td class="text-end">{{ total_assignments }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="text-end">
+          <a href="{{ url_for('assignments.bulk_returns') }}" class="btn btn-sm btn-outline-danger">
+            Return cards
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# DERECHA: alertas #}
+  <div class="col-md-7">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Alerts</span>
+        <span class="badge text-bg-danger">{{ overdue|length or 0 }}</span>
+      </div>
+      <div class="card-body p-2">
+        <table class="table table-sm mb-0">
+          <thead>
+            <tr>
+              <th>Course</th>
+              <th>End date</th>
+              <th class="text-end">Days late</th>
+              <th class="text-end">Cards assigned</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if overdue and overdue|length > 0 %}
+              {% for o in overdue %}
+                <tr
+                  class="
                     {% if o.overdue_level == 'overdue_2' %}
-                      class="table-danger"
+                      table-danger
                     {% elif o.overdue_level == 'overdue_1' %}
-                      class="table-warning"
+                      table-warning
                     {% endif %}
-                  >
-                    <td>{{ o.device.name or ('Device #' ~ o.device.id) }}</td>
-                    <td>{{ o.course.name or ('Course #' ~ o.course.id) }}</td>
-                    <td>{{ o.course.end_date or '—' }}</td>
-                    <td class="text-end">{{ o.days_late }}</td>
-                  </tr>
-                {% endfor %}
-              {% else %}
-                <tr>
-                  <td colspan="4" class="text-center text-muted">
-                    No overdue devices.
+                  "
+                >
+                  <td>
+                    <button type="button"
+                            class="btn btn-link p-0 course-detail-btn"
+                            data-bs-toggle="modal"
+                            data-bs-target="#courseModal"
+                            data-url="{{ url_for('courses.detail_fragment', course_id=o.course.id) }}">
+{{ (o.course.course if o.course.course not in [None, 'None', ''] else None)
+   or (o.course.name if o.course.name not in [None, 'None', ''] else None)
+   or ('Course #' ~ o.course.id) }}
+                    </button>
                   </td>
+                  <td>{{ o.course.end_date or '—' }}</td>
+                  <td class="text-end">{{ o.days_late }}</td>
+                  <td class="text-end">{{ o.cards_count }}</td>
                 </tr>
-              {% endif %}
-            </tbody>
-          </table>
-
-          {# Resumen por nivel #}
-          {% set overdue_1 = overdue | selectattr("overdue_level", "equalto", "overdue_1") | list %}
-          {% set overdue_2 = overdue | selectattr("overdue_level", "equalto", "overdue_2") | list %}
-
-          <div class="small">
-            <strong>Overdue level 1:</strong>
-            {% if overdue_1 %}
-              <ul class="mb-2 ps-3">
-                {% for o in overdue_1 %}
-                  <li>
-                    {{ o.device.name or ('Device #' ~ o.device.id) }}
-                    → {{ o.course.name or ('Course #' ~ o.course.id) }}
-                    ({{ o.days_late }} day{% if o.days_late != 1 %}s{% endif %})
-                  </li>
-                {% endfor %}
-              </ul>
+              {% endfor %}
             {% else %}
-              <span class="text-muted">none</span>
+              <tr>
+                <td colspan="4" class="text-center text-muted">
+                  No overdue devices.
+                </td>
+              </tr>
             {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
 
-            <strong>Overdue level 2:</strong>
-            {% if overdue_2 %}
-              <ul class="mb-0 ps-3">
-                {% for o in overdue_2 %}
-                  <li>
-                    {{ o.device.name or ('Device #' ~ o.device.id) }}
-                    → {{ o.course.name or ('Course #' ~ o.course.id) }}
-                    ({{ o.days_late }} day{% if o.days_late != 1 %}s{% endif %})
-                  </li>
-                {% endfor %}
-              </ul>
-            {% else %}
-              <span class="text-muted">none</span>
-            {% endif %}
+<!-- Modal único para ver detalles de curso -->
+<div class="modal fade" id="courseModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Course details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="courseModalBody">
+        <!-- Aquí se cargará el fragmento del curso -->
+        <div class="text-center py-5">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
           </div>
         </div>
       </div>
     </div>
-
   </div>
 </div>
+
+<script>
+document.addEventListener('click', function (e) {
+  const btn = e.target.closest('[data-bs-target="#courseModal"][data-url]');
+  if (!btn) return;
+
+  e.preventDefault();
+
+  const url = btn.dataset.url;
+  const modalBody = document.getElementById('courseModalBody');
+
+  modalBody.innerHTML = `
+    <div class="text-center py-5">
+      <div class="spinner-border" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    </div>
+  `;
+
+  fetch(url)
+    .then(resp => resp.text())
+    .then(html => {
+      modalBody.innerHTML = html;
+    })
+    .catch(err => {
+      console.error(err);
+      modalBody.innerHTML = `
+        <div class="alert alert-danger">
+          Error loading course details.
+        </div>
+      `;
+    });
+});
+</script>
+
+
+
 {% endblock %}

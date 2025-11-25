@@ -1,4 +1,3 @@
-
 /* Anchos del sidebar */
 #sidebar {
   width: 180px;               /* abierto */
@@ -82,14 +81,15 @@ button[data-bs-toggle="dropdown"]::before {
 
 /* Contenedor principal del calendario */
 .cal2w {
-  max-width: 1100px;
+  width: 100%;              /* que ocupe todo el ancho disponible */
+  max-width: none;          /* sin límite artificial */
   margin-bottom: 1.5rem;
 }
 
-/* Rejilla de días: 5 columnas grandes */
+/* Rejilla de días: 7 columnas que llenan el espacio */
 .cal2w-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(200px, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr)); /* 7 días por fila, mismos anchos */
   gap: 1rem;
 }
 
@@ -171,4 +171,75 @@ button[data-bs-toggle="dropdown"]::before {
 .device-form .form-label
 .device-form .form-check-label {
   color: #000000 !important;
+}
+
+.stat-card {
+  min-height: 110px;
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+.stat-card-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  font-weight: 500;
+}
+
+.stat-card-icon {
+  position: absolute;
+  right: 12px;
+  top: 18px;
+  font-size: 2.5rem;
+  opacity: 0.2;
+}
+
+/* Colores aproximados a tu captura */
+.bg-users {
+  background-color: #17c0c9;
+}
+
+.bg-devices {
+  background-color: #d91b5c;
+}
+
+.bg-courses {
+  background-color: #ff9820;
+}
+
+.bg-movements {
+  background-color: #791E94;
+}
+.bg-assignments {
+  background-color: #688E26;
+}
+.stat-movements {
+  position: relative;
+  min-height: 110px;
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+/* Marca de agua solo para este cuadrado */
+.stat-card-users::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  top: 18px;
+  width: 80px;
+  height: 80px;
+  background-image: url("/static/img/users-watermark.png");
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: 0.15;              /* nivel de “marca de agua” */
+  pointer-events: none;       /* para que no moleste al click */
+}
+.table-warning > td,
+.table-warning > th {
+  background-color: #ff9800 !important;  /* naranja fuerte */
+  color: #ffffff;                        /* texto oscuro legible */
+}
+
+.table-danger > td,
+.table-danger > th {
+  background-color: #d50000 !important;  /* rojo fuerte */
+  color: #ffffff;                        /* texto blanco para contraste */
 }

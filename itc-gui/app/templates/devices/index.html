@@ -49,15 +49,15 @@
             {% else %}<span class="badge text-bg-secondary">No</span>{% endif %}
         </td>
         <td class="text-truncate" style="max-width:260px;">{{ d.notes or '' }}</td>
-
-        <td class="text-end">
-          <div class="d-flex align-items-center gap-2">
-            <a href="{{ url_for('devices.edit_device', device_id=d.id) }}" class="btn btn-secondary btn-sm">Edit</a>
-            <form action="{{ url_for('devices.delete_device', device_id=d.id) }}" method="post" onsubmit="return confirm('¿Delete device #{{ d.id }}?');">
-              <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-            </form>
-          </div>
-        </td>
+          <td>
+            <div class="text-end">
+              <a class="btn btn-secondary btn-sm text-end"
+                href="{{ url_for('devices.edit_device', device_id=d.id) }}">Edit</a>
+                <form method="post" action="{{ url_for('devices.delete_device', device_id=d.id) }}" class="d-inline">
+                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Delete device {{ d.id }}?')">Delete</button>
+              </form>
+            </div>
+            </td>
       </tr>
       {% else %}
       <tr><td colspan="7" class="text-center text-muted py-4">No devices.</td></tr>

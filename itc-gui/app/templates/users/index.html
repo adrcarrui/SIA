@@ -38,11 +38,11 @@
           </td>
           <td>{{ u.created_at }}</td>
           <td>
-            <div class="d-flex align-items-center gap-2">
-              <a class="btn btn-secondary btn-sm"
+            <div class="text-end">
+              <a class="btn btn-secondary btn-sm text-end"
                 href="{{ url_for('users.edit_user', user_id=u.id) }}">Edit</a>
                 <form method="post" action="{{ url_for('users.delete_user', user_id=u.id) }}" class="d-inline">
-                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Borrar usuario {{ u.username }}?')">Borrar</button>
+                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Delete user {{ u.username }}?')">Delete</button>
               </form>
             </div>
             </td>

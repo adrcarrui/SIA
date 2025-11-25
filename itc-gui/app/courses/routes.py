@@ -9,7 +9,7 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timedelta
 from app.scripts import log_movement
-from app.models import Assignment, Course
+from app.models import Assignment, Course, Device
 
 PER_PAGE = 20  # ajusta a tu gusto
 

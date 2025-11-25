@@ -1,15 +1,28 @@
 <div>
-  <h5 class="mb-2">
-    Course:
-    <span class="text-muted">{{ course.course or course.name }}</span>
-    {% set status_color = {
-      'active':'success',
-      'finished':'secondary',
-      'cancelled':'danger',
-      'planned':'dark'
-    }.get((course.auto_status or '')|lower, 'light') %}
-    <span class="badge text-bg-{{ status_color }}">{{ course.auto_status or '—' }}</span>
-  </h5>
+  <div class="d-flex align-items-center mb-2">
+    <h5 class="mb-0">
+      Course:
+      <span class="text-muted">
+        {% set c1 = course.course|string|trim %}
+        {% set c2 = course.name|string|trim %}
+        {{ c1 if c1 not in ['', 'None'] else (c2 if c2 not in ['', 'None'] else 'Course #' ~ course.id) }}
+      </span>
+      {% set status_color = {
+        'active':'success',
+        'finished':'secondary',
+        'cancelled':'danger',
+        'planned':'dark'
+      }.get((course.auto_status or '')|lower, 'light') %}
+      <span class="badge text-bg-{{ status_color }}">{{ course.auto_status or '—' }}</span>
+    </h5>
+
+    <div class="ms-auto">
+      <a href="{{ url_for('courses.edit_course', course_id=course.id) }}"
+         class="btn btn-sm btn-secondary">
+        Edit course
+      </a>
+    </div>
+  </div>
 
   <p class="small text-muted mb-3">
     {% if course.start_date %}{{ course.start_date }}{% else %}–{% endif %}
@@ -17,8 +30,9 @@
     {% if course.end_date %}{{ course.end_date }}{% else %}–{% endif %}
   </p>
 
-  {% if course.description %}
-    <p>{{ course.description }}</p>
+  Description:
+  {% if course.notes and course.notes|trim not in ['None', 'none', ''] %}
+    <p>{{ course.notes }}</p>
   {% endif %}
 
   <hr>
@@ -32,7 +46,7 @@
         Associate
       </a>
 
-      <a href="{{ url_for('assignments.bulk_return', course_id=course.id) }}"
+      <a href="{{ url_for('assignments.bulk_returns')}}"
          class="btn btn-sm btn-warning">
         Return
       </a>

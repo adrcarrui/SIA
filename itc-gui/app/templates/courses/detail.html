@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+  {% include "courses/_detail_fragment.html" %}
   {# 🔔 PINTAR MENSAJES FLASH #}
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}

@@ -8,7 +8,7 @@
   <div class="mb-3">
     <label for="device_id" class="form-label">Device</label>
     <select name="device_id" id="device_id" class="form-select" required>
-      <option value="" disabled {% if not assignment %}selected{% endif %}>Selecciona un device</option>
+      <option value="" disabled {% if not assignment %}selected{% endif %}>Select a device...</option>
       {% for d in devices %}
         <option value="{{ d.id }}"
           {% if assignment and d.id == assignment.device_id %}selected{% endif %}
@@ -22,12 +22,14 @@
   <div class="mb-3">
     <label for="course_id" class="form-label">Course</label>
     <select name="course_id" id="course_id" class="form-select" required>
-      <option value="" disabled {% if not assignment %}selected{% endif %}>Selecciona un curso</option>
+      <option value="" disabled {% if not assignment %}selected{% endif %}>
+        Select a course...
+      </option>
       {% for c in courses %}
-        <option value="{{ c.course }}"
+        <option value="{{ c.id }}"
           {% if assignment and c.id == assignment.course_id %}selected{% endif %}
         >
-          {{ c.course }} <!--(ID {{ c.id }})-->
+          {{ c.course or c.name or ('Course #' ~ c.id) }}
         </option>
       {% endfor %}
     </select>
@@ -35,7 +37,7 @@
 
   {% if assignment %}
   <div class="mb-3">
-    <label for="status" class="form-label">Estado</label>
+    <label for="status" class="form-label">Status</label>
     <select name="status" id="status" class="form-select">
       <option value="active"        {% if assignment.status == 'active' %}selected{% endif %}>Active</option>
       <option value="returned"        {% if assignment.status == 'closed' %}selected{% endif %}>Returned</option>
@@ -46,7 +48,7 @@
   {% endif %}
 
   <div class="mb-3">
-    <label for="notes" class="form-label">Notas</label>
+    <label for="notes" class="form-label">Notes</label>
     <input
       type="text"
       id="notes"
@@ -56,11 +58,11 @@
     >
   </div>
 
-  <div class="d-flex gap-2">
+<div class="mt-4 d-flex justify-content-end gap-2">
     <button class="btn btn-primary" type="submit">
-      {% if assignment %}Guardar cambios{% else %}Crear asignación{% endif %}
+      Save
     </button>
-    <a href="{{ url_for('assignments.index') }}" class="btn btn-secondary">Cancelar</a>
+    <a href="{{ url_for('assignments.index') }}" class="btn btn-secondary">Cancel</a>
   </div>
 
 </form>

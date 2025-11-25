@@ -266,7 +266,8 @@
       const res = [];
       let d = new Date();
       d.setHours(0,0,0,0);
-      while(res.length < 10){
+      const WORKDAYS_TO_SHOW = 14;
+      while(res.length < WORKDAYS_TO_SHOW){
         if(!isWeekend(d)){
           res.push(new Date(d));
         }

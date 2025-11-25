@@ -67,7 +67,7 @@ def login():
                         # login_user espera un objeto que implemente get_id() (tu modelo SQLAlchemy lo hace)
                         login_user(user, remember=bool(request.form.get("remember")))
                         session["reset_sidebar"] = True
-                        return redirect(url_for("templates.index"))
+                        return redirect(url_for("main.index"))
                 else:
                     error = "Usuario o contraseña incorrectos"
         finally:
