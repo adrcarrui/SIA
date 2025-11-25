@@ -5,10 +5,13 @@ from .db import DATABASE_URL                                   # ← tu URL de S
 from flask_login import current_user
 from app.scripts.get_overdue_assignments import get_overdue_assignments
 from app.db import SessionLocal
-
+from app.nfc.acr122 import init_buzzer_off
 def create_app():
     app = Flask(__name__)
-
+    try:
+        init_buzzer_off()
+    except Exception as e:
+        print(f"[WARN] Could not init NFC buzzer off: {e}")
     @app.context_processor
     def inject_overdue_counter():
         db = SessionLocal()
