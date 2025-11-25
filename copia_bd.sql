@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict djBnhdJicNr3lML83U1pEKxibXfDb32oY1o85xy15LcxF3MoHjBGKKXDlXFNGgL
+\restrict dyUGyb2eBZEB8Kcu9ZlWmkF5g6RoX1Dv3VucxwKXBAGnkaRUUgZKq9qbO4w3tRt
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -193,6 +193,7 @@ CREATE TABLE public.courses (
     notes character varying(255),
     trainees integer NOT NULL,
     name character varying(255),
+    client character varying(255),
     CONSTRAINT chk_courses_status CHECK (((status)::text = ANY ((ARRAY['planned'::character varying, 'active'::character varying, 'finished'::character varying, 'cancelled'::character varying])::text[]))),
     CONSTRAINT courses_dates_check CHECK (((start_date IS NULL) OR (end_date IS NULL) OR (start_date <= end_date)))
 );
@@ -398,15 +399,15 @@ COPY public.assignments (id, device_id, course_id, assigned_at, released_at, sta
 -- Data for Name: courses; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.courses (id, course, start_date, end_date, status, created_at, updated_at, notes, trainees, name) FROM stdin;
-29	None	2025-11-18	2025-11-19	finished	2025-11-19 08:45:52.125742+01	2025-11-24 14:58:41.003007+01	None	0	Instructor
-5	ANC2352	2025-11-04	2025-11-07	active	2025-11-05 10:11:55.715656+01	2025-11-07 12:37:12.024579+01	\N	3	\N
-23	course_placeholder	2025-11-01	2025-11-24	finished	2025-11-13 09:44:34.052408+01	2025-11-25 10:00:40.570958+01	None	5	course_placeholder
-3	TNC1799	2025-11-11	2025-11-17	active	2025-11-05 10:00:52.699339+01	2025-11-11 10:06:55.516353+01	\N	2	\N
-2	ANC2330	2025-11-04	2025-11-14	active	2025-11-05 10:00:52.699339+01	2025-11-11 11:35:23.149979+01	None	7	None
-6	TNC2525	2025-11-02	2025-11-11	planned	2025-11-05 10:21:45.05127+01	2025-11-12 13:21:23.811755+01	None	4	None
-1	NC5453	2025-11-14	2025-11-18	planned	2025-11-05 10:00:52.699339+01	2025-11-13 07:27:26.045419+01	None	6	None
-24	123	2025-11-17	2025-11-21	cancelled	2025-11-13 10:10:38.354268+01	2025-11-19 08:52:44.82433+01	\N	3	123
+COPY public.courses (id, course, start_date, end_date, status, created_at, updated_at, notes, trainees, name, client) FROM stdin;
+29	None	2025-11-18	2025-11-19	finished	2025-11-19 08:45:52.125742+01	2025-11-24 14:58:41.003007+01	None	0	Instructor	\N
+5	ANC2352	2025-11-04	2025-11-07	active	2025-11-05 10:11:55.715656+01	2025-11-07 12:37:12.024579+01	\N	3	\N	\N
+23	course_placeholder	2025-11-01	2025-11-24	finished	2025-11-13 09:44:34.052408+01	2025-11-25 10:00:40.570958+01	None	5	course_placeholder	\N
+3	TNC1799	2025-11-11	2025-11-17	active	2025-11-05 10:00:52.699339+01	2025-11-11 10:06:55.516353+01	\N	2	\N	\N
+2	ANC2330	2025-11-04	2025-11-14	active	2025-11-05 10:00:52.699339+01	2025-11-11 11:35:23.149979+01	None	7	None	\N
+6	TNC2525	2025-11-02	2025-11-11	planned	2025-11-05 10:21:45.05127+01	2025-11-12 13:21:23.811755+01	None	4	None	\N
+1	NC5453	2025-11-14	2025-11-18	planned	2025-11-05 10:00:52.699339+01	2025-11-13 07:27:26.045419+01	None	6	None	\N
+24	123	2025-11-17	2025-11-21	cancelled	2025-11-13 10:10:38.354268+01	2025-11-19 08:52:44.82433+01	\N	3	123	\N
 \.
 
 
@@ -416,8 +417,8 @@ COPY public.courses (id, course, start_date, end_date, status, created_at, updat
 
 COPY public.devices (id, uid, name, type, status, active, created_at, updated_at, notes) FROM stdin;
 11	BCA670F5	47	guest	available	f	2025-11-19 09:07:43.806717+01	2025-11-24 20:58:06.03305+01	None
-9	3CF572C2	50	canteen	available	f	2025-11-18 08:30:18.653151+01	2025-11-25 07:47:17.801316+01	None
-5	device_placeholder	device_placeholder	guest	available	f	2025-11-13 08:33:57.06282+01	2025-11-17 07:32:13.598806+01	None
+5	device_placeholder	device_placeholder	guest	assigned	f	2025-11-13 08:33:57.06282+01	2025-11-25 11:43:04.030643+01	None
+9	3CF572C2	50	canteen	available	f	2025-11-18 08:30:18.653151+01	2025-11-25 12:26:42.244499+01	None
 10	8888	dev	guest	available	f	2025-11-18 10:10:45.07014+01	2025-11-18 11:10:45.06712+01	\N
 2	001	vending2	vending	available	f	2025-11-07 12:40:56.218792+01	2025-11-19 10:30:50.547343+01	None
 \.
@@ -483,6 +484,23 @@ COPY public.movements (id, user_id, entity_type, entity_id, action, before_data,
 110	20	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-29", "trainees": 5, "start_date": "2025-11-01"}	{"id": 23, "name": "course_placeholder", "notes": "Anotacion de prueba", "course": "course_placeholder", "status": "active", "end_date": "2025-11-29", "trainees": 5, "start_date": "2025-11-01"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 08:46:08.115261+01
 111	20	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "Anotacion de prueba", "course": "course_placeholder", "status": "active", "end_date": "2025-11-29", "trainees": 5, "start_date": "2025-11-01"}	{"id": 23, "name": "course_placeholder", "notes": null, "course": "course_placeholder", "status": "active", "end_date": "2025-11-29", "trainees": 5, "start_date": "2025-11-01"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 08:47:04.599196+01
 112	20	course	23	update	{"id": 23, "name": "course_placeholder", "notes": null, "course": "course_placeholder", "status": "active", "end_date": "2025-11-29", "trainees": 5, "start_date": "2025-11-01"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-24", "trainees": 5, "start_date": "2025-11-01"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 09:00:40.580391+01
+113	20	device	5	update	{"id": 5, "uid": "device_placeholder", "name": "device_placeholder", "type": "guest", "notes": "None", "active": false, "status": "available"}	{"id": 5, "uid": "device_placeholder", "name": "device_placeholder", "type": "guest", "notes": "None", "active": false, "status": "assigned"}	t	Device 'device_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 10:39:39.896365+01
+114	20	device	5	update	{"id": 5, "uid": "device_placeholder", "name": "device_placeholder", "type": "guest", "notes": "None", "active": false, "status": "assigned"}	{"id": 5, "uid": "device_placeholder", "name": "device_placeholder", "type": "guest", "notes": "None", "active": false, "status": "lost"}	t	Device 'device_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 10:39:51.545392+01
+115	20	device	5	update	{"id": 5, "uid": "device_placeholder", "name": "device_placeholder", "type": "guest", "notes": "None", "active": false, "status": "lost"}	{"id": 5, "uid": "device_placeholder", "name": "device_placeholder", "type": "guest", "notes": "None", "active": false, "status": "annulled"}	t	Device 'device_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 10:39:57.812977+01
+116	20	device	5	update	{"id": 5, "uid": "device_placeholder", "name": "device_placeholder", "type": "guest", "notes": "None", "active": false, "status": "annulled"}	{"id": 5, "uid": "device_placeholder", "name": "device_placeholder", "type": "guest", "notes": "None", "active": false, "status": "assigned"}	t	Device 'device_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 10:43:04.029532+01
+117	20	user	31	create	null	{"id": 31, "role": "User", "email": null, "active": true, "username": "ad"}	t	User 'ad' created	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 11:16:57.431494+01
+118	20	course	6	update	{"id": 6, "name": "None", "notes": "None", "course": "TNC2525", "status": "planned", "end_date": "2025-11-11", "trainees": 4, "start_date": "2025-11-02"}	{"id": 6, "name": "None", "notes": "None", "course": "TNC2525", "status": "planned", "end_date": "2025-11-11", "trainees": 4, "start_date": "2025-11-02"}	t	Course 'TNC2525' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 11:20:14.199507+01
+119	20	user	9	update	{"id": 9, "uid": "163804A3E0373D", "role": "Student", "email": "rivera@atexis.com", "active": true, "username": "rivera"}	{"id": 9, "uid": null, "role": "Student", "email": "rivera@atexis.com", "active": true, "username": "rivera"}	t	User 'rivera' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 11:23:06.847534+01
+120	20	user	9	update	{"id": 9, "uid": null, "role": "Student", "email": "rivera@atexis.com", "active": true, "username": "rivera"}	{"id": 9, "uid": null, "role": "Student", "email": "rivera@atexis.com", "active": true, "username": "rivera"}	t	User 'rivera' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 11:23:14.525205+01
+121	20	device	9	update	{"id": 9, "uid": "3CF572C2", "name": "50", "type": "canteen", "notes": "None", "active": false, "status": "available"}	{"id": 9, "uid": "3CF572C2", "name": "50", "type": "canteen", "notes": "None", "active": false, "status": "available"}	t	Device '50' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 11:23:26.5995+01
+122	20	course	6	update	{"id": 6, "name": "None", "notes": "None", "course": "TNC2525", "status": "planned", "end_date": "2025-11-11", "trainees": 4, "start_date": "2025-11-02"}	{"id": 6, "name": "None", "notes": "None", "course": "TNC2525", "status": "planned", "end_date": "2025-11-11", "trainees": 4, "start_date": "2025-11-02"}	t	Course 'TNC2525' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 11:23:30.69856+01
+123	20	device	9	update	{"id": 9, "uid": "3CF572C2", "name": "50", "type": "canteen", "notes": "None", "active": false, "status": "available"}	{"id": 9, "uid": "3CF572C2", "name": "50", "type": "canteen", "notes": "None", "active": false, "status": "available"}	t	Device '50' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 11:26:42.24713+01
+124	20	user	20	update	{"id": 20, "uid": null, "role": "User", "email": null, "active": true, "username": "admin"}	{"id": 20, "uid": null, "role": "User", "email": "Non", "active": true, "username": "admin"}	t	User 'admin' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 11:27:04.761815+01
+125	20	user	10	update	{"id": 10, "uid": null, "role": "User", "email": "None", "active": true, "username": "username"}	{"id": 10, "uid": null, "role": "User", "email": null, "active": true, "username": "username"}	t	User 'username' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 11:27:20.66679+01
+126	20	user	10	update	{"id": 10, "uid": null, "role": "User", "email": null, "active": true, "username": "username"}	{"id": 10, "uid": null, "role": "User", "email": "None", "active": true, "username": "username"}	t	User 'username' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 11:27:23.666022+01
+127	20	user	10	update	{"id": 10, "uid": null, "role": "User", "email": "None", "active": true, "username": "username"}	{"id": 10, "uid": null, "role": "User", "email": null, "active": true, "username": "username"}	t	User 'username' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 11:27:27.682313+01
+128	20	user	10	update	{"id": 10, "uid": null, "role": "User", "email": null, "active": true, "username": "username"}	{"id": 10, "uid": null, "role": "User", "email": null, "active": true, "username": "username"}	t	User 'username' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 11:27:30.728634+01
+129	20	user	20	update	{"id": 20, "uid": null, "role": "User", "email": "Non", "active": true, "username": "admin"}	{"id": 20, "uid": null, "role": "User", "email": null, "active": true, "username": "admin"}	t	User 'admin' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 11:27:35.466879+01
 \.
 
 
@@ -492,13 +510,14 @@ COPY public.movements (id, user_id, entity_type, entity_id, action, before_data,
 
 COPY public.users (id, name, surname, uid, username, password_hash, email, role, created_at, update_at, active) FROM stdin;
 4	name1	surname1	uid1	username1	$2b$12$T9dzVMtxxTDDC41gsv2Utet3U.7ezBUsWNIDbtJM8foAivT2xA6cm	email1@gmail.com	Student	2025-11-05 20:45:46.392074+01	2025-11-05 20:46:19.79113+01	t
-9	rivera	rivera	163804A3E0373D	rivera	$2b$12$av0cOkjIW7lkDnlsA8w9.OlC1HQXiEhBSe5Cm4Z3m4s9eDosK5cgi	rivera@atexis.com	Student	2025-11-13 07:58:12.962504+01	2025-11-13 07:58:12.962504+01	t
-20	admin		\N	admin	$2b$12$yChXcHrsZGN30t.n..7ty.xg.Hlh5BFwJjjmB5G6rhKMZH/lRyPIa	\N	User	2025-11-13 09:29:49.263091+01	2025-11-13 09:29:49.263091+01	t
+10	user		\N	username	$2b$12$7nNIQOU/noi/y4crTBXxD.kRwL0eSza3BVL2nw9mhg5srd1JFqbLy	\N	User	2025-11-13 08:02:26.957609+01	2025-11-25 12:27:27.693537+01	t
+20	admin		\N	admin	$2b$12$yChXcHrsZGN30t.n..7ty.xg.Hlh5BFwJjjmB5G6rhKMZH/lRyPIa	\N	User	2025-11-13 09:29:49.263091+01	2025-11-25 12:27:35.465006+01	t
 21	user_placeholder		\N	user_placeholder	$2b$12$PHC1OJR2gZBM5A7KldQpHOEavQ6/dPbhavTZnX/CORNsoCoaE7ZES	\N	User	2025-11-13 09:33:44.675873+01	2025-11-13 09:33:44.675873+01	t
 22	Mitchell		16380409EA373D	mit	$2b$12$hpvRkTr5w6bEgXilAvbwfu16TtEaGr.52mxvKTt7FvDWtWRiXH5N.	\N	User	2025-11-13 10:07:56.736985+01	2025-11-13 10:07:56.736985+01	t
 29	Iván	Naranjo López	163804470BF83D	inaranjo	$2b$12$Vifq.1l6FCIA9Twd4yVMF.aC9HY71GCTn/LSAPWVXKAxTH4Kxm4f.	ivan.naranjo@atexis.com	User	2025-11-18 10:03:53.356164+01	2025-11-18 10:03:53.356164+01	t
 1	Adrian	Cardona Ruiz	16380CF382023C	acardona	$2b$12$9HIoa9ZIV2biwxxuTX7aluzzC9S7QZhEOc37rcLA84sMgdGlkHMfq	adrian.cardonaruiz@atexis.com	admin	2025-11-05 20:23:20.803042+01	2025-11-18 11:10:19.051662+01	t
-10	user		\N	username	$2b$12$7nNIQOU/noi/y4crTBXxD.kRwL0eSza3BVL2nw9mhg5srd1JFqbLy	None	User	2025-11-13 08:02:26.957609+01	2025-11-25 09:14:03.30152+01	t
+31	ad		\N	ad	$2b$12$wU87sYBhSyBYc29sJ25IL.KITwZeXLr8dEuOUScbUB9Q8ecGURqnG	\N	User	2025-11-25 12:16:57.431064+01	2025-11-25 12:16:57.431064+01	t
+9	rivera	rivera	\N	rivera	$2b$12$av0cOkjIW7lkDnlsA8w9.OlC1HQXiEhBSe5Cm4Z3m4s9eDosK5cgi	rivera@atexis.com	Student	2025-11-13 07:58:12.962504+01	2025-11-25 12:23:06.843867+01	t
 \.
 
 
@@ -527,14 +546,14 @@ SELECT pg_catalog.setval('public.devices_id_seq', 12, true);
 -- Name: movements_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.movements_id_seq', 112, true);
+SELECT pg_catalog.setval('public.movements_id_seq', 129, true);
 
 
 --
 -- Name: users_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.users_id_seq', 30, true);
+SELECT pg_catalog.setval('public.users_id_seq', 31, true);
 
 
 --
@@ -757,5 +776,5 @@ ALTER TABLE ONLY public.movements
 -- PostgreSQL database dump complete
 --
 
-\unrestrict djBnhdJicNr3lML83U1pEKxibXfDb32oY1o85xy15LcxF3MoHjBGKKXDlXFNGgL
+\unrestrict dyUGyb2eBZEB8Kcu9ZlWmkF5g6RoX1Dv3VucxwKXBAGnkaRUUgZKq9qbO4w3tRt
 
