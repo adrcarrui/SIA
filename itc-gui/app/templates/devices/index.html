@@ -41,7 +41,7 @@
 
         <td>
           {% set skey = (d.status or '')|lower|trim %}
-          {% set scolor = {'assigned':'light-emphasis','available':'success','lost':'danger','annulled':'secondary'}.get(skey, 'secondary') %}
+          {% set scolor = {'assigned':'primary','available':'success','lost':'danger','annulled':'secondary'}.get(skey, 'secondary') %}
           <span class="badge bg-{{ scolor }}">{{ d.status or '—' }}</span>
         </td>
         <td>

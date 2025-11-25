@@ -130,7 +130,7 @@ def new_course():
             flash("Curso creado.", "success")
             return redirect(url_for("courses.index"))
 
-        return render_template("courses/form.html", page_title="TCO_GUI", c=None)
+        return render_template("courses/form.html", page_title="New", c=None)
     except Exception as e:
         db.rollback()
         flash(f"❌ Error creando curso: {e}", "danger")

@@ -1,17 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-  {% include "courses/_detail_fragment.html" %}
-  {# 🔔 PINTAR MENSAJES FLASH #}
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for cat, msg in messages %}
-        <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
-          {{ msg }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-      {% endfor %}
-    {% endif %}
-  {% endwith %}
+
 <h2>{{ course.name }} (ID {{ course.id }})</h2>
 
 <div class="mb-3 text-muted">
@@ -52,7 +41,7 @@
         {% if not active_assignments %}
         <tr>
           <td colspan="4" class="text-center text-muted">
-            No hay devices asignados activos a este curso.
+            No devices assign to this course.
           </td>
         </tr>
         {% endif %}

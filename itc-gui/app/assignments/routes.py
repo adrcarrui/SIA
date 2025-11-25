@@ -376,8 +376,8 @@ def new_bulk():
     finally:
         db.close()
 
-    return redirect(url_for("courses.detail", course_id=course_id_value))
-
+    return redirect(url_for("main.index"))
+    #return redirect(url_for("courses.detail", course_id=course_id_value))
 @bp.route("/bulk-return", methods=["GET", "POST"])
 @login_required
 def bulk_return():
@@ -663,7 +663,7 @@ def bulk_returns():
 
         db.commit()
         flash(f"{len(assignments)} card associations deleted and devices set to available.", "success")
-        return redirect(url_for("assignments.bulk_returns"))
+        return redirect(url_for("main.index"))
 
     finally:
         db.close()
