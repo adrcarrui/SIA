@@ -188,16 +188,16 @@
                   "
                 >
                   <td>
-                    <button type="button"
-                            class="btn btn-link p-0 course-detail-btn"
-                            data-bs-toggle="modal"
-                            data-bs-target="#courseModal"
-                            data-url="{{ url_for('courses.detail_fragment', course_id=o.course.id) }}">
-{{ (o.course.course if o.course.course not in [None, 'None', ''] else None)
-   or (o.course.name if o.course.name not in [None, 'None', ''] else None)
-   or ('Course #' ~ o.course.id) }}
-                    </button>
-                  </td>
+                  <button type="button"
+                          class="btn btn-link p-0 course-detail-btn text-white text-decoration-none"
+                          data-bs-toggle="modal"
+                          data-bs-target="#courseModal"
+                          data-url="{{ url_for('courses.detail_fragment', course_id=o.course.id) }}">
+                    {{ (o.course.course if o.course.course not in [None, 'None', ''] else None)
+                      or (o.course.name if o.course.name not in [None, 'None', ''] else None)
+                      or ('Course #' ~ o.course.id) }}
+                  </button>
+                  </td> 
                   <td>{{ o.course.end_date or '—' }}</td>
                   <td class="text-end">{{ o.days_late }}</td>
                   <td class="text-end">{{ o.cards_count }}</td>
