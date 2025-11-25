@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict wERFGw6j8zhkM2blWlVLtP6f8k5kdrNUg9CnRA2tMdhmajala4Vn9MYbRpuF5Fv
+\restrict djBnhdJicNr3lML83U1pEKxibXfDb32oY1o85xy15LcxF3MoHjBGKKXDlXFNGgL
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -150,7 +150,7 @@ CREATE TABLE public.assignments (
     notes character varying(255),
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT chk_assign_status CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'closed'::character varying, 'expired'::character varying, 'forced_return'::character varying])::text[])))
+    CONSTRAINT chk_assign_status CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'overdue_1'::character varying, 'overdue_2'::character varying])::text[])))
 );
 
 
@@ -184,7 +184,7 @@ ALTER SEQUENCE public.assign_id_seq OWNED BY public.assignments.id;
 
 CREATE TABLE public.courses (
     id integer NOT NULL,
-    course character varying(150) NOT NULL,
+    course character varying(150),
     start_date date NOT NULL,
     end_date date NOT NULL,
     status character varying(20) DEFAULT 'planned'::character varying NOT NULL,
@@ -280,8 +280,7 @@ CREATE TABLE public.movements (
     description text,
     user_agent text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT chk_movements_action CHECK (((action)::text = ANY ((ARRAY['create'::character varying, 'update'::character varying, 'delete'::character varying, 'assign'::character varying])::text[]))),
-    CONSTRAINT chk_movements_entity_type CHECK (((entity_type)::text = ANY ((ARRAY['user'::character varying, 'device'::character varying, 'course'::character varying])::text[])))
+    CONSTRAINT chk_movements_action CHECK (((action)::text = ANY ((ARRAY['create'::character varying, 'update'::character varying, 'delete'::character varying, 'assign'::character varying, 'return'::character varying])::text[])))
 );
 
 
@@ -391,6 +390,7 @@ ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_
 --
 
 COPY public.assignments (id, device_id, course_id, assigned_at, released_at, status, created_by, notes, created_at, updated_at) FROM stdin;
+23	11	23	2025-11-25 07:28:45.972743+01	\N	active	20	\N	2025-11-25 07:28:45.972743+01	2025-11-25 07:28:45.972743+01
 \.
 
 
@@ -399,13 +399,14 @@ COPY public.assignments (id, device_id, course_id, assigned_at, released_at, sta
 --
 
 COPY public.courses (id, course, start_date, end_date, status, created_at, updated_at, notes, trainees, name) FROM stdin;
+29	None	2025-11-18	2025-11-19	finished	2025-11-19 08:45:52.125742+01	2025-11-24 14:58:41.003007+01	None	0	Instructor
 5	ANC2352	2025-11-04	2025-11-07	active	2025-11-05 10:11:55.715656+01	2025-11-07 12:37:12.024579+01	\N	3	\N
+23	course_placeholder	2025-11-01	2025-11-24	finished	2025-11-13 09:44:34.052408+01	2025-11-25 10:00:40.570958+01	None	5	course_placeholder
 3	TNC1799	2025-11-11	2025-11-17	active	2025-11-05 10:00:52.699339+01	2025-11-11 10:06:55.516353+01	\N	2	\N
 2	ANC2330	2025-11-04	2025-11-14	active	2025-11-05 10:00:52.699339+01	2025-11-11 11:35:23.149979+01	None	7	None
 6	TNC2525	2025-11-02	2025-11-11	planned	2025-11-05 10:21:45.05127+01	2025-11-12 13:21:23.811755+01	None	4	None
 1	NC5453	2025-11-14	2025-11-18	planned	2025-11-05 10:00:52.699339+01	2025-11-13 07:27:26.045419+01	None	6	None
-23	course_placeholder	2025-11-14	2025-11-18	planned	2025-11-13 09:44:34.052408+01	2025-11-13 09:44:53.686428+01		5	course_placeholder
-24	123	2025-11-17	2025-11-21	cancelled	2025-11-13 10:10:38.354268+01	2025-11-13 10:11:10.955181+01		3	123
+24	123	2025-11-17	2025-11-21	cancelled	2025-11-13 10:10:38.354268+01	2025-11-19 08:52:44.82433+01	\N	3	123
 \.
 
 
@@ -414,9 +415,11 @@ COPY public.courses (id, course, start_date, end_date, status, created_at, updat
 --
 
 COPY public.devices (id, uid, name, type, status, active, created_at, updated_at, notes) FROM stdin;
-2	001	vending2	vending	annulled	f	2025-11-07 12:40:56.218792+01	2025-11-13 09:05:22.90176+01	None
+11	BCA670F5	47	guest	available	f	2025-11-19 09:07:43.806717+01	2025-11-24 20:58:06.03305+01	None
+9	3CF572C2	50	canteen	available	f	2025-11-18 08:30:18.653151+01	2025-11-25 07:47:17.801316+01	None
 5	device_placeholder	device_placeholder	guest	available	f	2025-11-13 08:33:57.06282+01	2025-11-17 07:32:13.598806+01	None
-9	3CF572C2	50	canteen	available	f	2025-11-18 08:30:18.653151+01	2025-11-18 09:30:18.644768+01	\N
+10	8888	dev	guest	available	f	2025-11-18 10:10:45.07014+01	2025-11-18 11:10:45.06712+01	\N
+2	001	vending2	vending	available	f	2025-11-07 12:40:56.218792+01	2025-11-19 10:30:50.547343+01	None
 \.
 
 
@@ -425,17 +428,61 @@ COPY public.devices (id, uid, name, type, status, active, created_at, updated_at
 --
 
 COPY public.movements (id, user_id, entity_type, entity_id, action, before_data, after_data, success, description, user_agent, created_at) FROM stdin;
-1	20	user	28	create	null	{"id": 28, "role": "User", "email": null, "active": true, "username": "user1"}	t	User 'user1' created	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-17 09:41:09.291566+01
-13	20	user	28	update	{"id": 28, "uid": null, "role": "User", "email": null, "active": true, "username": "user1"}	{"id": 28, "uid": null, "role": "User", "email": "None@gmail.com", "active": true, "username": "user1"}	t	User 'user1' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-17 10:52:37.691591+01
-15	20	user	28	delete	{"id": 28, "role": "User", "email": "None@gmail.com", "active": true, "username": "user1"}	null	t	User 'user1' deleted	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-17 10:55:48.606512+01
-16	20	device	8	create	null	{"id": 8, "uid": "11111", "name": "device1", "type": "guest", "notes": null, "active": false, "status": "available"}	t	Device 'device1' created	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-18 06:20:21.941774+01
-17	20	device	8	update	{"id": 8, "uid": "11111", "name": "device1", "type": "guest", "notes": null, "active": false, "status": "available"}	{"id": 8, "uid": "11111", "name": "device11", "type": "guest", "notes": "None", "active": false, "status": "available"}	t	Device 'device11' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-18 06:34:36.556401+01
-18	20	device	8	delete	{"id": 8, "uid": "11111", "name": "device11", "type": "guest", "notes": "None", "active": false, "status": "available"}	null	t	Device 'device11' deleted	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-18 06:35:40.330649+01
-19	20	course	27	create	null	{"id": 27, "name": null, "notes": null, "course": "curso", "status": "planned", "end_date": "2025-11-21", "trainees": 1, "start_date": "2025-11-20"}	t	Course 'curso' created	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-18 06:48:16.85808+01
-20	20	course	27	update	{"id": 27, "name": null, "notes": null, "course": "curso", "status": "planned", "end_date": "2025-11-21", "trainees": 1, "start_date": "2025-11-20"}	{"id": 27, "name": "None", "notes": "None", "course": "curso", "status": "planned", "end_date": "2025-11-21", "trainees": 1, "start_date": "2025-11-18"}	t	Course 'curso' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-18 06:57:08.361788+01
-21	20	course	27	delete	{"id": 27, "name": "None", "notes": "None", "course": "curso", "status": "active", "end_date": "2025-11-21", "trainees": 1, "start_date": "2025-11-18"}	null	t	Course 'curso' deleted	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-18 06:58:29.607581+01
-22	20	device	9	create	null	{"id": 9, "uid": "3CF572C2", "name": "50", "type": "canteen", "notes": null, "active": false, "status": "available"}	t	Device '50' created	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-18 08:30:18.653151+01
-23	20	user	29	create	null	{"id": 29, "role": "User", "email": "ivan.naranjo@atexis.com", "active": true, "username": "inaranjo"}	t	User 'inaranjo' created	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-18 09:03:53.353386+01
+54	1	device	11	return	{"assignment": {"id": 15, "status": "active", "course_id": 23, "device_id": 11, "assigned_at": "2025-11-20T05:41:35.078107+01:00"}, "device_status": "assigned"}	{"assignment": null, "device_status": "available"}	t	Assignment return: device 11 -> course 23	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 08:01:22.281283+01
+55	1	device	9	update	{"id": 9, "uid": "3CF572C2", "name": "50", "type": "canteen", "notes": "None", "active": false, "status": "assigned"}	{"id": 9, "uid": "3CF572C2", "name": "50", "type": "canteen", "notes": "None", "active": false, "status": "available"}	t	Device '50' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 08:01:52.233034+01
+56	1	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-26", "trainees": 5, "start_date": "2025-11-19"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-18", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:00:29.887794+01
+57	1	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-18", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-21", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:01:50.056041+01
+58	1	device	11	assign	{"device_status": "available"}	{"assigned_at": "2025-11-20T09:02:43.937362", "device_status": "assigned", "assignment_status": "active"}	t	Assignment assign: device 11 -> course 23	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:02:43.937362+01
+59	1	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-21", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-19", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:03:02.354381+01
+60	1	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-19", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-21", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:15:04.405253+01
+61	1	device	11	update	{"id": 11, "uid": "BCA670F5", "name": "47", "type": "guest", "notes": "None", "active": false, "status": "assigned"}	{"id": 11, "uid": "BCA670F5", "name": "47", "type": "guest", "notes": "None", "active": false, "status": "available"}	t	Device '47' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:15:23.936806+01
+62	1	device	11	assign	{"device_status": "available"}	{"assigned_at": "2025-11-20T09:15:32.937835", "device_status": "assigned", "assignment_status": "active"}	t	Assignment assign: device 11 -> course 23	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:15:32.937835+01
+63	1	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-21", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-19", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:15:50.45257+01
+64	1	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-19", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-13", "trainees": 5, "start_date": "2025-11-10"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:19:23.737163+01
+65	1	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-13", "trainees": 5, "start_date": "2025-11-10"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-19", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:20:41.986496+01
+66	1	device	11	update	{"id": 11, "uid": "BCA670F5", "name": "47", "type": "guest", "notes": "None", "active": false, "status": "assigned"}	{"id": 11, "uid": "BCA670F5", "name": "47", "type": "guest", "notes": "None", "active": false, "status": "available"}	t	Device '47' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:33:44.890579+01
+67	1	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-19", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-21", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:34:02.354332+01
+68	1	device	11	assign	{"device_status": "available"}	{"assigned_at": "2025-11-20T09:34:13.108326", "device_status": "assigned", "assignment_status": "active"}	t	Assignment assign: device 11 -> course 23	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:34:13.111503+01
+69	1	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-21", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-18", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:34:32.488181+01
+70	1	device	9	assign	{"device_status": "available"}	{"assigned_at": "2025-11-20T09:35:48.488977", "device_status": "assigned", "assignment_status": "active"}	t	Assignment assign: device 9 -> course 29	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:35:48.509174+01
+71	1	course	29	update	{"id": 29, "name": "Instructor", "notes": null, "course": null, "status": "planned", "end_date": "2025-11-21", "trainees": 0, "start_date": "2025-11-20"}	{"id": 29, "name": "Instructor", "notes": "None", "course": "None", "status": "planned", "end_date": "2025-11-19", "trainees": 0, "start_date": "2025-11-18"}	t	Course 'None' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:36:02.338272+01
+72	1	device	11	update	{"id": 11, "uid": "BCA670F5", "name": "47", "type": "guest", "notes": "None", "active": false, "status": "assigned"}	{"id": 11, "uid": "BCA670F5", "name": "47", "type": "guest", "notes": "None", "active": false, "status": "available"}	t	Device '47' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:38:29.321366+01
+73	1	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-18", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-21", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:38:59.971072+01
+74	1	device	11	assign	{"device_status": "available"}	{"assigned_at": "2025-11-20T09:39:23.788036", "device_status": "assigned", "assignment_status": "active"}	t	Assignment assign: device 11 -> course 23	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:39:23.802349+01
+75	1	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-21", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-19", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:39:57.920432+01
+76	1	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-19", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-22", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:41:05.937289+01
+77	1	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-22", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-19", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-20 09:41:13.503846+01
+78	20	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-19", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-26", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-24 07:21:36.037398+01
+79	20	course	29	update	{"id": 29, "name": "Instructor", "notes": "None", "course": "None", "status": "finished", "end_date": "2025-11-19", "trainees": 0, "start_date": "2025-11-18"}	{"id": 29, "name": "Instructor", "notes": "None", "course": "None", "status": "finished", "end_date": "2025-11-25", "trainees": 0, "start_date": "2025-11-18"}	t	Course 'None' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-24 13:54:08.893309+01
+80	20	course	29	update	{"id": 29, "name": "Instructor", "notes": "None", "course": "None", "status": "active", "end_date": "2025-11-25", "trainees": 0, "start_date": "2025-11-18"}	{"id": 29, "name": "Instructor", "notes": "None", "course": "None", "status": "active", "end_date": "2025-11-19", "trainees": 0, "start_date": "2025-11-18"}	t	Course 'None' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-24 13:58:41.005715+01
+85	20	Assignment	20	return	{"id": 20, "course_id": 29, "device_id": 9, "assigned_at": "2025-11-20T09:35:48.488977+01:00", "released_at": null}	{"id": 20, "course_id": 29, "device_id": 9, "assigned_at": "2025-11-20T09:35:48.488977+01:00", "released_at": "2025-11-24T14:35:27.258776"}	t	Assignment 20 returned for device 9 in course 29	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-24 14:35:27.264792+01
+86	20	Assignment	21	return	{"id": 21, "course_id": 23, "device_id": 11, "assigned_at": "2025-11-20T09:39:23.788036+01:00", "released_at": null}	{"id": 21, "course_id": 23, "device_id": 11, "assigned_at": "2025-11-20T09:39:23.788036+01:00", "released_at": "2025-11-24T14:35:27.258776"}	t	Assignment 21 returned for device 11 in course 23	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-24 14:35:27.264792+01
+87	20	Assignment	20	return	{"id": 20, "course_id": 29, "device_id": 9, "assigned_at": "2025-11-20T09:35:48.488977+01:00", "released_at": "2025-11-24T14:35:27.258776+01:00"}	{"id": 20, "course_id": 29, "device_id": 9, "assigned_at": "2025-11-20T09:35:48.488977+01:00", "released_at": "2025-11-24T19:58:06.037031"}	t	Card '50' returned.	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-24 19:58:06.07488+01
+88	20	Device	9	update	{"id": 9, "uid": "3CF572C2", "name": "50", "status": "assigned"}	{"id": 9, "uid": "3CF572C2", "name": "50", "status": "available"}	t	Device '50' set to available on return.	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-24 19:58:06.07488+01
+89	20	Assignment	21	return	{"id": 21, "course_id": 23, "device_id": 11, "assigned_at": "2025-11-20T09:39:23.788036+01:00", "released_at": "2025-11-24T14:35:27.258776+01:00"}	{"id": 21, "course_id": 23, "device_id": 11, "assigned_at": "2025-11-20T09:39:23.788036+01:00", "released_at": "2025-11-24T19:58:06.040879"}	t	Card '47' returned.	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-24 19:58:06.07488+01
+90	20	Device	11	update	{"id": 11, "uid": "BCA670F5", "name": "47", "status": "assigned"}	{"id": 11, "uid": "BCA670F5", "name": "47", "status": "available"}	t	Device '47' set to available on return.	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-24 19:58:06.07488+01
+91	20	Assignment	21	delete	{"id": 21, "course_id": 23, "device_id": 11, "assigned_at": "2025-11-20T09:39:23.788036+01:00", "released_at": "2025-11-24T19:58:06.040879+01:00"}	null	t	Assignment for device '47' deleted on bulk return.	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-24 20:00:45.731096+01
+92	20	Device	11	update	{"id": 11, "uid": "BCA670F5", "name": "47", "status": "available"}	{"id": 11, "uid": "BCA670F5", "name": "47", "status": "available"}	t	Device '47' set to available on bulk return.	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-24 20:00:45.731096+01
+93	20	Assignment	20	delete	{"id": 20, "course_id": 29, "device_id": 9, "assigned_at": "2025-11-20T09:35:48.488977+01:00", "released_at": "2025-11-24T19:58:06.037031+01:00"}	null	t	Assignment for device '50' deleted on bulk return.	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-24 20:01:07.428252+01
+94	20	Device	9	update	{"id": 9, "uid": "3CF572C2", "name": "50", "status": "available"}	{"id": 9, "uid": "3CF572C2", "name": "50", "status": "available"}	t	Device '50' set to available on bulk return.	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-24 20:01:07.428252+01
+95	20	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-26", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-20", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 06:45:41.601329+01
+96	20	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-20", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-25", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 06:45:53.319075+01
+97	20	device	9	assign	{"device_status": "available"}	{"assigned_at": "2025-11-25T06:46:13.219402", "device_status": "assigned", "assignment_status": "active"}	t	Assignment assign: device 9 -> course 23	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 06:46:13.23647+01
+98	20	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-25", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-18", "trainees": 5, "start_date": "2025-11-17"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 06:46:31.487723+01
+99	20	Assignment	22	delete	{"id": 22, "course_id": 23, "device_id": 9, "assigned_at": "2025-11-25T06:46:13.219402+01:00", "released_at": null}	null	t	Assignment for device '50' deleted on bulk return.	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 06:47:17.807108+01
+100	20	Device	9	update	{"id": 9, "uid": "3CF572C2", "name": "50", "status": "assigned"}	{"id": 9, "uid": "3CF572C2", "name": "50", "status": "available"}	t	Device '50' set to available on bulk return.	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 06:47:17.807108+01
+101	20	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-18", "trainees": 5, "start_date": "2025-11-17"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-14", "trainees": 5, "start_date": "2025-11-01"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 07:42:00.123627+01
+102	20	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-14", "trainees": 5, "start_date": "2025-11-01"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-15", "trainees": 5, "start_date": "2025-11-01"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 07:43:05.123539+01
+103	20	device	12	create	null	{"id": 12, "uid": "11111", "name": "name", "type": "guest", "notes": null, "active": false, "status": "available"}	t	Device 'name' created	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 08:02:57.122946+01
+104	20	device	12	delete	{"id": 12, "uid": "11111", "name": "name", "type": "guest", "notes": null, "active": false, "status": "available"}	null	t	Device 'name' deleted	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 08:03:00.097974+01
+105	20	user	30	create	null	{"id": 30, "role": "User", "email": null, "active": true, "username": "ad"}	t	User 'ad' created	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 08:07:48.196749+01
+106	20	user	30	update	{"id": 30, "uid": null, "role": "User", "email": null, "active": true, "username": "ad"}	{"id": 30, "uid": null, "role": "User", "email": "None", "active": true, "username": "ad"}	t	User 'ad' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 08:12:25.935516+01
+107	20	user	30	delete	{"id": 30, "role": "User", "email": "None", "active": true, "username": "ad"}	null	t	User 'ad' deleted	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 08:12:56.538245+01
+108	20	user	10	update	{"id": 10, "uid": "None", "role": "user", "email": null, "active": true, "username": "username"}	{"id": 10, "uid": null, "role": "User", "email": "None", "active": true, "username": "username"}	t	User 'username' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 08:14:03.302964+01
+109	20	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-15", "trainees": 5, "start_date": "2025-11-01"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "finished", "end_date": "2025-11-29", "trainees": 5, "start_date": "2025-11-01"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 08:14:29.538609+01
+110	20	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-29", "trainees": 5, "start_date": "2025-11-01"}	{"id": 23, "name": "course_placeholder", "notes": "Anotacion de prueba", "course": "course_placeholder", "status": "active", "end_date": "2025-11-29", "trainees": 5, "start_date": "2025-11-01"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 08:46:08.115261+01
+111	20	course	23	update	{"id": 23, "name": "course_placeholder", "notes": "Anotacion de prueba", "course": "course_placeholder", "status": "active", "end_date": "2025-11-29", "trainees": 5, "start_date": "2025-11-01"}	{"id": 23, "name": "course_placeholder", "notes": null, "course": "course_placeholder", "status": "active", "end_date": "2025-11-29", "trainees": 5, "start_date": "2025-11-01"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 08:47:04.599196+01
+112	20	course	23	update	{"id": 23, "name": "course_placeholder", "notes": null, "course": "course_placeholder", "status": "active", "end_date": "2025-11-29", "trainees": 5, "start_date": "2025-11-01"}	{"id": 23, "name": "course_placeholder", "notes": "None", "course": "course_placeholder", "status": "active", "end_date": "2025-11-24", "trainees": 5, "start_date": "2025-11-01"}	t	Course 'course_placeholder' updated	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36	2025-11-25 09:00:40.580391+01
 \.
 
 
@@ -449,9 +496,9 @@ COPY public.users (id, name, surname, uid, username, password_hash, email, role,
 20	admin		\N	admin	$2b$12$yChXcHrsZGN30t.n..7ty.xg.Hlh5BFwJjjmB5G6rhKMZH/lRyPIa	\N	User	2025-11-13 09:29:49.263091+01	2025-11-13 09:29:49.263091+01	t
 21	user_placeholder		\N	user_placeholder	$2b$12$PHC1OJR2gZBM5A7KldQpHOEavQ6/dPbhavTZnX/CORNsoCoaE7ZES	\N	User	2025-11-13 09:33:44.675873+01	2025-11-13 09:33:44.675873+01	t
 22	Mitchell		16380409EA373D	mit	$2b$12$hpvRkTr5w6bEgXilAvbwfu16TtEaGr.52mxvKTt7FvDWtWRiXH5N.	\N	User	2025-11-13 10:07:56.736985+01	2025-11-13 10:07:56.736985+01	t
-1	Adrian	Cardona Ruiz	16380CF382023C	acardona	$2b$12$9HIoa9ZIV2biwxxuTX7aluzzC9S7QZhEOc37rcLA84sMgdGlkHMfq	adrian.cardonaruiz@atexis.com	admin	2025-11-05 20:23:20.803042+01	2025-11-13 10:08:25.452452+01	f
-10	user		None	username	$2b$12$7nNIQOU/noi/y4crTBXxD.kRwL0eSza3BVL2nw9mhg5srd1JFqbLy	\N	user	2025-11-13 08:02:26.957609+01	2025-11-13 10:18:58.385149+01	t
 29	Iván	Naranjo López	163804470BF83D	inaranjo	$2b$12$Vifq.1l6FCIA9Twd4yVMF.aC9HY71GCTn/LSAPWVXKAxTH4Kxm4f.	ivan.naranjo@atexis.com	User	2025-11-18 10:03:53.356164+01	2025-11-18 10:03:53.356164+01	t
+1	Adrian	Cardona Ruiz	16380CF382023C	acardona	$2b$12$9HIoa9ZIV2biwxxuTX7aluzzC9S7QZhEOc37rcLA84sMgdGlkHMfq	adrian.cardonaruiz@atexis.com	admin	2025-11-05 20:23:20.803042+01	2025-11-18 11:10:19.051662+01	t
+10	user		\N	username	$2b$12$7nNIQOU/noi/y4crTBXxD.kRwL0eSza3BVL2nw9mhg5srd1JFqbLy	None	User	2025-11-13 08:02:26.957609+01	2025-11-25 09:14:03.30152+01	t
 \.
 
 
@@ -459,35 +506,35 @@ COPY public.users (id, name, surname, uid, username, password_hash, email, role,
 -- Name: assign_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.assign_id_seq', 1, false);
+SELECT pg_catalog.setval('public.assign_id_seq', 23, true);
 
 
 --
 -- Name: courses_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.courses_id_seq', 27, true);
+SELECT pg_catalog.setval('public.courses_id_seq', 29, true);
 
 
 --
 -- Name: devices_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.devices_id_seq', 9, true);
+SELECT pg_catalog.setval('public.devices_id_seq', 12, true);
 
 
 --
 -- Name: movements_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.movements_id_seq', 23, true);
+SELECT pg_catalog.setval('public.movements_id_seq', 112, true);
 
 
 --
 -- Name: users_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.users_id_seq', 29, true);
+SELECT pg_catalog.setval('public.users_id_seq', 30, true);
 
 
 --
@@ -691,6 +738,14 @@ ALTER TABLE ONLY public.assignments
 
 
 --
+-- Name: assignments assignments_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.assignments
+    ADD CONSTRAINT assignments_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+
+--
 -- Name: movements fk_movements_user; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -699,16 +754,8 @@ ALTER TABLE ONLY public.movements
 
 
 --
--- Name: movements movements_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.movements
-    ADD CONSTRAINT movements_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
-
-
---
 -- PostgreSQL database dump complete
 --
 
-\unrestrict wERFGw6j8zhkM2blWlVLtP6f8k5kdrNUg9CnRA2tMdhmajala4Vn9MYbRpuF5Fv
+\unrestrict djBnhdJicNr3lML83U1pEKxibXfDb32oY1o85xy15LcxF3MoHjBGKKXDlXFNGgL
 
