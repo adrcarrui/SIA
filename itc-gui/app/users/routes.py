@@ -323,8 +323,18 @@ def read_uid_once():
             "reason": "no_uid",
             "error": "No se ha podido obtener un UID válido."
         })
-
-    return jsonify({
-        "success": True,
-        "uid": uid
-    })
+    db = SessionLocal()
+    try:
+        device = (
+            db.query(models.Device)
+              .filter(models.Device.uid == uid)
+              .first()
+        )
+        return jsonify({
+            "success": True,
+            "uid": uid,
+            "device_id": device.id if device else None,
+            "device_name": device.name if device else None,
+        })
+    finally:
+        db.close()

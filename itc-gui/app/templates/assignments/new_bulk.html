@@ -5,7 +5,6 @@
   <h4 class="mb-3">Associate devices to course</h4>
 
   <form method="post" id="bulk-assign-form">
-    {# CSRF si lo usas #}
     {% if csrf_token is defined %}
       {{ csrf_token() }}
     {% endif %}
@@ -19,7 +18,7 @@
       <input type="hidden" name="course_id" value="{{ course.id }}">
     </div>
 
-    <!-- “Botón” NFC + estado (ahora solo indicador) -->
+    <!-- Botón NFC + estado -->
     <div class="mb-3 d-flex align-items-center gap-3">
       <button type="button" id="btn-read-uid" class="btn btn-primary btn-sm" disabled>
         <span id="btn-read-icon">📡</span>
@@ -51,7 +50,9 @@
       <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
         Cancel
       </a>
-        <button type="submit" class="btn btn-primary" id="submit-btn">Save assignments</button>
+      <button type="submit" class="btn btn-primary" id="submit-btn">
+        Save selected cards
+      </button>
     </div>
   </form>
 </div>
@@ -65,8 +66,9 @@ document.addEventListener("DOMContentLoaded", function () {
   const icon   = document.getElementById("btn-read-icon");
   const tbody  = document.getElementById("devices-table-body");
   const submit = document.getElementById("submit-btn");
+  const form   = document.getElementById("bulk-assign-form");
 
-  if (!btn || !status || !icon || !tbody || !submit) {
+  if (!btn || !status || !icon || !tbody || !submit || !form) {
     console.warn("Elementos NFC (assignments bulk) no encontrados en el DOM");
     return;
   }
@@ -77,7 +79,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const POLL_DELAY_MS = 1000;  // 1s entre lecturas
 
   function refreshSubmitState() {
-    submit.disabled = (tbody.rows.length === 0);
+    const anyChecked = !!tbody.querySelector('input.row-selector:checked');
+    submit.disabled = !anyChecked;
   }
 
   function addRowFromUid(data) {
@@ -87,12 +90,11 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!uid) {
       status.classList.remove("text-success", "text-muted", "text-warning");
       status.classList.add("text-danger");
-      status.textContent = "Respuesta sin UID válido.";
+      status.textContent = "Response without valid UID.";
       return;
     }
 
     if (addedUids.has(uid)) {
-      // No molestes al usuario cada vez si la tarjeta sigue puesta
       console.log("UID duplicado ignorado:", uid);
       return;
     }
@@ -102,14 +104,16 @@ document.addEventListener("DOMContentLoaded", function () {
     const rowIndex = tbody.rows.length + 1;
     const tr = document.createElement("tr");
 
+    // Aquí va el nombre real del dispositivo si el backend lo manda en data.device_name
     const deviceName = data.device_name || ("Device for UID " + uid);
-    const deviceId   = data.device_id || "";  // si lo devuelves desde el backend
+    const deviceId   = data.device_id || "";
 
     tr.innerHTML = `
       <td>${rowIndex}</td>
       <td>${deviceName}</td>
       <td>${uid}</td>
       <td class="text-end">
+        <input type="checkbox" class="form-check-input row-selector me-2" checked>
         <button type="button" class="btn btn-sm btn-outline-danger btn-remove-device">
           Remove
         </button>
@@ -125,6 +129,25 @@ document.addEventListener("DOMContentLoaded", function () {
     status.classList.add("text-success");
     status.textContent = "Card added: " + uid;
   }
+
+  // Cambio en los checkboxes de selección
+  tbody.addEventListener("change", function (ev) {
+    if (!ev.target.classList.contains("row-selector")) return;
+    refreshSubmitState();
+  });
+
+  // Antes de enviar, deshabilitamos los inputs de las filas no seleccionadas
+  form.addEventListener("submit", function () {
+    const rows = tbody.querySelectorAll("tr");
+    rows.forEach((row) => {
+      const checkbox = row.querySelector("input.row-selector");
+      const inputs = row.querySelectorAll('input[name="uids[]"], input[name="device_ids[]"]');
+      const disabled = checkbox && !checkbox.checked;
+      inputs.forEach((inp) => {
+        inp.disabled = disabled;
+      });
+    });
+  });
 
   // Delegación para los botones "Remove"
   tbody.addEventListener("click", function (ev) {
@@ -152,7 +175,6 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!polling) return;
 
     icon.textContent = "⌛";
-    // No machacamos el texto todo el rato si está leyendo en bucle
     status.classList.remove("text-danger");
     if (!status.classList.contains("text-success")) {
       status.classList.add("text-muted");
@@ -175,7 +197,6 @@ document.addEventListener("DOMContentLoaded", function () {
       if (data.success) {
         addRowFromUid(data);
       } else {
-        // Solo mostramos error "gordo" si es algo más que "no_card"
         if (data.reason && data.reason !== "no_card") {
           status.classList.remove("text-muted", "text-success", "text-warning");
           status.classList.add("text-danger");
@@ -194,11 +215,8 @@ document.addEventListener("DOMContentLoaded", function () {
       status.classList.remove("text-muted", "text-success", "text-warning");
       status.classList.add("text-danger");
       status.textContent = "Communication error with server.";
-      // Si quieres que pare de intentar cuando hay error gordo:
-      // polling = false;
     } finally {
       icon.textContent = "📡";
-      // Programamos la siguiente lectura
       if (polling) {
         setTimeout(readOnce, POLL_DELAY_MS);
       }
@@ -207,6 +225,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Arrancamos el bucle automáticamente
   readOnce();
+  refreshSubmitState();
 });
 </script>
 {% endblock %}
