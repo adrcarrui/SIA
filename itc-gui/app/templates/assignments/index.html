@@ -40,7 +40,7 @@
       <tr>
         <td>{{ a.id }}</td>
         <td>{{ a.device.name if a.device else "Device #" ~ a.device_id }}</td>
-        <td>{{ a.course.name if a.course else "Course #" ~ a.course_id }}</td>
+        <td>{{ a.course.name or a.course.course or ("Course #" ~ a.course_id)}}</td>
         <td>
           {% if a.status == "active" %}
             <span class="badge text-bg-success">active</span>

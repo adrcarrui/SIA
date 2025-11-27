@@ -10,7 +10,10 @@
       <div class="row g-3">
         <div class="col-md-4">
           <label class="form-label">Course</label>
-          <input name="course" class="form-control" value="{{ c.course if c else '' }}">
+          <input name="course" class="form-control" value="{{ c.course if c else '' }}"
+               required
+               oninvalid="this.setCustomValidity('This field is required')"
+               oninput="this.setCustomValidity('')">
         </div>
 
         <div class="col-md-4">
@@ -27,21 +30,30 @@
       <div class="col-md-6">
         <label class="form-label">Start date</label>
         <input type="date" name="start_date" class="form-control"
-               value="{{ c.start_date if c and c.start_date else '' }}">
+               value="{{ c.start_date if c and c.start_date else '' }}"
+               required
+               oninvalid="this.setCustomValidity('This field is required')"
+               oninput="this.setCustomValidity('')">
       </div>
 
       <div class="col-md-6">
         <label class="form-label">End date</label>
         <input type="date" name="end_date" class="form-control"
-               value="{{ c.end_date if c and c.end_date else '' }}">
+               value="{{ c.end_date if c and c.end_date else '' }}"
+               required
+               oninvalid="this.setCustomValidity('This field is required')"
+               oninput="this.setCustomValidity('')">
       </div>
 
       <div class="col-md-6">
         <label class="form-label">Trainees</label>
-        <input name="trainees" class="form-control" value="{{ c.trainees if c else '' }}">
+        <input name="trainees" class="form-control" value="{{ c.trainees if c else '' }}"
+        required
+        oninvalid="this.setCustomValidity('This field is required')"
+        oninput="this.setCustomValidity('')">
       </div>
 
-      <div class="col-md-6">
+      <!--<div class="col-md-6">
         <label class="form-label">Status</label>
         <select name="status" class="form-select">
           {% set STATUS_OPTIONS = ['planned', 'active', 'finished', 'cancelled'] %}
@@ -51,7 +63,7 @@
             </option>
           {% endfor %}
         </select>
-      </div>
+      </div>-->
 
       <div class="col-12">
         <label class="form-label">Notes</label>

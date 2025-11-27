@@ -6,9 +6,176 @@ from . import bp
 from app.db import SessionLocal
 from app.models import Assignment, Device, Course, User, Movements
 from datetime import date, datetime, timedelta
-from app.scripts import get_overdue_assignments
-
+from app.scripts import get_overdue_assignments, log_movement
 from app.models import Device, Assignment
+
+def log_bulk_return_movement(db, *, user_id, items, action="return", success=True):
+    """
+    Registra un único movimiento en movements para una devolución masiva,
+    potencialmente con tarjetas de distintos cursos.
+
+    items: lista de dicts con:
+      - device: instancia Device
+      - course: instancia Course o None
+      - assignment: instancia Assignment
+      - before: dict (before_data)
+      - after: dict (after_data)
+    """
+    if not items:
+        return
+
+    device_labels = []
+    course_labels = set()
+    entries_before = []
+    entries_after = []
+
+    def course_display_name(course):
+        if not course:
+            return None
+        return (
+            getattr(course, "name", None)
+            or getattr(course, "course", None)
+            or f"Course #{course.id}"
+        )
+
+    for it in items:
+        device = it["device"]
+        course = it.get("course")
+        assignment = it["assignment"]
+        before = it.get("before") or {}
+        after = it.get("after") or {}
+
+        device_name = device.name or f"Device #{device.id}"
+        device_labels.append(device_name)
+
+        course_name = course_display_name(course)
+        if course_name:
+            course_labels.add(course_name)
+
+        base_info = {
+            "device_id": device.id,
+            "device_name": device.name,
+            "uid": device.uid,
+            "assignment_id": assignment.id,
+            "course_id": course.id if course else None,
+            "course_name": course_name,
+        }
+
+        entries_before.append({
+            **base_info,
+            **before,
+        })
+
+        entries_after.append({
+            **base_info,
+            **after,
+        })
+
+    # Descripción humana
+    device_part = ", ".join(device_labels)
+
+    if not course_labels:
+        course_part = "no linked course"
+    elif len(course_labels) == 1:
+        course_part = f"course {next(iter(course_labels))}"
+    else:
+        course_part = "courses " + ", ".join(sorted(course_labels))
+
+    desc = (
+        f"Devices {device_part} returned from {course_part} "
+        f"({len(items)} assignment(s) closed)."
+    )
+
+    movement = Movements(
+        user_id=user_id,
+        entity_type="bulk_return",
+        entity_id=None,
+        action=action,
+        before_data={"items": entries_before},
+        after_data={"items": entries_after},
+        success=success,
+        description=desc,
+        user_agent=request.user_agent.string,
+    )
+    db.add(movement)
+
+def log_bulk_assignment_movement(db, *, user_id, course, devices_info, action="assign", success=True):
+    """
+    Registra un único movimiento en movements para una operación de asignación
+    de varias tarjetas (o una sola).
+
+    devices_info: lista de dicts con:
+      - device: instancia Device
+      - assignment: instancia Assignment
+      - before: dict (before_data)
+      - after: dict (after_data)
+    """
+    if not devices_info:
+        return
+
+    device_labels = []
+    devices_before = []
+    devices_after = []
+
+    for info in devices_info:
+        device = info["device"]
+        assignment = info["assignment"]
+        before = info["before"]
+        after = info["after"]
+
+        device_labels.append(device.name or f"Device #{device.id}")
+
+        devices_before.append({
+            "device_id": device.id,
+            "device_name": device.name,
+            "uid": device.uid,
+            "assignment_id": assignment.id,
+            **(before or {}),
+        })
+
+        devices_after.append({
+            "device_id": device.id,
+            "device_name": device.name,
+            "uid": device.uid,
+            "assignment_id": assignment.id,
+            **(after or {}),
+        })
+
+    if len(device_labels) == 1:
+        desc = (
+            f"Device {device_labels[0]} assigned to course "
+            f"{course.name} (ID {course.id})."
+        )
+    else:
+        desc = (
+            f"Devices {', '.join(device_labels)} assigned to course "
+            f"{course.name} (ID {course.id})."
+        )
+
+    movement = Movements(
+        user_id=user_id,
+        entity_type="device",             # o "assignment"/"bulk_assignment" si prefieres
+        entity_id=course.id,              # referencia al curso
+        action=action,
+        before_data={
+            "course": {
+                "id": course.id,
+                "name": course.name,
+            },
+            "devices": devices_before,
+        },
+        after_data={
+            "course": {
+                "id": course.id,
+                "name": course.name,
+            },
+            "devices": devices_after,
+        },
+        success=success,
+        description=desc,
+        user_agent=request.user_agent.string,
+    )
+    db.add(movement)
 
 def log_movement_assignment(db, *, user_id, assignment, device, course, action, before, after, success=True):
     """
@@ -94,63 +261,121 @@ def index():
 @login_required
 def new():
     db = SessionLocal()
-    devices = db.query(Device).all()
-    courses = db.query(Course).all()
+    try:
+        devices = db.query(Device).all()
+        courses = db.query(Course).all()
 
-    if request.method == "POST":
-        # Leer SIEMPRE como int
-        device_id = request.form.get("device_id", type=int)
-        course_id = request.form.get("course_id", type=int)
-        notes = (request.form.get("notes") or "").strip() or None
+        if request.method == "POST":
+            # Leer SIEMPRE como int
+            device_id = request.form.get("device_id", type=int)
+            course_id = request.form.get("course_id", type=int)
+            notes = (request.form.get("notes") or "").strip() or None
 
-        if not device_id or not course_id:
-            flash("Device and course are mandatory.", "danger")
-            return render_template(
-                "assignments/form.html",
-                title="New assignment",
-                form_action=url_for("assignments.new"),
-                assignment=None,
-                devices=devices,
-                courses=courses,
+            # 1) Validar que vienen los IDs
+            if not device_id or not course_id:
+                flash("Device and course are mandatory.", "danger")
+                return render_template(
+                    "assignments/form.html",
+                    title="New assignment",
+                    form_action=url_for("assignments.new"),
+                    assignment=None,
+                    devices=devices,
+                    courses=courses,
+                )
+
+            # 2) Comprobar que existen en la BD
+            device = db.query(Device).get(device_id)
+            course = db.query(Course).get(course_id)
+
+            if not device or not course:
+                flash("Device or course is invalid.", "danger")
+                return render_template(
+                    "assignments/form.html",
+                    title="New assignment",
+                    form_action=url_for("assignments.new"),
+                    assignment=None,
+                    devices=devices,
+                    courses=courses,
+                )
+
+            # (Opcional) evitar que el device esté activo en otro curso
+            active_other = (
+                db.query(Assignment)
+                .filter(
+                    Assignment.device_id == device.id,
+                    Assignment.status == "active",
+                    Assignment.course_id != course.id,
+                )
+                .first()
+            )
+            if active_other:
+                flash(
+                    f"Device {device.name or f'Device #{device.id}'} "
+                    f"is already assigned to another active course (ID {active_other.course_id}).",
+                    "danger",
+                )
+                return render_template(
+                    "assignments/form.html",
+                    title="New assignment",
+                    form_action=url_for("assignments.new"),
+                    assignment=None,
+                    devices=devices,
+                    courses=courses,
+                )
+
+            # 3) Crear assignment enlazado al curso y al device
+            assignment = Assignment(
+                device=device,   # relación
+                course=course,   # relación
+                status="active",
+                created_by=current_user.id,
+                notes=notes,
+                assigned_at=datetime.utcnow(),
+            )
+            db.add(assignment)
+            db.flush()  # para tener assignment.id
+
+            # 4) Actualizar estado del device
+            before = {"device_status": getattr(device, "status", None)}
+
+            if hasattr(Device, "status"):
+                device.status = "assigned"
+
+            after = {
+                "device_status": getattr(device, "status", None),
+                "assignment_status": assignment.status,
+                "assigned_at": assignment.assigned_at.isoformat(),
+            }
+
+            # 5) Log de movimiento
+            log_movement_assignment(
+                db,
+                user_id=current_user.id,
+                assignment=assignment,
+                device=device,
+                course=course,
+                action="assign",
+                before=before,
+                after=after,
+                success=True,
             )
 
-        # Opcional: comprobar que existen
-        device = db.query(Device).get(device_id)
-        course = db.query(Course).get(course_id)
-        if not device or not course:
-            flash("Device or course is invalid.", "danger")
-            return render_template(
-                "assignments/form.html",
-                title="New assignment",
-                form_action=url_for("assignments.new"),
-                assignment=None,
-                devices=devices,
-                courses=courses,
-            )
+            db.commit()
+            flash("Assignment created.", "success")
+            return redirect(url_for("assignments.index"))
 
-        a = Assignment(
-            device_id=device_id,
-            course_id=course_id,
-            status="active",
-            created_by=current_user.id,
-            notes=notes,
-            assigned_at=datetime.utcnow(),  # si tienes este campo
+        # GET → mostrar formulario
+        return render_template(
+            "assignments/form.html",
+            title="New assignment",
+            form_action=url_for("assignments.new"),
+            assignment=None,
+            devices=devices,
+            courses=courses,
         )
 
-        db.add(a)
-        db.commit()
-        flash("Assignment created.", "success")
-        return redirect(url_for("assignments.index"))
-
-    # GET → mostrar formulario
-    return render_template(
-        "assignments/form.html",
-        title="New assignment",
-        form_action=url_for("assignments.new"),
-        assignment=None,
-        devices=devices,
-        courses=courses,
-    )
+    finally:
+        db.close()
 
 @bp.route("/<int:id>/edit", methods=["GET", "POST"])
 @login_required
@@ -243,6 +468,9 @@ def new_bulk():
         skipped_not_available = []            # Caso 3
         skipped_not_found = []
 
+        # Para agrupar los movimientos en UNA sola entrada
+        bulk_devices_info = []
+
         for uid in uids:
             device = devices_by_uid.get(uid)
 
@@ -292,7 +520,7 @@ def new_bulk():
                 status="active",
             )
             db.add(assignment)
-            db.flush()
+            db.flush()  # Necesario para tener assignment.id
 
             before = {"device_status": device.status}
 
@@ -304,19 +532,26 @@ def new_bulk():
                 "assigned_at": assignment.assigned_at.isoformat(),
             }
 
-            log_movement_assignment(
-                db,
-                user_id=current_user.id,
-                assignment=assignment,
-                device=device,
-                course=course,
-                action="assign",
-                before=before,
-                after=after,
-                success=True,
-            )
+            # En vez de log_movement_assignment individual, acumulamos
+            bulk_devices_info.append({
+                "device": device,
+                "assignment": assignment,
+                "before": before,
+                "after": after,
+            })
 
             created_count += 1
+
+        # Aquí, UNA sola entrada en movements para todo el bloque
+        if bulk_devices_info:
+            log_bulk_assignment_movement(
+                db,
+                user_id=current_user.id,
+                course=course,
+                devices_info=bulk_devices_info,
+                action="assign",
+                success=True,
+            )
 
         db.commit()
 
@@ -590,6 +825,7 @@ def bulk_returns():
 
         assignments = (
             db.query(Assignment)
+              .options(joinedload(Assignment.device), joinedload(Assignment.course))
               .filter(Assignment.id.in_(assignment_ids))
               .all()
         )
@@ -598,10 +834,12 @@ def bulk_returns():
             flash("No matching assignments found.", "warning")
             return redirect(url_for("assignments.bulk_returns"))
 
-        user_agent = request.headers.get("User-Agent", "")
+        # Acumularemos aquí la info para el movimiento único
+        bulk_items = []
 
         for a in assignments:
-            device = a.device  # relación Assignment.device
+            device = a.device    # relación Assignment.device
+            course = a.course    # relación Assignment.course
 
             # Snapshot antes de borrar la asignación
             before_assignment = {
@@ -628,38 +866,33 @@ def bulk_returns():
                 "status": device.status,
             }
 
-            # 2) Movimiento para la asignación: acción delete
-            db.add(
-                Movements(
-                    user_id=current_user.id,
-                    entity_type="Assignment",
-                    entity_id=a.id,
-                    action="delete",
-                    before_data=before_assignment,
-                    after_data=None,
-                    success=True,
-                    description=f"Assignment for device '{device.name}' deleted on bulk return.",
-                    user_agent=user_agent,
-                )
-            )
+            # Guardamos en la lista para el movimiento global
+            bulk_items.append({
+                "device": device,
+                "course": course,
+                "assignment": a,
+                "before": {
+                    "assignment": before_assignment,
+                    "device": before_device,
+                },
+                "after": {
+                    "assignment": None,   # se borra
+                    "device": after_device,
+                },
+            })
 
-            # 3) Movimiento para el device: pasa a available
-            db.add(
-                Movements(
-                    user_id=current_user.id,
-                    entity_type="Device",
-                    entity_id=device.id,
-                    action="update",
-                    before_data=before_device,
-                    after_data=after_device,
-                    success=True,
-                    description=f"Device '{device.name}' set to available on bulk return.",
-                    user_agent=user_agent,
-                )
-            )
-
-            # 4) Borrar la asociación de la base de datos
+            # 2) Borrar la asociación de la base de datos
             db.delete(a)
+
+        # Movimiento único para toda la operación
+        if bulk_items:
+            log_bulk_return_movement(
+                db,
+                user_id=current_user.id,
+                items=bulk_items,
+                action="return",
+                success=True,
+            )
 
         db.commit()
         flash(f"{len(assignments)} card associations deleted and devices set to available.", "success")
@@ -767,7 +1000,22 @@ def bulk_return_find():
             status = "assigned"
         else:
             status = "released"
+        course = assignment.course
 
+        # Sacar fecha de fin del curso (si existe)
+        course_end_date = getattr(course, "end_date", None)
+        if isinstance(course_end_date, datetime):
+            course_end_date = course_end_date.date()
+
+        # Nombre "visible" del curso, con fallback
+        if course:
+            course_display_name = (
+                getattr(course, "name", None)
+                or getattr(course, "course", None)
+                or f"Course #{course.id}"
+            )
+        else:
+            course_display_name = None
         return jsonify({
             "ok": True,
             "data": {
@@ -775,7 +1023,7 @@ def bulk_return_find():
                 "device_name": device.name,
                 "device_id": device.id,
                 "assignment_id": assignment.id,
-                "course_name": course.name if course else None,
+                "course_name": course_display_name,
                 "course_end_date": course_end_date.isoformat() if course_end_date else None,
                 "overdue_days": overdue_days,
                 "status": status,

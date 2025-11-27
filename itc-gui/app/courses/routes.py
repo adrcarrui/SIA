@@ -130,11 +130,11 @@ def new_course():
             flash("Curso creado.", "success")
             return redirect(url_for("courses.index"))
 
-        return render_template("courses/form.html", page_title="New", c=None)
+        return render_template("courses/form.html", page_title="New Course", c=None)
     except Exception as e:
         db.rollback()
         flash(f"❌ Error creando curso: {e}", "danger")
-        return render_template("courses/form.html", page_title="TCO_GUI", c=None)
+        return render_template("courses/form.html", page_title="New course", c=None)
     finally:
         db.close()
 
@@ -173,7 +173,7 @@ def edit_course(course_id):
                 flash("Course code es obligatorio.", "warning")
                 return render_template(
                     "courses/form.html",
-                    page_title="TCO GUI",
+                    page_title="Edit course",
                     c=c,
                 )
 
@@ -239,7 +239,7 @@ def edit_course(course_id):
                 flash("No se pudo actualizar el curso. Revisa valores únicos.", "danger")
                 return render_template(
                     "courses/form.html",
-                    page_title="TCO GUI",
+                    page_title="Edit course",
                     c=c,
                 )
 
@@ -249,7 +249,7 @@ def edit_course(course_id):
         # GET
         return render_template(
             "courses/form.html",
-            page_title="TCO GUI",
+            page_title="Edit course",
             c=c,
         )
     finally:
