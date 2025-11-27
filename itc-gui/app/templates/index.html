@@ -29,19 +29,91 @@
     </div>
   </div>
 
-  {# 2. Devices #}
-  <div class="col">
-    <div class="card text-white border-0 stat-card stat-card-licenses bg-devices">
-      <div class="card-body position-relative p-3">
-        <div class="fs-3 fw-bold">{{ "{:,}".format(total_devices or 0) }}</div>
-        <div class="small">Devices</div>
+{# 2. Devices #}
+<div class="col">
+  <div class="card border-0 stat-card stat-card-licenses bg-devices">
+    <div class="card-body position-relative p-3 text-dark">
+      <div class="fw-semibold text-center mb-2">
+        <h4 class="mb-0">Devices</h4>
+      </div>
 
-        <div class="stat-card-footer mt-3 pt-2 text-center">
-          <a href="{{ url_for('devices.index') }}"
-            class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
-            <span>view all</span>
-            <i class="bi bi-arrow-right-circle"></i>
-          </a>
+      {% if device_stats %}
+        <div class="mt-2">
+          <table
+            class="table table-sm align-middle mb-0 small"
+            style="--bs-table-bg: transparent;"
+          >
+            <thead>
+              <tr>
+                <th class="fw-normal text-muted"></th>
+                {% for row in device_stats %}
+                  {% set tkey = row.type or "Unknown" %}
+                  {% set tcolor = {
+                    'vending': 'primary',
+                    'canteen': 'success',
+                    'instructor': 'warning',
+                    'guest': 'secondary'
+                  }.get(tkey, 'light') %}
+                  <th class="fs-6 text-center fw-normal">
+                    <span class="badge text-bg-{{ tcolor }}">
+                      {{ tkey }}
+                    </span>
+                  </th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="fw-semibold text-center">Stock</td>
+                {% for row in device_stats %}
+                  <td class="text-center text-muted">
+                    <span>
+                      {{ row.assigned }}/{{ row.total }}
+                    </span>
+                  </td>
+                {% endfor %}
+              </tr>
+              <tr>
+                <td class="fw-semibold text-center">%</td>
+                {% for row in device_stats %}
+                  <td class="text-center fw-semibold text-muted">
+                    {{ row.ratio|round(0, 'floor') }}%
+                  </td>
+                {% endfor %}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-center mb-0 text-muted">
+          No devices registered.
+        </p>
+      {% endif %}
+
+      <div class="stat-card-footer mt-3 pt-2 text-center">
+        <a href="{{ url_for('devices.index') }}"
+           class="small text-decoration-none d-inline-flex align-items-center gap-1 text-dark">
+          <span>view all</span>
+          <i class="bi bi-arrow-right-circle"></i>
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+  {# 2. Alerts #}
+  <div class="col">
+    <div class="card border-0 stat-card stat-card-licenses bg-alerts">
+      <div class="card-body position-relative p-3 text-dark">
+        <div class="fw-semibold text-center mb-2">
+          <h4 class="mb-0">Alerts</h4>
+                <div class="stat-card-footer mt-3 pt-2 text-center">
+        <a href="{{ url_for('devices.index') }}"
+           class="small text-decoration-none d-inline-flex align-items-center gap-1 text-dark">
+          <span>view all</span>
+          <i class="bi bi-arrow-right-circle"></i>
+        </a>
+      </div>
         </div>
       </div>
     </div>
@@ -60,6 +132,7 @@
             <span>view all</span>
             <i class="bi bi-arrow-right-circle"></i>
           </a>
+
         </div>
       </div>
     </div>
@@ -122,41 +195,6 @@
 <div class="card-body p-2">
   <div class="row g-3">
     {# ---------- BLOQUE DISPOSITIVOS + ALERTAS, UNA AL LADO DE LA OTRA ---------- #}
-<div class="row g-3">
-  {# IZQUIERDA: resumen dispositivos #}
-  <div class="col-md-5">
-    <div class="card shadow-sm">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Devices summary</span>
-      </div>
-      <div class="card-body p-2">
-        <table class="table table-sm mb-2">
-          <thead>
-            <tr>
-              <th>Summary</th>
-              <th class="text-end">Count</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Total devices</td>
-              <td class="text-end">{{ total_devices }}</td>
-            </tr>
-            <tr>
-              <td>Assigned devices</td>
-              <td class="text-end">{{ total_assignments }}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="text-end">
-          <a href="{{ url_for('assignments.bulk_returns') }}" class="btn btn-sm btn-outline-danger">
-            Return cards
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
 
   {# DERECHA: alertas #}
   <div class="col-md-7">

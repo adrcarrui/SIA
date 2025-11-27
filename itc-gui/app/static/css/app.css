@@ -174,7 +174,7 @@ button[data-bs-toggle="dropdown"]::before {
 }
 
 .stat-card {
-  min-height: 110px;
+  /*min-height: 110px;*/
   border-radius: 0.25rem;
   overflow: hidden;
 }
@@ -198,13 +198,15 @@ button[data-bs-toggle="dropdown"]::before {
 }
 
 .bg-devices {
-  background-color: #d91b5c;
+  background-color: #a3c4bc;
 }
 
 .bg-courses {
   background-color: #ff9820;
 }
-
+.bg-alerts {
+  background-color: #f56476;
+}
 .bg-movements {
   background-color: #791E94;
 }

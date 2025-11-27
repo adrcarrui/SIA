@@ -10,8 +10,9 @@
     </form>
     <a class="btn btn-sm btn-primary" href="{{ url_for('devices.new_device') }}">New device</a>
   </div>
-</div>
 
+</div>
+<p class="text-muted">Total devices: {{ "{:,}".format(total or 0) }}</p>
 <div class="table-responsive">
   <table class="table table-sm align-middle">
     <thead class="table-light">
