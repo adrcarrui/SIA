@@ -71,3 +71,8 @@ def index():
         assigned_devices=assigned_devices,
         device_stats=device_stats,
     )
+
+@bp.route("/test-calendar")
+@login_required
+def test_calendar():
+    return render_template("test_calendar.html")

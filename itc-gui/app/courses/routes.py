@@ -466,3 +466,65 @@ def update_assignment_overdue_status_for_course(db, course):
         print("status: " + new_status)
         # atributo ad-hoc para usar en la plantilla
         a.days_late = dl
+
+@bp.route("/api/calendar-events")
+@login_required
+def api_calendar_events():
+    db = SessionLocal()
+    try:
+        courses = db.query(Course).all()
+
+        events = []
+        for c in courses:
+            # Si no tiene ni inicio ni fin, no lo pintamos
+            if not c.start_date and not c.end_date:
+                continue
+
+            # Título: name -> course -> fallback
+            title = (
+                (c.name or "").strip()
+                or (c.course or "").strip()
+                or f"Course #{c.id}"
+            )
+
+            # Evento de INICIO (verde)
+            if c.start_date:
+                events.append({
+                    "id": f"{c.id}-start",
+                    "title": title,
+                    "start": c.start_date.isoformat(),  # solo start, sin "end"
+                    "allDay": True,
+                    "classNames": ["fc-course-start"],
+                    "extendedProps": {
+                        "course_id": c.id,
+                        "status": c.status,
+                        "trainees": c.trainees,
+                        "client": c.client,
+                        "course_code": c.course,
+                        "course_url": f"/courses/{c.id}",
+                        "kind": "start",
+                    },
+                })
+
+            # Evento de FIN (azul) solo si existe y no coincide con el inicio
+            if c.end_date and (not c.start_date or c.end_date != c.start_date):
+                events.append({
+                    "id": f"{c.id}-end",
+                    "title": title,
+                    "start": c.end_date.isoformat(),  # un solo día
+                    "allDay": True,
+                    "classNames": ["fc-course-end"],
+                    "extendedProps": {
+                        "course_id": c.id,
+                        "status": c.status,
+                        "trainees": c.trainees,
+                        "client": c.client,
+                        "course_code": c.course,
+                        "course_url": f"/courses/{c.id}",
+                        "kind": "end",
+                    },
+                })
+
+        return jsonify(events)
+    finally:
+        db.close()

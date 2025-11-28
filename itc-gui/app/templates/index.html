@@ -4,7 +4,7 @@
 {% block content %}
 <h2>Dashboard</h2>
 
-{# FILA DE 4 CUADRADOS ROJOS #}
+{# FILA DE 4/5 CUADRADOS #}
 <div class="row mb-4 g-3 row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-5">
 
   {# 1. Users #}
@@ -16,11 +16,9 @@
         </div>
         <div class="small">Users</div>
 
-        {# marca de agua si la usas con ::after en CSS #}
-
         <div class="stat-card-footer mt-3 pt-2 text-center">
           <a href="{{ url_for('users.index') }}"
-            class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
+             class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
             <span>view all</span>
             <i class="bi bi-arrow-right-circle"></i>
           </a>
@@ -29,97 +27,97 @@
     </div>
   </div>
 
-{# 2. Devices #}
-<div class="col">
-  <div class="card border-0 stat-card stat-card-licenses bg-devices">
-    <div class="card-body position-relative p-3 text-dark">
-      <div class="fw-semibold text-center mb-2">
-        <h4 class="mb-0">Devices</h4>
-      </div>
-
-      {% if device_stats %}
-        <div class="mt-2">
-          <table
-            class="table table-sm align-middle mb-0 small"
-            style="--bs-table-bg: transparent;"
-          >
-            <thead>
-              <tr>
-                <th class="fw-normal text-muted"></th>
-                {% for row in device_stats %}
-                  {% set tkey = row.type or "Unknown" %}
-                  {% set tcolor = {
-                    'vending': 'primary',
-                    'canteen': 'success',
-                    'instructor': 'warning',
-                    'guest': 'secondary'
-                  }.get(tkey, 'light') %}
-                  <th class="fs-6 text-center fw-normal">
-                    <span class="badge text-bg-{{ tcolor }}">
-                      {{ tkey }}
-                    </span>
-                  </th>
-                {% endfor %}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td class="fw-semibold text-center">Stock</td>
-                {% for row in device_stats %}
-                  <td class="text-center text-muted">
-                    <span>
-                      {{ row.assigned }}/{{ row.total }}
-                    </span>
-                  </td>
-                {% endfor %}
-              </tr>
-              <tr>
-                <td class="fw-semibold text-center">%</td>
-                {% for row in device_stats %}
-                  <td class="text-center fw-semibold text-muted">
-                    {{ row.ratio|round(0, 'floor') }}%
-                  </td>
-                {% endfor %}
-              </tr>
-            </tbody>
-          </table>
+  {# 2. Devices #}
+  <div class="col">
+    <div class="card border-0 stat-card stat-card-licenses bg-devices">
+      <div class="card-body position-relative p-3 text-dark">
+        <div class="fw-semibold text-center mb-2">
+          <h4 class="mb-0">Devices</h4>
         </div>
-      {% else %}
-        <p class="text-center mb-0 text-muted">
-          No devices registered.
-        </p>
-      {% endif %}
 
-      <div class="stat-card-footer mt-3 pt-2 text-center">
-        <a href="{{ url_for('devices.index') }}"
-           class="small text-decoration-none d-inline-flex align-items-center gap-1 text-dark">
-          <span>view all</span>
-          <i class="bi bi-arrow-right-circle"></i>
-        </a>
+        {% if device_stats %}
+          <div class="mt-2">
+            <table
+              class="table table-sm align-middle mb-0 small"
+              style="--bs-table-bg: transparent;"
+            >
+              <thead>
+                <tr>
+                  <th class="fw-normal text-muted"></th>
+                  {% for row in device_stats %}
+                    {% set tkey = row.type or "Unknown" %}
+                    {% set tcolor = {
+                      'vending': 'primary',
+                      'canteen': 'success',
+                      'instructor': 'warning',
+                      'guest': 'secondary'
+                    }.get(tkey, 'light') %}
+                    <th class="fs-6 text-center fw-normal">
+                      <span class="badge text-bg-{{ tcolor }}">
+                        {{ tkey }}
+                      </span>
+                    </th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="fw-semibold text-center">Stock</td>
+                  {% for row in device_stats %}
+                    <td class="text-center text-muted">
+                      <span>
+                        {{ row.assigned }}/{{ row.total }}
+                      </span>
+                    </td>
+                  {% endfor %}
+                </tr>
+                <tr>
+                  <td class="fw-semibold text-center">%</td>
+                  {% for row in device_stats %}
+                    <td class="text-center fw-semibold text-muted">
+                      {{ row.ratio|round(0, 'floor') }}%
+                    </td>
+                  {% endfor %}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="text-center mb-0 text-muted">
+            No devices registered.
+          </p>
+        {% endif %}
+
+        <div class="stat-card-footer mt-3 pt-2 text-center">
+          <a href="{{ url_for('devices.index') }}"
+             class="small text-decoration-none d-inline-flex align-items-center gap-1 text-dark">
+            <span>view all</span>
+            <i class="bi bi-arrow-right-circle"></i>
+          </a>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-  {# 2. Alerts #}
+  {# 3. Alerts (resumen) #}
   <div class="col">
     <div class="card border-0 stat-card stat-card-licenses bg-alerts">
       <div class="card-body position-relative p-3 text-dark">
         <div class="fw-semibold text-center mb-2">
           <h4 class="mb-0">Alerts</h4>
-                <div class="stat-card-footer mt-3 pt-2 text-center">
-        <a href="{{ url_for('devices.index') }}"
-           class="small text-decoration-none d-inline-flex align-items-center gap-1 text-dark">
-          <span>view all</span>
-          <i class="bi bi-arrow-right-circle"></i>
-        </a>
-      </div>
+          <div class="stat-card-footer mt-3 pt-2 text-center">
+            <a href="{{ url_for('devices.index') }}"
+               class="small text-decoration-none d-inline-flex align-items-center gap-1 text-dark">
+              <span>view all</span>
+              <i class="bi bi-arrow-right-circle"></i>
+            </a>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  {# 3. Courses #}
+  {# 4. Courses #}
   <div class="col">
     <div class="card text-white border-0 stat-card stat-card-accessories bg-courses">
       <div class="card-body position-relative p-3">
@@ -128,17 +126,16 @@
 
         <div class="stat-card-footer mt-3 pt-2 text-center">
           <a href="{{ url_for('courses.index') }}"
-            class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
+             class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
             <span>view all</span>
             <i class="bi bi-arrow-right-circle"></i>
           </a>
-
         </div>
       </div>
     </div>
   </div>
 
-  {# 4. Assignments #}
+  {# 5. Assignments #}
   <div class="col">
     <div class="card text-white border-0 stat-card stat-card-components bg-assignments">
       <div class="card-body position-relative p-3">
@@ -147,7 +144,7 @@
 
         <div class="stat-card-footer mt-3 pt-2 text-center">
           <a href="{{ url_for('assignments.index') }}"
-            class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
+             class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
             <span>view all</span>
             <i class="bi bi-arrow-right-circle"></i>
           </a>
@@ -156,7 +153,7 @@
     </div>
   </div>
 
-  {# 5. Movements #}
+  {# 6. Movements #}
   <div class="col">
     <div class="card text-white border-0 stat-card stat-card-people bg-movements">
       <div class="card-body position-relative p-3">
@@ -165,7 +162,7 @@
 
         <div class="stat-card-footer mt-3 pt-2 text-center">
           <a href="{{ url_for('movements.index') }}"
-            class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
+             class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
             <span>view all</span>
             <i class="bi bi-arrow-right-circle"></i>
           </a>
@@ -176,31 +173,48 @@
 
 </div>
 
-
 {# FILA PRINCIPAL: CALENDARIO + ALERTAS #}
-<div class="row">
-  <div class="col-lg-12">
-    <div class="card shadow-sm">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Course calendar</span>
-      </div>
-      <div class="card-body">
-        <div id="calendar-2w" class="cal2w">
-          <div class="cal2w-head" id="cal2w-head"></div>
-          <div class="cal2w-grid" id="cal2w-grid"></div>
-        </div>
-      </div>
+<div class="container-fluid py-3">
+  <div class="row">
+    <!-- Columna calendario -->
+    <div class="col-lg-8 mb-3">
+      <h2 class="mb-3">Course calendar</h2>
+      <div id="calendar" style="min-height: 500px;"></div>
+    </div>
+
+    <!-- Columna alertas resumen (por device) -->
+    <div class="col-lg-4 mb-3">
+      <h4 class="mb-3">Alerts</h4>
+      <table class="table table-sm table-striped">
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>Course</th>
+            <th>End date</th>
+            <th>Delay (days)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for alert in alerts %}
+          <tr class="{{ alert.level }}">
+            <td>{{ alert.device_name }}</td>
+            <td>{{ alert.course_name }}</td>
+            <td>{{ alert.end_date }}</td>
+            <td>{{ alert.delay_days }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
-<div class="card-body p-2">
-  <div class="row g-3">
-    {# ---------- BLOQUE DISPOSITIVOS + ALERTAS, UNA AL LADO DE LA OTRA ---------- #}
+</div>
 
-  {# DERECHA: alertas #}
+{# BLOQUE ALERTAS DETALLADAS (overdue) #}
+<div class="row mt-4">
   <div class="col-md-7">
     <div class="card shadow-sm">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Alerts</span>
+        <span>Alerts (overdue)</span>
         <span class="badge text-bg-danger">{{ overdue|length or 0 }}</span>
       </div>
       <div class="card-body p-2">
@@ -226,16 +240,16 @@
                   "
                 >
                   <td>
-                  <button type="button"
-                          class="btn btn-link p-0 course-detail-btn text-white text-decoration-none"
-                          data-bs-toggle="modal"
-                          data-bs-target="#courseModal"
-                          data-url="{{ url_for('courses.detail_fragment', course_id=o.course.id) }}">
-                    {{ (o.course.course if o.course.course not in [None, 'None', ''] else None)
-                      or (o.course.name if o.course.name not in [None, 'None', ''] else None)
-                      or ('Course #' ~ o.course.id) }}
-                  </button>
-                  </td> 
+                    <button type="button"
+                            class="btn btn-link p-0 course-detail-btn text-white text-decoration-none"
+                            data-bs-toggle="modal"
+                            data-bs-target="#courseModal"
+                            data-url="{{ url_for('courses.detail_fragment', course_id=o.course.id) }}">
+                      {{ (o.course.course if o.course.course not in [None, 'None', ''] else None)
+                        or (o.course.name if o.course.name not in [None, 'None', ''] else None)
+                        or ('Course #' ~ o.course.id) }}
+                    </button>
+                  </td>
                   <td>{{ o.course.end_date or '—' }}</td>
                   <td class="text-end">{{ o.days_late }}</td>
                   <td class="text-end">{{ o.cards_count }}</td>
@@ -275,40 +289,74 @@
   </div>
 </div>
 
-<script>
-document.addEventListener('click', function (e) {
-  const btn = e.target.closest('[data-bs-target="#courseModal"][data-url]');
-  if (!btn) return;
+{% endblock %}
 
-  e.preventDefault();
+{% block scripts %}
+  {{ super() }}
+  <script>
+    // FullCalendar en el dashboard
+    document.addEventListener('DOMContentLoaded', function () {
+      const calendarEl = document.getElementById('calendar');
+      if (!calendarEl) {
+        console.error("Dashboard: #calendar not found");
+        return;
+      }
 
-  const url = btn.dataset.url;
-  const modalBody = document.getElementById('courseModalBody');
+      const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        locale: 'en',
+        firstDay: 1,
+        height: 'auto',
+        headerToolbar: {
+          left: 'prev,next today',
+          center: 'title',
+          right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+        },
+        dayMaxEvents: true,
+        events: "{{ url_for('courses.api_calendar_events') }}",
+        eventClick: function (info) {
+          if (info.event.extendedProps.course_url) {
+            window.location.href = info.event.extendedProps.course_url;
+          } else if (info.event.id) {
+            window.location.href = '/courses/' + info.event.id;
+          }
+        }
+      });
 
-  modalBody.innerHTML = `
-    <div class="text-center py-5">
-      <div class="spinner-border" role="status">
-        <span class="visually-hidden">Loading...</span>
-      </div>
-    </div>
-  `;
+      calendar.render();
+    });
 
-  fetch(url)
-    .then(resp => resp.text())
-    .then(html => {
-      modalBody.innerHTML = html;
-    })
-    .catch(err => {
-      console.error(err);
+    // Modal de detalles de curso (overdue)
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-bs-target="#courseModal"][data-url]');
+      if (!btn) return;
+
+      e.preventDefault();
+
+      const url = btn.dataset.url;
+      const modalBody = document.getElementById('courseModalBody');
+
       modalBody.innerHTML = `
-        <div class="alert alert-danger">
-          Error loading course details.
+        <div class="text-center py-5">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
         </div>
       `;
+
+      fetch(url)
+        .then(resp => resp.text())
+        .then(html => {
+          modalBody.innerHTML = html;
+        })
+        .catch(err => {
+          console.error(err);
+          modalBody.innerHTML = `
+            <div class="alert alert-danger">
+              Error loading course details.
+            </div>
+          `;
+        });
     });
-});
-</script>
-
-
-
+  </script>
 {% endblock %}

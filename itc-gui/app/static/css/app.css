@@ -245,3 +245,36 @@ button[data-bs-toggle="dropdown"]::before {
   background-color: #d50000 !important;  /* rojo fuerte */
   color: #ffffff;                        /* texto blanco para contraste */
 }
+
+.fc-course-planned {
+  background-color: #fff3cd !important;
+  border-color: #ffe69c !important;
+  color: #856404 !important;
+}
+
+.fc-course-active {
+  background-color: #d1e7dd !important;
+  border-color: #a3cfbb !important;
+  color: #0f5132 !important;
+}
+
+.fc-course-finished {
+  background-color: #e2e3e5 !important;
+  border-color: #c4c8cb !important;
+  color: #41464b !important;
+}
+
+.fc-course-cancelled {
+  background-color: #f8d7da !important;
+  border-color: #f5c2c7 !important;
+  color: #000000 !important;
+  text-decoration: line-through;
+}
+
+.fc-course-planned .fc-event-main,
+.fc-course-active .fc-event-main,
+.fc-course-finished .fc-event-main,
+.fc-course-cancelled .fc-event-main {
+  color: #000000 !important;
+  font-weight: 700 !important;
+}
