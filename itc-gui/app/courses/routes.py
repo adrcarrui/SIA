@@ -1,5 +1,5 @@
 from math import ceil
-from flask import render_template, request, redirect, url_for, flash,jsonify, abort
+from flask import render_template, request, redirect, url_for, flash, jsonify, abort
 from flask_login import login_required, current_user
 from . import bp
 from app.db import SessionLocal
@@ -14,6 +14,16 @@ from app.models import Assignment, Course, Device
 PER_PAGE = 20  # ajusta a tu gusto
 
 COURSE_STATUSES = ["planned", "active", "finished", "cancelled"]
+
+
+def normalize_field(value: str):
+    v = (value or "").strip()
+    if not v:
+        return None
+    if v.lower() == "none":
+        return None
+    return v
+
 
 @bp.route("/")
 @login_required
@@ -36,26 +46,33 @@ def index():
 
         total = qry.count()
         pages = max(ceil(total / PER_PAGE), 1)
-        courses = (qry.order_by(models.Course.id.asc())
-                      .offset((page - 1) * PER_PAGE)
-                      .limit(PER_PAGE)
-                      .all())
+        courses = (
+            qry.order_by(models.Course.id.asc())
+            .offset((page - 1) * PER_PAGE)
+            .limit(PER_PAGE)
+            .all()
+        )
 
         return render_template(
             "courses/index.html",
             page_title="TCO GUI",
             courses=courses,
             q=q,
-            page=page, pages=pages, total=total,
-            has_prev=page > 1, has_next=page < pages,
+            page=page,
+            pages=pages,
+            total=total,
+            has_prev=page > 1,
+            has_next=page < pages,
         )
     finally:
         db.close()
+
 
 @bp.route("/new", methods=["GET", "POST"])
 @login_required
 def new_course():
     from datetime import date
+
     def to_date(s):
         s = (s or "").strip()
         return date.fromisoformat(s) if s else None
@@ -63,13 +80,33 @@ def new_course():
     db = SessionLocal()
     try:
         if request.method == "POST":
+            course = (request.form.get("course") or "").strip()
+            name = (request.form.get("name") or "").strip()
 
-            course   = (request.form.get("course") or "").strip()
-            name     = (request.form.get("name") or "").strip()
-            status   = (request.form.get("status") or "planned").strip() or "planned"
-            notes    = (request.form.get("notes") or "").strip()
+            # estados separados
+            status_tco = (request.form.get("status_tco") or "planned").strip() or "planned"
+            status_itc = (request.form.get("status_itc") or "planned").strip() or "planned"
+
+            # saneo básico contra lista
+            if status_tco not in COURSE_STATUSES:
+                status_tco = "planned"
+            if status_itc not in COURSE_STATUSES:
+                status_itc = "planned"
+
+            notes = (request.form.get("notes") or "").strip()
             start_dt = to_date(request.form.get("start_date"))
-            end_dt   = to_date(request.form.get("end_date"))
+            end_dt = to_date(request.form.get("end_date"))
+
+            # responsable: si no viene nada, usamos al usuario actual
+            resp_raw = (request.form.get("responsible_id") or "").strip()
+            responsible_id = None
+            if resp_raw:
+                try:
+                    responsible_id = int(resp_raw)
+                except ValueError:
+                    responsible_id = None
+            if not responsible_id and current_user.is_authenticated:
+                responsible_id = current_user.id
 
             # trainees entero, NOT NULL
             t_raw = (request.form.get("trainees") or "").strip()
@@ -80,18 +117,16 @@ def new_course():
             except ValueError:
                 trainees = 0
 
-            #if not course:
-            #    flash("El campo 'course' es obligatorio.", "warning")
-            #    return render_template("courses/form.html", page_title="New course", c=None)
-
             new_course = models.Course(
                 course=course or None,
                 name=name or None,
-                status=status,          # evita None
-                notes=notes or None,            # evita None
-                trainees=trainees,      # evita None
-                start_date=start_dt,    # nombre correcto
-                end_date=end_dt,        # nombre correcto
+                status_tco=status_tco,
+                status_itc=status_itc,
+                notes=notes or None,
+                trainees=trainees,
+                start_date=start_dt,
+                end_date=end_dt,
+                responsible_id=responsible_id,
             )
             db.add(new_course)
             db.flush()
@@ -107,11 +142,17 @@ def new_course():
                     "id": new_course.id,
                     "course": new_course.course,
                     "name": new_course.name,
-                    "start_date": new_course.start_date.isoformat() if new_course.start_date else None,
-                    "end_date": new_course.end_date.isoformat() if new_course.end_date else None,
+                    "start_date": new_course.start_date.isoformat()
+                    if new_course.start_date
+                    else None,
+                    "end_date": new_course.end_date.isoformat()
+                    if new_course.end_date
+                    else None,
                     "trainees": new_course.trainees,
-                    "status": new_course.status,
+                    "status_tco": new_course.status_tco,
+                    "status_itc": new_course.status_itc,
                     "notes": new_course.notes,
+                    "responsible_id": new_course.responsible_id,
                 },
                 description=f"Course '{new_course.course}' created",
                 success=True,
@@ -121,7 +162,10 @@ def new_course():
                 db.commit()
             except IntegrityError:
                 db.rollback()
-                flash("No se pudo crear el curso. Revisa valores únicos.", "danger")
+                flash(
+                    "No se pudo crear el curso. Revisa valores únicos.",
+                    "danger",
+                )
                 return render_template(
                     "courses/form.html",
                     page_title="New course",
@@ -137,6 +181,7 @@ def new_course():
         return render_template("courses/form.html", page_title="New course", c=None)
     finally:
         db.close()
+
 
 @bp.route("/<int:course_id>/edit", methods=["GET", "POST"])
 @login_required
@@ -157,29 +202,38 @@ def edit_course(course_id):
                 "start_date": c.start_date.isoformat() if c.start_date else None,
                 "end_date": c.end_date.isoformat() if c.end_date else None,
                 "trainees": c.trainees,
-                "status": c.status,
+                "status_tco": c.status_tco,
+                "status_itc": c.status_itc,
                 "notes": c.notes,
+                "responsible_id": c.responsible_id,
             }
 
-            course_code = (request.form.get("course") or "").strip()
-            name        = (request.form.get("name") or "").strip()
-            start_str   = (request.form.get("start_date") or "").strip()
-            end_str     = (request.form.get("end_date") or "").strip()
-            trainees    = (request.form.get("trainees") or "").strip()
-            status      = (request.form.get("status") or "").strip() or "planned"
-            notes       = (request.form.get("notes") or "").strip()
+            course_code = normalize_field((request.form.get("course") or ""))
+            name = normalize_field((request.form.get("name") or ""))
+            start_str = (request.form.get("start_date") or "").strip()
+            end_str = (request.form.get("end_date") or "").strip()
+            trainees = (request.form.get("trainees") or "").strip()
+            notes = (request.form.get("notes") or "").strip()
 
-            if not course_code:
-                flash("Course code es obligatorio.", "warning")
+            # estados separados
+            status_tco = (request.form.get("status_tco") or "").strip() or c.status_tco or "planned"
+            status_itc = (request.form.get("status_itc") or "").strip() or c.status_itc or "planned"
+
+            if status_tco not in COURSE_STATUSES:
+                flash("Invalid TCO state. 'planned' will be used.", "warning")
+                status_tco = "planned"
+
+            if status_itc not in COURSE_STATUSES:
+                flash("Invalid ITC state. 'planned' will be used.", "warning")
+                status_itc = "planned"
+
+            if not course_code and not name:
+                flash("You must fill either 'Course' or 'Name'.", "warning")
                 return render_template(
                     "courses/form.html",
                     page_title="Edit course",
                     c=c,
                 )
-
-            if status not in COURSE_STATUSES:
-                flash("Estado inválido. Se usará 'planned'.", "warning")
-                status = "planned"
 
             def parse_date(s):
                 if not s:
@@ -190,7 +244,7 @@ def edit_course(course_id):
                     return None
 
             start_date = parse_date(start_str)
-            end_date   = parse_date(end_str)
+            end_date = parse_date(end_str)
 
             try:
                 trainees_val = int(trainees) if trainees else None
@@ -198,13 +252,22 @@ def edit_course(course_id):
                 trainees_val = None
 
             # Aplicar cambios
-            c.course     = course_code
-            c.name       = name or None
+            c.course = course_code
+            c.name = name or None
             c.start_date = start_date
-            c.end_date   = end_date
-            c.trainees   = trainees_val
-            c.status     = status
-            c.notes      = notes or None
+            c.end_date = end_date
+            c.trainees = trainees_val
+            c.status_tco = status_tco
+            c.status_itc = status_itc
+            c.notes = notes or None
+
+            # responsable (opcionalmente permitir cambiarlo)
+            resp_raw = (request.form.get("responsible_id") or "").strip()
+            if resp_raw:
+                try:
+                    c.responsible_id = int(resp_raw)
+                except ValueError:
+                    pass
 
             db.flush()
 
@@ -215,8 +278,10 @@ def edit_course(course_id):
                 "start_date": c.start_date.isoformat() if c.start_date else None,
                 "end_date": c.end_date.isoformat() if c.end_date else None,
                 "trainees": c.trainees,
-                "status": c.status,
+                "status_tco": c.status_tco,
+                "status_itc": c.status_itc,
                 "notes": c.notes,
+                "responsible_id": c.responsible_id,
             }
 
             log_movement(
@@ -236,7 +301,10 @@ def edit_course(course_id):
                 db.commit()
             except IntegrityError:
                 db.rollback()
-                flash("No se pudo actualizar el curso. Revisa valores únicos.", "danger")
+                flash(
+                    "No se pudo actualizar el curso. Revisa valores únicos.",
+                    "danger",
+                )
                 return render_template(
                     "courses/form.html",
                     page_title="Edit course",
@@ -273,8 +341,10 @@ def delete_course(course_id):
             "start_date": c.start_date.isoformat() if c.start_date else None,
             "end_date": c.end_date.isoformat() if c.end_date else None,
             "trainees": c.trainees,
-            "status": c.status,
+            "status_tco": c.status_tco,
+            "status_itc": c.status_itc,
             "notes": c.notes,
+            "responsible_id": c.responsible_id,
         }
 
         db.delete(c)
@@ -297,7 +367,10 @@ def delete_course(course_id):
             db.commit()
         except IntegrityError:
             db.rollback()
-            flash("No se pudo eliminar el curso. Puede estar referenciado en otros registros.", "danger")
+            flash(
+                "No se pudo eliminar el curso. Puede estar referenciado en otros registros.",
+                "danger",
+            )
             return redirect(url_for("courses.index"))
 
         flash("Course eliminado.", "success")
@@ -316,38 +389,38 @@ def calendar_data():
     db = SessionLocal()
     try:
         start_str = request.args.get("from")
-        end_str   = request.args.get("to")
+        end_str = request.args.get("to")
 
-        # Si no mandan rango, no hacemos nada
         if not start_str or not end_str:
             return jsonify([])
 
-        # from/to vienen como 'YYYY-MM-DD' desde el JS
         start = date.fromisoformat(start_str)
-        end   = date.fromisoformat(end_str)
+        end = date.fromisoformat(end_str)
 
-        # Criterio: el curso se muestra si:
-        # start_date <= end_visible  AND  end_date >= start_visible
         courses = (
             db.query(models.Course)
-              .filter(models.Course.start_date <= end)
-              .filter(models.Course.end_date   >= start)
-              .all()
+            .filter(models.Course.start_date <= end)
+            .filter(models.Course.end_date >= start)
+            .all()
         )
 
         data = []
         for c in courses:
             if not c.start_date:
                 continue
-            data.append({
-                "id": c.id,
-                "name": c.course or c.name,
-                "start_date": c.start_date.isoformat(),
-                "end_date":   (c.end_date or c.start_date).isoformat(),
-                "status": c.auto_status,
-                "trainees": c.trainees,
-                "detail_url": url_for("courses.detail_fragment", course_id=c.id),
-            })
+            data.append(
+                {
+                    "id": c.id,
+                    "name": c.course or c.name,
+                    "start_date": c.start_date.isoformat(),
+                    "end_date": (c.end_date or c.start_date).isoformat(),
+                    "status": c.auto_status,        # calculado
+                    "status_tco": c.status_tco,    # raw
+                    "status_itc": c.status_itc,    # raw
+                    "trainees": c.trainees,
+                    "detail_url": url_for("courses.detail_fragment", course_id=c.id),
+                }
+            )
 
         return jsonify(data)
     finally:
@@ -368,11 +441,11 @@ def detail(course_id):
     if not course:
         abort(404)
 
-    # 🔹 recalcular estados de las asignaciones vivas antes de pintar
     update_assignment_overdue_status_for_course(db, course)
 
     active_assignments = [
-        a for a in course.assignments
+        a
+        for a in course.assignments
         if a.status in ("active", "overdue_1", "overdue_2")
         and a.device is not None
     ]
@@ -398,11 +471,11 @@ def detail_fragment(course_id):
     if not course:
         abort(404)
 
-    # 🔹 igual aquí: el fragmento es lo que ves en la ventanita
     update_assignment_overdue_status_for_course(db, course)
 
     active_assignments = [
-        a for a in course.assignments
+        a
+        for a in course.assignments
         if a.status in ("active", "overdue_1", "overdue_2")
         and a.device is not None
     ]
@@ -413,42 +486,29 @@ def detail_fragment(course_id):
         active_assignments=active_assignments,
     )
 
-PER_PAGE = 20  # ajusta a tu gusto
-
-COURSE_STATUSES = ["planned", "active", "finished", "cancelled"]
 
 # Umbral de días de retraso para overdue_1
-OVERDUE_1_DAYS = 7
-
-
 OVERDUE_1_DAYS = 7  # 1..7 días -> overdue_1
+
 
 def update_assignment_overdue_status_for_course(db, course):
     """
     Actualiza Assignment.status para las asignaciones 'vivas' de un curso
     según la fecha de fin del curso y la fecha actual.
-
-    Estados:
-      - active
-      - overdue_1  (1..OVERDUE_1_DAYS días tarde)
-      - overdue_2  (> OVERDUE_1_DAYS días tarde)
     """
     print("Llamada funcion update fecha")
     today = date.today()
 
-    # Si el curso no tiene fecha fin, todas las "vivas" se quedan en active
     if not course.end_date:
         for a in course.assignments:
             if a.status in ("active", "overdue_1", "overdue_2"):
                 a.status = "active"
-                # atributo dinámico para la plantilla, no es columna
                 a.days_late = 0
         return
 
     days_late = (today - course.end_date).days
 
     for a in course.assignments:
-        # Solo tocamos las asignaciones vivas
         if a.status not in ("active", "overdue_1", "overdue_2"):
             continue
 
@@ -464,8 +524,8 @@ def update_assignment_overdue_status_for_course(db, course):
 
         a.status = new_status
         print("status: " + new_status)
-        # atributo ad-hoc para usar en la plantilla
         a.days_late = dl
+
 
 @bp.route("/api/calendar-events")
 @login_required
@@ -476,54 +536,63 @@ def api_calendar_events():
 
         events = []
         for c in courses:
-            # Si no tiene ni inicio ni fin, no lo pintamos
             if not c.start_date and not c.end_date:
                 continue
 
-            # Título: name -> course -> fallback
             title = (
                 (c.name or "").strip()
                 or (c.course or "").strip()
                 or f"Course #{c.id}"
             )
+            detail_url = url_for("courses.detail_fragment", course_id=c.id)
 
             # Evento de INICIO (verde)
             if c.start_date:
-                events.append({
-                    "id": f"{c.id}-start",
-                    "title": title,
-                    "start": c.start_date.isoformat(),  # solo start, sin "end"
-                    "allDay": True,
-                    "classNames": ["fc-course-start"],
-                    "extendedProps": {
-                        "course_id": c.id,
-                        "status": c.status,
-                        "trainees": c.trainees,
-                        "client": c.client,
-                        "course_code": c.course,
-                        "course_url": f"/courses/{c.id}",
-                        "kind": "start",
-                    },
-                })
+                events.append(
+                    {
+                        "id": f"{c.id}-start",
+                        "title": title,
+                        "start": c.start_date.isoformat(),
+                        "allDay": True,
+                        "classNames": ["fc-course-start"],
+                        "extendedProps": {
+                            "course_id": c.id,
+                            "status": c.auto_status,
+                            "status_tco": c.status_tco,
+                            "status_itc": c.status_itc,
+                            "trainees": c.trainees,
+                            "client": c.client,
+                            "course_code": c.course,
+                            "course_url": f"/courses/{c.id}",
+                            "detail_url": detail_url,
+                            "kind": "start",
+                        },
+                    }
+                )
 
-            # Evento de FIN (azul) solo si existe y no coincide con el inicio
+            # Evento de FIN (azul)
             if c.end_date and (not c.start_date or c.end_date != c.start_date):
-                events.append({
-                    "id": f"{c.id}-end",
-                    "title": title,
-                    "start": c.end_date.isoformat(),  # un solo día
-                    "allDay": True,
-                    "classNames": ["fc-course-end"],
-                    "extendedProps": {
-                        "course_id": c.id,
-                        "status": c.status,
-                        "trainees": c.trainees,
-                        "client": c.client,
-                        "course_code": c.course,
-                        "course_url": f"/courses/{c.id}",
-                        "kind": "end",
-                    },
-                })
+                events.append(
+                    {
+                        "id": f"{c.id}-end",
+                        "title": title,
+                        "start": c.end_date.isoformat(),
+                        "allDay": True,
+                        "classNames": ["fc-course-end"],
+                        "extendedProps": {
+                            "course_id": c.id,
+                            "status": c.auto_status,
+                            "status_tco": c.status_tco,
+                            "status_itc": c.status_itc,
+                            "trainees": c.trainees,
+                            "client": c.client,
+                            "course_code": c.course,
+                            "course_url": f"/courses/{c.id}",
+                            "detail_url": detail_url,
+                            "kind": "end",
+                        },
+                    }
+                )
 
         return jsonify(events)
     finally:

@@ -4,22 +4,28 @@
   <div class="d-flex align-items-center justify-content-between mb-3">
     <h2 class="mb-0">Users</h2>
     <div class="d-flex align-items-center">
-  <form class="d-inline-flex p-2" method="get" action="{{ url_for('users.index') }}">
-    <input name="q" value="{{ q }}" class="form-control form-control-sm me-2" placeholder="Search user...">
-    <button class="btn btn-sm btn-outline-primary ms-2">🔎</button>
-  </form>
-    <a href="{{ url_for('users.new_user') }}" class="btn btn-primary btn-sm">New user</a>
+      <form class="d-inline-flex p-2" method="get" action="{{ url_for('users.index') }}">
+        <input name="q" value="{{ q }}" class="form-control form-control-sm me-2" placeholder="Search user...">
+        <button class="btn btn-sm btn-outline-primary ms-2">🔎</button>
+      </form>
+      <a href="{{ url_for('users.new_user') }}" class="btn btn-primary btn-sm">New user</a>
+    </div>
   </div>
-  </div>
-  
-  
 
   <div class="table-responsive">
     <table class="table table-hover align-middle">
       <thead class="table-light">
         <tr>
-          <th>ID</th><th>Name</th><th>Surname</th><th>Username</th>
-          <th>Email</th><th>UID</th><th>Role</th><th>Active</th><th>Created</th><th class="text-end" style="width:150px;">Actions</th>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Surname</th>
+          <th>Username</th>
+          <th>Email</th>
+          <th>UID</th>
+          <th>Role</th>
+          <th>Active</th>
+          <th>Created</th>
+          <th class="text-end" style="width:150px;">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -33,23 +39,51 @@
           <td><code>{{ u.uid }}</code></td>
           <td>{{ u.role }}</td>
           <td>
-            {% if u.active %}<span class="badge text-bg-success">Yes</span>
-            {% else %}<span class="badge text-bg-secondary">No</span>{% endif %}
+            {% if u.active %}
+              <span class="badge text-bg-success">Yes</span>
+            {% else %}
+              <span class="badge text-bg-secondary">No</span>
+            {% endif %}
           </td>
           <td>{{ u.created_at }}</td>
           <td>
             <div class="text-end">
-              <a class="btn btn-secondary btn-sm text-end"
-                href="{{ url_for('users.edit_user', user_id=u.id) }}">Edit</a>
-                <form method="post" action="{{ url_for('users.delete_user', user_id=u.id) }}" class="d-inline">
-                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Delete user {{ u.username }}?')">Delete</button>
-              </form>
+
+              {# EDIT solo si el backend lo permite #}
+              {% if can_edit_user(current_user, u) %}
+                <a class="btn btn-secondary btn-sm"
+                   href="{{ url_for('users.edit_user', user_id=u.id) }}">
+                  Edit
+                </a>
+              {% endif %}
+
+              {# DELETE solo si el backend lo permite #}
+              {% if can_delete_user(current_user, u) %}
+                <form method="post"
+                      action="{{ url_for('users.delete_user', user_id=u.id) }}"
+                      class="d-inline delete-user-form">
+                  {% if csrf_token is defined %}
+                    {{ csrf_token() }}
+                  {% endif %}
+                  <button type="button"
+                          class="btn btn-sm btn-danger btn-user-delete"
+                          data-username="{{ u.username or u.email or ('User #' ~ u.id) }}"
+                          data-url="{{ url_for('users.delete_user', user_id=u.id) }}">
+                    Delete
+                  </button>
+                </form>
+              {% endif %}
+
             </div>
-            </td>
+          </td>
         </tr>
         {% endfor %}
         {% if not users %}
-        <tr><td colspan="9" class="text-center text-body-secondary">Sin resultados</td></tr>
+        <tr>
+          <td colspan="10" class="text-center text-body-secondary">
+            Sin resultados
+          </td>
+        </tr>
         {% endif %}
       </tbody>
     </table>
@@ -58,11 +92,15 @@
   <nav aria-label="Paginación">
     <ul class="pagination">
       <li class="page-item {% if not has_prev %}disabled{% endif %}">
-        <a class="page-link" href="{{ url_for('users.index', q=q, page=(page-1 if page>1 else 1), per_page=per_page) }}">«</a>
+        <a class="page-link"
+           href="{{ url_for('users.index', q=q, page=(page-1 if page>1 else 1), per_page=per_page) }}">«</a>
       </li>
-      <li class="page-item active"><span class="page-link">{{ page }}</span></li>
+      <li class="page-item active">
+        <span class="page-link">{{ page }}</span>
+      </li>
       <li class="page-item {% if not has_next %}disabled{% endif %}">
-        <a class="page-link" href="{{ url_for('users.index', q=q, page=(page+1 if has_next else page), per_page=per_page) }}">»</a>
+        <a class="page-link"
+           href="{{ url_for('users.index', q=q, page=(page+1 if has_next else page), per_page=per_page) }}">»</a>
       </li>
     </ul>
   </nav>

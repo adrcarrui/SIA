@@ -32,7 +32,7 @@
       {% for c in courses %}
       <tr>
         <td class="text-muted">{{ c.id }}</td>
-        <td>{{ c.course }}</td>
+        <td>{{ c.course or '—'}}</td>
         <td>{{ c.name or '—' }}</td>
         <td>{{ c.client or '—' }}</td>
         <td class="text-nowrap">

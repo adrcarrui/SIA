@@ -10,73 +10,128 @@
       <div class="row g-3">
         <div class="col-md-4">
           <label class="form-label">Course</label>
-          <input name="course" class="form-control" value="{{ c.course if c else '' }}"
-               required
-               oninvalid="this.setCustomValidity('This field is required')"
-               oninput="this.setCustomValidity('')">
+          <input
+            name="course"
+            class="form-control"
+            value="{% if c and c.course not in [None, 'None', '']%}{{ c.course }}{% endif %}"
+          >
         </div>
 
         <div class="col-md-4">
           <label class="form-label">Name</label>
-          <input name="name" class="form-control" value="{{ c.name if c else '' }}">
+          <input
+            name="name"
+            class="form-control"
+            value="{% if c and c.name not in [None, 'None', '']%}{{ c.name }}{% endif %}"
+          >
         </div>
 
         <div class="col-md-4">
           <label class="form-label">Client</label>
-          <input name="client" class="form-control" value="{{ c.client if c else '' }}">
+          <input
+            name="client"
+            class="form-control"
+            value="{% if c and c.client not in [None, 'None', ''] %}{{ c.client }}{% endif %}"
+          >
         </div>
       </div>
 
       <div class="col-md-6">
         <label class="form-label">Start date</label>
-        <input type="date" name="start_date" class="form-control"
-               value="{{ c.start_date if c and c.start_date else '' }}"
-               required
-               oninvalid="this.setCustomValidity('This field is required')"
-               oninput="this.setCustomValidity('')">
+        <input
+          type="date"
+          name="start_date"
+          class="form-control"
+          value="{% if c and c.start_date %}{{ c.start_date.isoformat() }}{% endif %}"
+          required
+          oninvalid="this.setCustomValidity('This field is required')"
+          oninput="this.setCustomValidity('')"
+        >
       </div>
 
       <div class="col-md-6">
         <label class="form-label">End date</label>
-        <input type="date" name="end_date" class="form-control"
-               value="{{ c.end_date if c and c.end_date else '' }}"
-               required
-               oninvalid="this.setCustomValidity('This field is required')"
-               oninput="this.setCustomValidity('')">
+        <input
+          type="date"
+          name="end_date"
+          class="form-control"
+          value="{% if c and c.end_date %}{{ c.end_date.isoformat() }}{% endif %}"
+          required
+          oninvalid="this.setCustomValidity('This field is required')"
+          oninput="this.setCustomValidity('')"
+        >
       </div>
 
       <div class="col-md-6">
         <label class="form-label">Trainees</label>
-        <input name="trainees" class="form-control" value="{{ c.trainees if c else '' }}"
-        required
-        oninvalid="this.setCustomValidity('This field is required')"
-        oninput="this.setCustomValidity('')">
+        <input
+          name="trainees"
+          class="form-control"
+          value="{% if c and c.trainees is not none %}{{ c.trainees }}{% endif %}"
+          required
+          oninvalid="this.setCustomValidity('This field is required')"
+          oninput="this.setCustomValidity('')"
+        >
       </div>
-
-      <!--<div class="col-md-6">
-        <label class="form-label">Status</label>
-        <select name="status" class="form-select">
-          {% set STATUS_OPTIONS = ['planned', 'active', 'finished', 'cancelled'] %}
-          {% for s in STATUS_OPTIONS %}
-            <option value="{{ s }}" {{ 'selected' if c and c.status == s else '' }}>
-              {{ s.capitalize() }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>-->
 
       <div class="col-12">
         <label class="form-label">Notes</label>
-        <textarea name="notes" rows="3" class="form-control">{{ c.notes if c else '' }}</textarea>
+        <textarea name="notes" rows="3" class="form-control">{% if c and c.notes not in [None, 'None', ''] %}{{ c.notes }}{% endif %}</textarea>
       </div>
     </div>
-      <div class="mt-4 d-flex justify-content-end gap-2">
-    <button class="btn btn-primary" type="submit">
-      Save
-    </button>
-    <a href="{{ url_for('courses.index') }}" class="btn btn-secondary">Cancel</a>
-  </div>
+
+    <div class="mt-4 d-flex justify-content-end gap-2">
+      <button class="btn btn-primary" type="submit">
+        Save
+      </button>
+      <a href="{{ url_for('courses.index') }}" class="btn btn-secondary">Cancel</a>
+    </div>
   </form>
 </div>
+{% block scripts %}
+  {{ super() }}
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const form = document.querySelector('.course-form form');
+      if (!form) return;
+
+      const courseInput = form.elements['course'];
+      const nameInput   = form.elements['name'];
+
+      function clearValidity() {
+        if (courseInput) courseInput.setCustomValidity('');
+        if (nameInput) nameInput.setCustomValidity('');
+      }
+
+      if (courseInput) {
+        courseInput.addEventListener('input', clearValidity);
+      }
+      if (nameInput) {
+        nameInput.addEventListener('input', clearValidity);
+      }
+
+      form.addEventListener('submit', function (e) {
+        const courseVal = courseInput ? courseInput.value.trim() : '';
+        const nameVal   = nameInput ? nameInput.value.trim() : '';
+
+        if (!courseVal && !nameVal) {
+          e.preventDefault();
+
+          const msg = 'Please fill either "Course" or "Name".';
+
+          if (courseInput) courseInput.setCustomValidity(msg);
+          if (nameInput) nameInput.setCustomValidity(msg);
+
+          // Forzar que el navegador enseñe el mensaje en uno de los dos
+          if (courseInput) {
+            courseInput.reportValidity();
+          } else if (nameInput) {
+            nameInput.reportValidity();
+          }
+        }
+      });
+    });
+  </script>
+{% endblock %}
 
 {% endblock %}

@@ -250,18 +250,21 @@ button[data-bs-toggle="dropdown"]::before {
   background-color: #fff3cd !important;
   border-color: #ffe69c !important;
   color: #856404 !important;
+  font-weight: 700 !important;
 }
 
 .fc-course-active {
   background-color: #d1e7dd !important;
   border-color: #a3cfbb !important;
   color: #0f5132 !important;
+  font-weight: 700 !important;
 }
 
 .fc-course-finished {
   background-color: #e2e3e5 !important;
   border-color: #c4c8cb !important;
   color: #41464b !important;
+  font-weight: 700 !important;
 }
 
 .fc-course-cancelled {
@@ -269,12 +272,29 @@ button[data-bs-toggle="dropdown"]::before {
   border-color: #f5c2c7 !important;
   color: #000000 !important;
   text-decoration: line-through;
+  font-weight: 700 !important;
 }
 
-.fc-course-planned .fc-event-main,
-.fc-course-active .fc-event-main,
-.fc-course-finished .fc-event-main,
-.fc-course-cancelled .fc-event-main {
+/* Inicio de curso: verde */
+.fc-course-start .fc-event-main {
+  background-color: #94fbab !important;  /* verde suave tipo "success" */
+  border-color: #0f5132 !important;
+  color: #000000 !important;
+  font-weight: 700 !important;           /* negrita */
+}
+
+/* Fin de curso: azul */
+.fc-course-end .fc-event-main {
+  background-color: #3f88c5 !important;  /* azul suave tipo "primary" */
+  border-color: #084298 !important;
   color: #000000 !important;
   font-weight: 700 !important;
+}
+
+.fc-badge-alert {
+  font-size: 0.7rem;
+  vertical-align: middle;
+  margin-left: 0.25rem;
+  padding-inline: 0.35em;
+  padding-block: 0.15em;
 }

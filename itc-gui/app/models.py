@@ -1,40 +1,56 @@
 ﻿# models.py
-from .extensions import db
+from datetime import datetime, date
+
 from flask_login import UserMixin
-from datetime import datetime,date
-from .extensions import db
-from sqlalchemy import func
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean
-from sqlalchemy.orm import relationship
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, text
-from sqlalchemy.sql import func
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Boolean,
+    DateTime,
+    Date,
+    ForeignKey,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+
+from .extensions import db
+
 
 class User(db.Model, UserMixin):
     __tablename__ = "users"
+
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100))
+    name = db.Column(db.String(100), nullable=False)
     surname = db.Column(db.String(100))
-    uid = db.Column(db.String(100))
+    uid = db.Column(db.String(60), unique=True)  # encaja mejor con la columna de la BD
     username = db.Column(db.String(100), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(255), unique=True)
-    role = db.Column(db.String(50))
+    role = db.Column(db.String(50), nullable=False, default="user")
     active = db.Column(db.Boolean, default=True, nullable=False)
+    # NO tiene sentido default=True en un String; lo dejamos nullable y sin default
+    department = db.Column(db.String(50), nullable=True)
 
     movements = relationship(
         "Movements",
         back_populates="user",
-        passive_deletes=False
+        passive_deletes=False,
     )
+
     assignments_created = relationship(
-    "Assignment",
-    back_populates="creator",
-    foreign_keys="Assignment.created_by",
+        "Assignment",
+        back_populates="creator",
+        foreign_keys="Assignment.created_by",
     )
-        # helpers opcionales
+
+    # helpers opcionales
     def get_id(self):
         return str(self.id)
+
 
 class Device(db.Model):
     __tablename__ = "devices"
@@ -43,43 +59,89 @@ class Device(db.Model):
     name = db.Column(db.String(120), nullable=False)
     uid = db.Column(db.String(64), unique=True, nullable=False)
 
-    # Puedes dejarlo como String con CHECK en la DB o usar Enum
+    # tipo de dispositivo (vending, canteen, etc.)
     type = db.Column(db.String(20), nullable=False, default="guest")
     status = db.Column(db.String(20), nullable=False, default="available")
     active = Column(Boolean, nullable=False, server_default=text("true"))
     notes = db.Column(db.String(255))
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = db.Column(
-        db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=datetime.utcnow
     )
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
     assignments = relationship("Assignment", back_populates="device")
+
     def __repr__(self):
-        return f"<Device id={self.id} uid={self.uid} type={self.type} status={self.status}>"
+        return (
+            f"<Device id={self.id} uid={self.uid} "
+            f"type={self.type} status={self.status}>"
+        )
 
 
 class Course(db.Model):
     __tablename__ = "courses"
+
     id = db.Column(db.Integer, primary_key=True)
     course = db.Column(db.String(120), nullable=False)
-    start_date = db.Column(db.Date, nullable=True)
-    end_date   = db.Column(db.Date, nullable=True)
-    status = db.Column(db.String(20), nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, server_default=func.now())
-    updated_at = db.Column(db.DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    start_date = db.Column(Date, nullable=True)
+    end_date = db.Column(Date, nullable=True)
+
+    # Estado negocio (TCO)
+    status_tco = db.Column(db.String(20), nullable=True)
+
+    created_at = db.Column(
+        db.DateTime, nullable=False, server_default=func.now()
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
     notes = db.Column(db.String(255), nullable=True)
     trainees = db.Column(db.Integer, nullable=False)
     name = db.Column(db.String(255), nullable=True)
     client = db.Column(db.String(255), nullable=True)
+
+    # Responsable del curso (User)
+    responsible_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Estado ITC / soporte
+    status_itc = db.Column(db.String(20), nullable=True)
+
+    # Relaciones
     assignments = relationship("Assignment", back_populates="course")
+
+    responsible = relationship(
+        "User",
+        foreign_keys=[responsible_id],
+        backref="courses_responsible_for",
+    )
+
     def __repr__(self):
         return f"<Course id={self.id} course={self.course!r} name={self.name!r}>"
-    
+
     @property
     def auto_status(self) -> str:
-        """Estado calculado según fechas y hoy."""
+        """
+        Estado calculado según fechas y hoy (vista TCO).
+        Devuelve siempre en minúsculas: planned / active / finished / cancelled
+        """
 
-        # Si el curso está marcado como cancelado a mano, respetamos eso.
-        if (self.status or "").lower() == "cancelled":
+        # Si el curso está marcado como cancelado explícitamente, lo respetamos
+        if (self.status_tco or "").lower() == "cancelled":
             return "cancelled"
 
         today = date.today()
@@ -88,46 +150,60 @@ class Course(db.Model):
             # Sin fechas: lo tratamos como 'planned' por defecto
             return "planned"
 
-        # Si solo hay fecha de inicio:
+        # Solo fecha de inicio
         if self.start_date and not self.end_date:
             if today < self.start_date:
-                return "Planned"
+                return "planned"
             elif today == self.start_date:
-                return "Active"
+                return "active"
             else:
-                return "Finished"
+                return "finished"
 
-        # Si hay inicio y fin
+        # Inicio y fin
         if today < self.start_date:
-            return "Planned"
+            return "planned"
         if self.start_date <= today <= self.end_date:
-            return "Active"
+            return "active"
         if today > self.end_date:
-            return "Finished"
+            return "finished"
 
         # Por si acaso
-        return "Planned"
+        return "planned"
+
 
 class Movements(db.Model):
-    __tablename__="movements"
+    __tablename__ = "movements"
 
-    id = Column(Integer, primary_key=True,index=True)
+    id = Column(Integer, primary_key=True, index=True)
 
-    user_id = Column(Integer,ForeignKey("users.id", ondelete="RESTRICT"),nullable=False)
-    entity_type = Column(String(50),nullable=False)
-    entity_id = Column(Integer,nullable=True)
-    action = Column(String(20),nullable=False)
-    before_data = Column(JSONB,nullable=True)
-    after_data = Column(JSONB,nullable=True)
-    success = Column(Boolean,nullable=False,default=True)
-    description = Column(Text,nullable=False)
-    user_agent = Column(Text,nullable=False)
-    created_at = Column(DateTime(timezone=True),nullable=False,default=datetime.utcnow)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    entity_type = Column(String(50), nullable=False)
+    entity_id = Column(Integer, nullable=True)
+    action = Column(String(20), nullable=False)
+    before_data = Column(JSONB, nullable=True)
+    after_data = Column(JSONB, nullable=True)
+    success = Column(Boolean, nullable=False, default=True)
+    description = Column(Text, nullable=False)
+    user_agent = Column(Text, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+    )
 
     user = relationship("User", back_populates="movements")
 
     def __repr__(self):
-        return f"<Movement id={self.id} user_id={self.user_id} action={self.action} entity_type={self.entity_type} entity_id={self.entity_id}>"
+        return (
+            f"<Movement id={self.id} user_id={self.user_id} "
+            f"action={self.action} entity_type={self.entity_type} "
+            f"entity_id={self.entity_id}>"
+        )
+
 
 class Assignment(db.Model):
     __tablename__ = "assignments"

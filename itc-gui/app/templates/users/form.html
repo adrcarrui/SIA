@@ -7,40 +7,56 @@
   <form method="post" action="">
 
     <div class="row g-3">
-      <div class="col-md-6">
+
+      {# FILA 1: Name, Surname, Email #}
+      <div class="col-md-4">
         <label class="form-label">Name</label>
         <input type="text" name="name" class="form-control"
                required
                value="{{ user.name if user else '' }}"
-              oninvalid="this.setCustomValidity('This field is required')"
-               oninput="this.setCustomValidity('')">
-      </div>
-
-      <div class="col-md-6">
-        <label class="form-label">Surname</label>
-        <input type="text" name="surname" class="form-control"
-               value="{{ user.surname if user else '' }}"
-                oninvalid="this.setCustomValidity('This field is required')"
-               oninput="this.setCustomValidity('')"
-               >
-      </div>
-
-      <div class="col-md-6">
-        <label class="form-label">Username</label>
-        <input type="text" name="username" class="form-control" required
-               value="{{ user.username if user else '' }}"
                oninvalid="this.setCustomValidity('This field is required')"
                oninput="this.setCustomValidity('')">
       </div>
 
-      <div class="col-md-6">
+      <div class="col-md-4">
+        <label class="form-label">Surname</label>
+        <input type="text" name="surname" class="form-control"
+               value="{{ user.surname if user else '' }}"
+               oninvalid="this.setCustomValidity('This field is required')"
+               oninput="this.setCustomValidity('')">
+      </div>
+
+      <div class="col-md-4">
         <label class="form-label">Email</label>
         <input type="text" name="email" class="form-control"
                value="{{ user.email if user else '' }}">
       </div>
 
-      {# UID con lector NFC, igual que en users #}
-      <div class="col-md-6">
+      {# FILA 2: Username, Password, UID #}
+      <div class="col-md-4">
+        <label class="form-label">Username</label>
+        <input type="text" name="username" class="form-control"
+               required
+               value="{{ user.username if user else '' }}"
+               oninvalid="this.setCustomValidity('This field is required')"
+               oninput="this.setCustomValidity('')">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">
+          Password{% if not user %} *{% endif %}
+        </label>
+        <input type="password" name="password" class="form-control"
+               {% if not user %}required{% endif %}
+               oninvalid="this.setCustomValidity('This field is required')"
+               oninput="this.setCustomValidity('')">
+        {% if user %}
+          <div class="form-text">Leave blank to keep the current password.</div>
+        {% endif %}
+      </div>
+
+      {# UID con lector NFC #}
+      <div class="col-md-4">
         <label class="form-label">
           UID <span class="text-danger">*</span>
         </label>
@@ -51,7 +67,7 @@
             name="uid"
             class="form-control"
             maxlength="64"
-            value="{{ device.uid if device else '' }}"
+            value="{{ user.uid if user and user.uid else '' }}"
             placeholder="P.ej. 04AABBCCDD"
             autocomplete="off"
           >
@@ -64,26 +80,82 @@
         </div>
       </div>
 
-      <div class="col-md-6">
-        <label class="form-label">Role</label>
-        <input type="text" name="role" class="form-control"
-               value="{{ user.role if user else '' }}">
-      </div>
+      <div class="col-md-4">
+        <label for="role" class="form-label">Role</label>
 
-      <div class="col-md-6">
-        <label class="form-label">
-          Password{% if not user %} *{% endif %}
-        </label>
-        <input type="password" name="password" class="form-control"
-              oninvalid="this.setCustomValidity('This field is required')"
-               oninput="this.setCustomValidity('')"
-               {% if not user %}required{% endif %}>
-        {% if user %}
-          <div class="form-text">Leave blank to keep the current password.</div>
+        {% set current_role = (user.role if user and user.role else 'employee') %}
+
+        {% if assignable_roles %}
+          <select name="role" id="role" class="form-select" required>
+            {% for r in assignable_roles %}
+              <option value="{{ r }}"
+                      {{ 'selected' if current_role == r else '' }}>
+                {{ r.capitalize() }}
+              </option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <input type="text"
+                 class="form-control"
+                 value="{{ current_role|capitalize }}"
+                 readonly>
+          <input type="hidden" name="role" value="{{ current_role }}">
         {% endif %}
       </div>
 
-      <div class="col-md-6 align-items-center">
+{# Department: TCO / ITC support / vacío #}
+<div class="col-md-4">
+  <label class="form-label">Department</label>
+
+  {# actor #}
+  {% set actor_role = (current_user.role or 'user') %}
+  {% set actor_dept = (current_user.department or '') %}
+
+  {# department efectivo del usuario editado o, si no hay, del actor #}
+  {% set current_department = (
+        user.department if user and user.department
+        else (actor_dept if actor_dept else '')
+     )
+  %}
+
+  {% set departments_all = ['TCO', 'ITC support', ''] %}
+
+  {# ADMIN: puede elegir cualquier departamento (incluido vacío) #}
+  {% if actor_role|lower == 'admin' %}
+    <select name="department" class="form-select">
+      {% for dep in departments_all %}
+        <option value="{{ dep }}"
+                {{ 'selected' if current_department == dep else '' }}>
+          {{ ' ' if dep == '' else dep }}
+        </option>
+      {% endfor %}
+    </select>
+
+  {# SUPERVISOR / EMPLOYEE CREANDO NUEVO USUARIO:
+     puede elegir su propio dept o vacío #}
+  {% elif not user and ('supervisor' in actor_role|lower or 'employee' in actor_role|lower) %}
+    {% set allowed_deps = [actor_dept, ''] %}
+
+    <select name="department" class="form-select">
+      {% for dep in allowed_deps %}
+        <option value="{{ dep }}"
+                {{ 'selected' if current_department == dep else '' }}>
+          {{ ' ' if dep == '' else dep }}
+        </option>
+      {% endfor %}
+    </select>
+
+  {# Resto de casos: solo ve (y no cambia) el dept actual del usuario #}
+  {% else %}
+    <input type="text"
+           class="form-control"
+           value="{{ current_department or ' ' }}"
+           readonly>
+    <input type="hidden" name="department" value="{{ current_department }}">
+  {% endif %}
+</div>
+
+      <div class="col-md-4 d-flex align-items-center">
         <div class="form-check mt-4">
           <input
             class="form-check-input"
@@ -98,9 +170,10 @@
           </label>
         </div>
       </div>
-    </div>
 
-  <div class="mt-4 d-flex justify-content-end gap-2">
+    </div> {# /row #}
+
+    <div class="mt-4 d-flex justify-content-end gap-2">
       <button class="btn btn-primary" type="submit">
         Save
       </button>
@@ -109,10 +182,9 @@
   </form>
 </div>
 
-{# el JS y los flashes los dejas igual #}
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-  console.log("devices/form NFC JS cargado");
+  console.log("users/form NFC JS cargado");
 
   const btn    = document.getElementById("btn-read-uid");
   const status = document.getElementById("uid-status");
@@ -120,7 +192,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const icon   = document.getElementById("btn-read-icon");
 
   if (!btn || !status || !input || !icon) {
-    console.warn("Elementos UID NFC (devices) no encontrados en el DOM");
+    console.warn("Elementos UID NFC (users) no encontrados en el DOM");
     return;
   }
 
@@ -142,7 +214,7 @@ document.addEventListener("DOMContentLoaded", function () {
       });
 
       const data = await resp.json().catch(() => ({}));
-      console.log("Respuesta NFC devices:", data);
+      console.log("Respuesta NFC users:", data);
 
       if (data.success) {
         input.value = data.uid;
@@ -156,18 +228,18 @@ document.addEventListener("DOMContentLoaded", function () {
         if (data.reason === "no_card") {
           status.textContent = "No se detectó tarjeta. Acerca la tarjeta e inténtalo de nuevo.";
         } else if (data.reason === "nfc_unavailable") {
-          status.textContent = "NFC no disponible en el servidor.";
+          status.textContent = "NFC not available on the server.";
         } else if (data.reason === "reader_error") {
-          status.textContent = data.error || "Error del lector NFC.";
+          status.textContent = data.error || "NFC reader error.";
         } else {
-          status.textContent = data.error || "No se pudo leer la tarjeta.";
+          status.textContent = data.error || "Could not read the card.";
         }
       }
     } catch (e) {
-      console.error("Error fetch NFC (devices):", e);
+      console.error("Error fetch NFC (users):", e);
       status.classList.remove("text-muted", "text-success");
       status.classList.add("text-danger");
-      status.textContent = "Error de comunicación con el servidor.";
+      status.textContent = "Communication error with the server.";
     } finally {
       btn.disabled = false;
       icon.textContent = "📡";

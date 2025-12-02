@@ -62,7 +62,7 @@
               </thead>
               <tbody>
                 <tr>
-                  <td class="fw-semibold text-center">Stock</td>
+                  <td class="fw-semibold text-center">Loan</td>
                   {% for row in device_stats %}
                     <td class="text-center text-muted">
                       <span>
@@ -72,7 +72,7 @@
                   {% endfor %}
                 </tr>
                 <tr>
-                  <td class="fw-semibold text-center">%</td>
+                  <td class="fw-semibold text-center">% Use</td>
                   {% for row in device_stats %}
                     <td class="text-center fw-semibold text-muted">
                       {{ row.ratio|round(0, 'floor') }}%
@@ -182,92 +182,6 @@
       <div id="calendar" style="min-height: 500px;"></div>
     </div>
 
-    <!-- Columna alertas resumen (por device) -->
-    <div class="col-lg-4 mb-3">
-      <h4 class="mb-3">Alerts</h4>
-      <table class="table table-sm table-striped">
-        <thead>
-          <tr>
-            <th>Device</th>
-            <th>Course</th>
-            <th>End date</th>
-            <th>Delay (days)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for alert in alerts %}
-          <tr class="{{ alert.level }}">
-            <td>{{ alert.device_name }}</td>
-            <td>{{ alert.course_name }}</td>
-            <td>{{ alert.end_date }}</td>
-            <td>{{ alert.delay_days }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-{# BLOQUE ALERTAS DETALLADAS (overdue) #}
-<div class="row mt-4">
-  <div class="col-md-7">
-    <div class="card shadow-sm">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Alerts (overdue)</span>
-        <span class="badge text-bg-danger">{{ overdue|length or 0 }}</span>
-      </div>
-      <div class="card-body p-2">
-        <table class="table table-sm mb-0">
-          <thead>
-            <tr>
-              <th>Course</th>
-              <th>End date</th>
-              <th class="text-end">Days late</th>
-              <th class="text-end">Cards assigned</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% if overdue and overdue|length > 0 %}
-              {% for o in overdue %}
-                <tr
-                  class="
-                    {% if o.overdue_level == 'overdue_2' %}
-                      table-danger
-                    {% elif o.overdue_level == 'overdue_1' %}
-                      table-warning
-                    {% endif %}
-                  "
-                >
-                  <td>
-                    <button type="button"
-                            class="btn btn-link p-0 course-detail-btn text-white text-decoration-none"
-                            data-bs-toggle="modal"
-                            data-bs-target="#courseModal"
-                            data-url="{{ url_for('courses.detail_fragment', course_id=o.course.id) }}">
-                      {{ (o.course.course if o.course.course not in [None, 'None', ''] else None)
-                        or (o.course.name if o.course.name not in [None, 'None', ''] else None)
-                        or ('Course #' ~ o.course.id) }}
-                    </button>
-                  </td>
-                  <td>{{ o.course.end_date or '—' }}</td>
-                  <td class="text-end">{{ o.days_late }}</td>
-                  <td class="text-end">{{ o.cards_count }}</td>
-                </tr>
-              {% endfor %}
-            {% else %}
-              <tr>
-                <td colspan="4" class="text-center text-muted">
-                  No overdue devices.
-                </td>
-              </tr>
-            {% endif %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- Modal único para ver detalles de curso -->
 <div class="modal fade" id="courseModal" tabindex="-1" aria-hidden="true">
@@ -294,6 +208,47 @@
 {% block scripts %}
   {{ super() }}
   <script>
+    // Función común para cargar el fragmento de detalle en el modal
+    function loadCourseDetail(url) {
+      const modalEl = document.getElementById('courseModal');
+      const modalBody = document.getElementById('courseModalBody');
+      if (!modalEl || !modalBody) {
+        console.error("Course modal not found");
+        return;
+      }
+
+      modalBody.innerHTML = `
+        <div class="text-center py-5">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      `;
+
+      fetch(url)
+        .then(resp => {
+          if (!resp.ok) {
+            throw new Error("HTTP " + resp.status);
+          }
+          return resp.text();
+        })
+        .then(html => {
+          modalBody.innerHTML = html;
+          const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+          modal.show();
+        })
+        .catch(err => {
+          console.error(err);
+          modalBody.innerHTML = `
+            <div class="alert alert-danger">
+              Error loading course details.
+            </div>
+          `;
+          const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+          modal.show();
+        });
+    }
+
     // FullCalendar en el dashboard
     document.addEventListener('DOMContentLoaded', function () {
       const calendarEl = document.getElementById('calendar');
@@ -314,11 +269,15 @@
         },
         dayMaxEvents: true,
         events: "{{ url_for('courses.api_calendar_events') }}",
+
         eventClick: function (info) {
-          if (info.event.extendedProps.course_url) {
+          const detailUrl = info.event.extendedProps.detail_url;
+          if (detailUrl) {
+            info.jsEvent.preventDefault();
+            loadCourseDetail(detailUrl);
+          } else if (info.event.extendedProps.course_url) {
+            // fallback por si algún evento no tiene detail_url
             window.location.href = info.event.extendedProps.course_url;
-          } else if (info.event.id) {
-            window.location.href = '/courses/' + info.event.id;
           }
         }
       });
@@ -326,37 +285,16 @@
       calendar.render();
     });
 
-    // Modal de detalles de curso (overdue)
+    // Modal de detalles de curso (overdue) - reutiliza la misma función
     document.addEventListener('click', function (e) {
       const btn = e.target.closest('[data-bs-target="#courseModal"][data-url]');
       if (!btn) return;
 
       e.preventDefault();
-
       const url = btn.dataset.url;
-      const modalBody = document.getElementById('courseModalBody');
-
-      modalBody.innerHTML = `
-        <div class="text-center py-5">
-          <div class="spinner-border" role="status">
-            <span class="visually-hidden">Loading...</span>
-          </div>
-        </div>
-      `;
-
-      fetch(url)
-        .then(resp => resp.text())
-        .then(html => {
-          modalBody.innerHTML = html;
-        })
-        .catch(err => {
-          console.error(err);
-          modalBody.innerHTML = `
-            <div class="alert alert-danger">
-              Error loading course details.
-            </div>
-          `;
-        });
+      if (url) {
+        loadCourseDetail(url);
+      }
     });
   </script>
 {% endblock %}

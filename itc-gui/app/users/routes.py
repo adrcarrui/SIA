@@ -1,4 +1,4 @@
-from flask import render_template, request, redirect, url_for, flash,jsonify
+from flask import render_template, request, redirect, url_for, flash,jsonify,abort
 from . import bp
 from app.db import SessionLocal
 import app.models as models
@@ -9,7 +9,7 @@ from smartcard.Exceptions import NoCardException
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from flask_login import login_required, current_user
 from app.scripts import log_movement
-
+import bcrypt
 # === NFC: imports y flag de disponibilidad ===
 try:
     NFC_AVAILABLE = True
@@ -21,6 +21,92 @@ except Exception:
         pass
 
     NFC_AVAILABLE = False
+
+ALL_ROLES = ["admin", "supervisor", "employee", "user"]
+
+def _role_level(role: str) -> str:
+    """
+    Normaliza el rol a un 'nivel' genérico:
+    - 'admin' -> 'admin'
+    - '*supervisor' -> 'supervisor'
+    - '*employee' -> 'employee'
+    - resto -> 'user'
+    """
+    if not role:
+        return "user"
+    r = role.lower()
+    if r == "admin":
+        return "admin"
+    if r.endswith("supervisor"):
+        return "supervisor"
+    if r.endswith("employee") or r == "employee":
+        return "employee"
+    return "user"
+
+
+def can_delete_user(actor, target) -> bool:
+    if not actor.is_authenticated:
+        return False
+
+    # Nadie se borra a sí mismo
+    if actor.id == target.id:
+        return False
+
+    actor_role = (actor.role or "user").lower()
+    target_role = (target.role or "user").lower()
+
+    actor_dept = (actor.department or "").strip().lower()
+    target_dept = (target.department or "").strip().lower()
+
+    a_level = _role_level(actor_role)
+    t_level = _role_level(target_role)
+
+    # Admin puede todo (menos a sí mismo)
+    if a_level == "admin":
+        return True
+
+    # Supervisor:
+    # - puede borrar user de cualquier dept
+    # - puede borrar employee solo de su mismo dept
+    if a_level == "supervisor":
+        if t_level == "user":
+            return True
+        if t_level == "employee":
+            return bool(actor_dept and target_dept and actor_dept == target_dept)
+        return False
+
+    # Employee: solo puede borrar user de su mismo dept
+    if a_level == "employee":
+        return (
+            t_level == "user"
+            and actor_dept
+            and target_dept
+            and actor_dept == target_dept
+        )
+
+    # User normal: no borra a nadie
+    return False
+
+def get_assignable_roles(actor_role: str):
+    """
+    Devuelve la lista de roles que el usuario actual puede asignar a otros.
+    """
+    actor_role = (actor_role or "").lower()
+
+    if actor_role == "admin":
+        # Puede crear cualquiera
+        return ["admin", "supervisor", "employee", "user"]
+
+    if actor_role == "supervisor":
+        # Puede crear supervisor/employee/user, pero NO admin
+        return ["supervisor", "employee", "user"]
+
+    if actor_role == "employee":
+        # Puede crear employee o user, pero no subir a nadie a supervisor/admin
+        return ["employee", "user"]
+
+    # role == "user" o cualquier otra cosa → no puede crear/editar usuarios
+    return []
 
 @bp.route("/")
 @login_required
@@ -45,16 +131,23 @@ def index():
 
         total = query.count()
         users = (
-            query.order_by(models.User.id.asc())   # 👈 orden por ID ascendente
-                .offset((page-1)*per_page)
-                .limit(per_page)
-                .all()
+            query.order_by(models.User.id.asc())
+                 .offset((page-1)*per_page)
+                 .limit(per_page)
+                 .all()
         )
 
         return render_template(
             "users/index.html",
-            users=users, q=q, page=page, per_page=per_page,
-            has_prev=page>1, has_next=page*per_page<total
+            users=users,
+            q=q,
+            page=page,
+            per_page=per_page,
+            has_prev=page > 1,
+            has_next=page * per_page < total,
+            # 👇 añadimos los helpers al contexto de Jinja
+            can_edit_user=can_edit_user,
+            can_delete_user=can_delete_user,
         )
     finally:
         db.close()
@@ -62,27 +155,42 @@ def index():
 @bp.route("/new", methods=["GET", "POST"])
 @login_required
 def new_user():
+    actor_role = getattr(current_user, "role", None)
+    assignable_roles = get_assignable_roles(actor_role)
+
+    # Si este tío no puede asignar ningún rol → no entra aquí
+    if not assignable_roles:
+        abort(403)
+
     if request.method == "POST":
-        #id=request.form["id"].strip()
         name = request.form["name"].strip()
         surname = request.form.get("surname", "").strip()
-        raw_uid= request.form["uid"].strip()
+        raw_uid = request.form["uid"].strip()
         username = request.form["username"].strip()
         password = request.form["password"]
         raw_email = request.form.get("email", "").strip()
-        raw_role = request.form.get("role", "user").strip()
+        raw_role = (request.form.get("role", "user") or "user").strip().lower()
         active = bool(request.form.get("active"))
 
+        # 🔒 validar que el rol elegido está permitido para el actor
+        if raw_role not in assignable_roles:
+            flash("You are not allowed to assign this role.", "danger")
+            return render_template(
+                "users/form.html",
+                page_title="New user",
+                user=None,
+                assignable_roles=assignable_roles,
+            )
 
         # 🔒 Hashear la contraseña antes de guardarla
         hashed_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
         uid = raw_uid or None
         email = raw_email or None
-        role = raw_role or 'User'
+        role = raw_role  # ya validado
+
         db = SessionLocal()
         actor_id = getattr(current_user, "id", None)
-        #db.add(u)
-        #db.flush()  # para que u.id exista antes del commit
 
         try:
             new_user = models.User(
@@ -96,37 +204,44 @@ def new_user():
                 active=active,
             )
             db.add(new_user)
-            #db.commit()
             db.flush()
+
             log_movement(
-                    db,
-                    user_id=actor_id,
-                    entity_type="user",
-                    entity_id=new_user.id,
-                    action="create",
-                    after_data={
-                        "id": new_user.id,
-                        "username": new_user.username,
-                        "email": new_user.email,
-                        "role": new_user.role,
-                        "active": new_user.active,
-                    },
-                    description=f"User '{new_user.username}' created",
-                    user_agent=request.user_agent.string,
-                )
+                db,
+                user_id=actor_id,
+                entity_type="user",
+                entity_id=new_user.id,
+                action="create",
+                after_data={
+                    "id": new_user.id,
+                    "username": new_user.username,
+                    "email": new_user.email,
+                    "role": new_user.role,
+                    "active": new_user.active,
+                },
+                description=f"User '{new_user.username}' created",
+                user_agent=request.user_agent.string,
+            )
+
             db.commit()
             flash("✅ User created successfully", "success")
             return redirect(url_for("users.index"))
+
         except Exception as e:
             db.rollback()
             flash(f"❌ Error creating user: {e}", "danger")
         finally:
             db.close()
 
-    return render_template("users/form.html", page_title="New user", user=None)
+    # GET
+    return render_template(
+        "users/form.html",
+        page_title="New user",
+        user=None,
+        assignable_roles=assignable_roles,
+    )
 
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-import bcrypt
+
 
 @bp.route("/<int:user_id>/edit", methods=["GET", "POST"])
 @login_required
@@ -139,8 +254,22 @@ def edit_user(user_id):
             flash("User not found", "danger")
             return redirect(url_for("users.index"))
 
+        actor = current_user
+        actor_role = (getattr(actor, "role", None) or "user").lower()
+        actor_id = getattr(actor, "id", None)
+
+        # 🔒 Reglas de acceso (rol + departamento)
+        if not can_edit_user(actor, user):
+            flash("You are not allowed to edit this user.", "danger")
+            return redirect(url_for("users.index"))
+
+        # Roles asignables según el actor (esto ya lo tenías)
+        assignable_roles = get_assignable_roles(actor_role)
+        if not assignable_roles:
+            flash("You are not allowed to change roles for this user.", "danger")
+            return redirect(url_for("users.index"))
+
         if request.method == "POST":
-            actor_id = getattr(current_user, "id", None)
 
             # Estado ANTES
             before_data = {
@@ -150,24 +279,90 @@ def edit_user(user_id):
                 "role": user.role,
                 "active": user.active,
                 "uid": user.uid,
+                "department": user.department,
             }
 
-            user.name = request.form["name"]
-            user.surname = request.form.get("surname", "")
+            # Datos “neutros”: cualquiera puede tocarlos
+            user.name = request.form["name"].strip()
+            user.surname = request.form.get("surname", "").strip()
 
-            # UID saneado
             raw_uid = (request.form.get("uid") or "").strip()
             if raw_uid == "" or raw_uid.lower() in ("none", "null"):
                 user.uid = None
             else:
                 user.uid = raw_uid
 
-            user.username = request.form.get("username", "").strip()
-            raw_email = request.form.get("email", "").strip()
+            user.username = (request.form.get("username") or "").strip()
+            raw_email = (request.form.get("email") or "").strip()
             user.email = raw_email or None
-            user.role = request.form.get("role", "user")
-            user.active = bool(request.form.get("active", ""))
 
+            # ==========================
+            # ROLE / ACTIVE / DEPARTMENT
+            # ==========================
+
+            # Lo que llega del formulario
+            raw_role = (request.form.get("role", user.role or "user") or "user").strip().lower()
+            raw_department = (request.form.get("department", user.department or "") or "").strip()
+
+            # employee → NO toca role / active / department
+            if actor_role == "employee":
+                # Ignoramos lo que venga del form
+                raw_role = (user.role or "user").lower()
+                raw_department = user.department
+                # user.active no se toca, se queda como está
+
+            # supervisores (tco_supervisor, itc_supervisor, etc.)
+            elif actor_role.endswith("supervisor"):
+                # Solo pueden asignar 'user' o 'employee'
+                if raw_role not in ("user", "employee"):
+                    flash("Supervisors can only assign 'user' or 'employee' roles.", "danger")
+                    return render_template(
+                        "users/form.html",
+                        page_title="Edit user",
+                        user=user,
+                        assignable_roles=assignable_roles,
+                    )
+
+                # Validar contra assignable_roles por si los limitas más
+                if raw_role not in assignable_roles:
+                    flash("You are not allowed to assign this role.", "danger")
+                    return render_template(
+                        "users/form.html",
+                        page_title="Edit user",
+                        user=user,
+                        assignable_roles=assignable_roles,
+                    )
+
+                # Departamento: supervisores NO cambian department
+                raw_department = user.department
+
+                user.role = raw_role
+                user.active = bool(request.form.get("active", ""))
+
+            # admin: puede cambiar role/active/department dentro de assignable_roles
+            elif actor_role == "admin":
+                if raw_role not in assignable_roles:
+                    flash("You are not allowed to assign this role.", "danger")
+                    return render_template(
+                        "users/form.html",
+                        page_title="Edit user",
+                        user=user,
+                        assignable_roles=assignable_roles,
+                    )
+                user.role = raw_role
+                user.active = bool(request.form.get("active", ""))
+                user.department = raw_department or None
+
+            else:
+                # Rol raro → no toca role/active/department
+                raw_role = (user.role or "user").lower()
+                raw_department = user.department
+
+            # Para roles no admin/supervisor, aseguramos que no hemos tocado department
+            if actor_role in ("employee",) or (not actor_role.endswith("supervisor") and actor_role != "admin"):
+                user.department = user.department  # explícito pero inútil: no cambia nada
+
+            # Password: cualquiera puede cambiar SU password si la rellena
             new_password = request.form.get("password", "")
             if new_password:
                 user.password_hash = bcrypt.hashpw(
@@ -182,10 +377,10 @@ def edit_user(user_id):
                 "role": user.role,
                 "active": user.active,
                 "uid": user.uid,
+                "department": user.department,
             }
 
             try:
-                # registrar movimiento
                 log_movement(
                     db,
                     user_id=actor_id,
@@ -222,11 +417,17 @@ def edit_user(user_id):
                 print("SQLAlchemyError on edit_user:", e)
                 flash("Error de base de datos al actualizar el usuario.", "danger")
 
-        # GET o POST con error: mostramos el formulario con el user aún ligado a la sesión
-        return render_template("users/form.html", page_title="Edit user", user=user)
+        # GET o POST con error
+        return render_template(
+            "users/form.html",
+            page_title="Edit user",
+            user=user,
+            assignable_roles=assignable_roles,
+        )
 
     finally:
         db.close()
+
 
 @bp.route("/<int:user_id>/delete", methods=["POST"])
 @login_required
@@ -239,11 +440,19 @@ def delete_user(user_id):
             flash("User not found.", "warning")
             return redirect(url_for("users.index"))
 
-        if getattr(current_user, "id", None) == user.id:
-            flash("No puedes borrarte a ti mismo.", "warning")
+        actor = current_user
+
+        # 🔒 Regla global: nadie se borra a sí mismo
+        if getattr(actor, "id", None) == user.id:
+            flash("You cannot delete your own user.", "warning")
             return redirect(url_for("users.index"))
 
-        actor_id = getattr(current_user, "id", None)
+        # 🔒 Reglas por rol + departamento
+        if not can_delete_user(actor, user):
+            flash("You are not allowed to delete this user.", "danger")
+            return redirect(url_for("users.index"))
+
+        actor_id = getattr(actor, "id", None)
 
         # estado ANTES de borrar
         before_data = {
@@ -275,16 +484,18 @@ def delete_user(user_id):
         still = db.query(models.User.id).filter_by(id=user_id).first()
         print("Deleted?", "NO (still exists)" if still else "YES")
         flash(f"🗑️ User '{username}' deleted successfully.", "success")
+
     except IntegrityError as e:
         db.rollback()
         print("IntegrityError on delete:", e)
-        flash("No se puede borrar: existen registros relacionados (FK).", "danger")
+        flash("Cannot delete: related records exist (FK).", "danger")
     except SQLAlchemyError as e:
         db.rollback()
         print("SQLAlchemyError on delete:", e)
-        flash(f"Error de base de datos: {e}", "danger")
+        flash(f"Database error while deleting user: {e}", "danger")
     finally:
         db.close()
+
     return redirect(url_for("users.index"))
 
 @bp.route("/read-uid", methods=["POST"])
@@ -338,3 +549,54 @@ def read_uid_once():
         })
     finally:
         db.close()
+
+from flask_login import current_user
+from flask import abort
+
+def can_edit_user(actor, target) -> bool:
+    """
+    Reglas de edición de usuario:
+
+    - Admin: puede editar a cualquiera (da igual departamento).
+    - Cualquiera: puede editarse a sí mismo.
+    - Excepción especial:
+        * supervisor / employee pueden editar a user aunque NO sea del mismo dept.
+    - Para el resto de ediciones a OTROS:
+        * Debe ser MISMO departamento (no vacío).
+        * supervisor: puede editar employee o user de su mismo dept.
+        * employee / user: no pueden editar a otros (salvo la excepción anterior).
+    """
+    if not getattr(actor, "is_authenticated", False):
+        return False
+
+    actor_role = (actor.role or "user").lower()
+    target_role = (target.role or "user").lower()
+    actor_dept = (actor.department or "").strip().lower()
+    target_dept = (target.department or "").strip().lower()
+
+    actor_level = _role_level(actor_role)
+    target_level = _role_level(target_role)
+
+    # 1) Admin siempre puede editar
+    if actor_level == "admin":
+        return True
+
+    # 2) Cualquiera puede editarse a sí mismo (da igual departamento)
+    if actor.id == target.id:
+        return True
+
+    # 3) Excepción: supervisor / employee pueden editar a user,
+    #    aunque no compartan departamento
+    if actor_level in ("supervisor", "employee") and target_level == "user":
+        return True
+
+    # 4) Para el resto de casos: solo si ambos tienen dept y es el mismo
+    if not actor_dept or not target_dept or actor_dept != target_dept:
+        return False
+
+    # 5) Supervisor puede editar employee / user de su mismo dept
+    if actor_level == "supervisor":
+        return target_level in ("employee", "user")
+
+    # 6) employee / user no editan a otros (salvo la excepción del punto 3)
+    return False

@@ -153,7 +153,7 @@
   </script>
   {% endif %}
 
-  <!-- Modal detalle de curso -->
+  <!-- Modal detalle de curso (solo una vez) -->
   <div class="modal fade" id="courseDetailModal" tabindex="-1" aria-labelledby="courseDetailLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
       <div class="modal-content">
@@ -169,6 +169,95 @@
       </div>
     </div>
   </div>
+
+  {# ============================
+     MODAL CONFIRMACIÓN BORRADO
+     ============================ #}
+  <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title">Confirm user deletion</h5>
+          <button type="button"
+                  class="btn-close btn-close-white"
+                  data-bs-dismiss="modal"
+                  aria-label="Close"></button>
+        </div>
+        <form id="confirm-delete-form" method="post">
+          <div class="modal-body">
+            {# El CSRF se clonará desde el formulario original vía JS si existe #}
+            <p class="mb-2">
+              Are you sure you want to delete user
+              <strong id="confirm-delete-username"></strong>?
+            </p>
+            <p class="small text-muted mb-0">
+              This action cannot be undone.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button"
+                    class="btn btn-secondary btn-sm"
+                    data-bs-dismiss="modal">
+              Cancel
+            </button>
+            <button type="submit"
+                    class="btn btn-danger btn-sm">
+              Yes, delete
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {# =========================================
+     MODAL GLOBAL PARA MENSAJES FLASH
+     ========================================= #}
+  {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+      <div class="modal fade" id="flashModal" tabindex="-1" aria-hidden="true" data-has-messages="1">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header
+                        {% if 'success' in messages|map(attribute=0)|list %}
+                          bg-success text-white
+                        {% elif 'danger' in messages|map(attribute=0)|list %}
+                          bg-danger text-white
+                        {% else %}
+                          bg-primary text-white
+                        {% endif %}">
+              <h5 class="modal-title">
+                {% if 'success' in messages|map(attribute=0)|list %}
+                  Operation completed
+                {% elif 'danger' in messages|map(attribute=0)|list %}
+                  Something went wrong
+                {% else %}
+                  Information
+                {% endif %}
+              </h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <ul class="mb-0">
+                {% for category, msg in messages %}
+                  <li class="small">
+                    {{ msg }}
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div id="flashModal" data-has-messages="0" hidden></div>
+    {% endif %}
+  {% endwith %}
 
 {% block scripts %}
   <!-- JS Bootstrap -->
@@ -219,8 +308,79 @@
       if (btn) btn.addEventListener('click', toggleSidebar);
     })();
   </script>
+
+  <!-- Script: confirmación de borrado de usuario -->
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const deleteButtons = document.querySelectorAll(".btn-user-delete");
+      if (!deleteButtons.length) {
+        return;
+      }
+
+      const modalEl = document.getElementById("confirmDeleteModal");
+      const nameEl  = document.getElementById("confirm-delete-username");
+      const formEl  = document.getElementById("confirm-delete-form");
+
+      if (!modalEl || !nameEl || !formEl) {
+        console.warn("Confirm delete modal elements not found.");
+        return;
+      }
+
+      deleteButtons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          const username = this.dataset.username || "this user";
+          const url      = this.dataset.url;
+
+          // Texto del usuario en el modal
+          nameEl.textContent = username;
+
+          // Action del formulario del modal
+          formEl.action = url;
+
+          // Copiar CSRF desde el form original si existe
+          const srcForm = this.closest("form");
+          if (srcForm) {
+            const srcCsrf = srcForm.querySelector("input[name='csrf_token']");
+            if (srcCsrf) {
+              let dstCsrf = formEl.querySelector("input[name='csrf_token']");
+              if (!dstCsrf) {
+                dstCsrf = srcCsrf.cloneNode();
+                formEl.appendChild(dstCsrf);
+              }
+              dstCsrf.value = srcCsrf.value;
+            }
+          }
+
+          if (typeof bootstrap !== "undefined" && bootstrap.Modal) {
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+          } else {
+            console.warn("Bootstrap Modal not available.");
+          }
+        });
+      });
+    });
+  </script>
+
+  <!-- Script: mostrar modal de flashes -->
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const modalEl = document.getElementById("flashModal");
+      if (!modalEl) return;
+
+      const hasMessages = modalEl.getAttribute("data-has-messages") === "1";
+      if (!hasMessages) return;
+
+      if (typeof bootstrap === "undefined" || !bootstrap.Modal) {
+        console.warn("Bootstrap Modal not available, cannot show flash modal.");
+        return;
+      }
+
+      const modal = new bootstrap.Modal(modalEl);
+      modal.show();
+    });
+  </script>
 {% endblock %}
 
-  
 </body>
 </html>
