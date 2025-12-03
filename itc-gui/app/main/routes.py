@@ -2,7 +2,7 @@
 from flask_login import login_required
 from . import bp
 from app.db import SessionLocal
-from app.scripts.get_overdue_assignments import get_overdue_assignments
+from app.scripts.get_overdue_assignments import get_overdue_assignments, get_cards_vs_trainees_alerts
 from app.models import User, Device, Course, Assignment, Movements
 from sqlalchemy import func, case  # <-- añade esto
 
@@ -14,6 +14,8 @@ def index():
     try:
         # Overdue usando la misma sesión
         overdue = get_overdue_assignments(db)
+
+        cards_alerts = get_cards_vs_trainees_alerts(db)
 
         # Totales globales usando SessionLocal (no Model.query)
         total_users = db.query(User).count()
@@ -62,6 +64,7 @@ def index():
 
     return render_template(
         "index.html",
+        cards_alerts=cards_alerts,
         overdue=overdue,
         total_users=total_users,
         total_devices=total_devices,

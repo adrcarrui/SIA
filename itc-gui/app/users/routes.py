@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from flask_login import login_required, current_user
 from app.scripts import log_movement
 import bcrypt
+from app.models import User
 # === NFC: imports y flag de disponibilidad ===
 try:
     NFC_AVAILABLE = True
@@ -113,11 +114,23 @@ def get_assignable_roles(actor_role: str):
 def index():
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 20, type=int)
+
+    # Búsqueda global (lo que ya tenías)
     q = (request.args.get("q") or "").strip()
+
+    # Filtros por columna (fila encima de la tabla)
+    username = (request.args.get("username") or "").strip()
+    name     = (request.args.get("name") or "").strip()
+    surname  = (request.args.get("surname") or "").strip()
+    uid      = (request.args.get("uid") or "").strip()
+    email    = (request.args.get("email") or "").strip()
+    role     = (request.args.get("role") or "").strip()
 
     db = SessionLocal()
     try:
         query = db.query(models.User)
+
+        # Filtro global q (como antes)
         if q:
             like = f"%{q}%"
             query = query.filter(or_(
@@ -128,6 +141,20 @@ def index():
                 models.User.email.ilike(like),
                 models.User.role.ilike(like),
             ))
+
+        # Filtros por columna (se acumulan con AND)
+        if name:
+            query = query.filter(models.User.name.ilike(f"%{name}%"))
+        if surname:
+            query = query.filter(models.User.surname.ilike(f"%{surname}%"))
+        if username:
+            query = query.filter(models.User.username.ilike(f"%{username}%"))
+        if uid:
+            query = query.filter(models.User.uid.ilike(f"%{uid}%"))
+        if email:
+            query = query.filter(models.User.email.ilike(f"%{email}%"))
+        if role:
+            query = query.filter(models.User.role.ilike(f"%{role}%"))
 
         total = query.count()
         users = (
@@ -140,17 +167,27 @@ def index():
         return render_template(
             "users/index.html",
             users=users,
+            # búsqueda global
             q=q,
+            # paginación
             page=page,
             per_page=per_page,
             has_prev=page > 1,
             has_next=page * per_page < total,
-            # 👇 añadimos los helpers al contexto de Jinja
+            # filtros por columna (para rellenar los inputs)
+            filter_name=name,
+            filter_surname=surname,
+            filter_username=username,
+            filter_uid=uid,
+            filter_email=email,
+            filter_role=role,
+            # helpers
             can_edit_user=can_edit_user,
             can_delete_user=can_delete_user,
         )
     finally:
         db.close()
+
 
 @bp.route("/new", methods=["GET", "POST"])
 @login_required
@@ -257,15 +294,18 @@ def edit_user(user_id):
         actor = current_user
         actor_role = (getattr(actor, "role", None) or "user").lower()
         actor_id = getattr(actor, "id", None)
+        is_self = (actor_id == user.id)
 
         # 🔒 Reglas de acceso (rol + departamento)
         if not can_edit_user(actor, user):
             flash("You are not allowed to edit this user.", "danger")
             return redirect(url_for("users.index"))
 
-        # Roles asignables según el actor (esto ya lo tenías)
+        # Roles asignables según el actor
         assignable_roles = get_assignable_roles(actor_role)
-        if not assignable_roles:
+
+        # Si edita a OTRO y no tiene roles asignables, fuera
+        if not is_self and not assignable_roles:
             flash("You are not allowed to change roles for this user.", "danger")
             return redirect(url_for("users.index"))
 
@@ -282,7 +322,9 @@ def edit_user(user_id):
                 "department": user.department,
             }
 
-            # Datos “neutros”: cualquiera puede tocarlos
+            # ==========================
+            # DATOS NEUTROS (cualquiera)
+            # ==========================
             user.name = request.form["name"].strip()
             user.surname = request.form.get("surname", "").strip()
 
@@ -299,70 +341,74 @@ def edit_user(user_id):
             # ==========================
             # ROLE / ACTIVE / DEPARTMENT
             # ==========================
-
-            # Lo que llega del formulario
             raw_role = (request.form.get("role", user.role or "user") or "user").strip().lower()
             raw_department = (request.form.get("department", user.department or "") or "").strip()
 
-            # employee → NO toca role / active / department
-            if actor_role == "employee":
-                # Ignoramos lo que venga del form
+            if is_self:
+                # Editando SUS PROPIOS DATOS:
+                # no dejamos que cambie role / department / active desde el form
                 raw_role = (user.role or "user").lower()
                 raw_department = user.department
-                # user.active no se toca, se queda como está
-
-            # supervisores (tco_supervisor, itc_supervisor, etc.)
-            elif actor_role.endswith("supervisor"):
-                # Solo pueden asignar 'user' o 'employee'
-                if raw_role not in ("user", "employee"):
-                    flash("Supervisors can only assign 'user' or 'employee' roles.", "danger")
-                    return render_template(
-                        "users/form.html",
-                        page_title="Edit user",
-                        user=user,
-                        assignable_roles=assignable_roles,
-                    )
-
-                # Validar contra assignable_roles por si los limitas más
-                if raw_role not in assignable_roles:
-                    flash("You are not allowed to assign this role.", "danger")
-                    return render_template(
-                        "users/form.html",
-                        page_title="Edit user",
-                        user=user,
-                        assignable_roles=assignable_roles,
-                    )
-
-                # Departamento: supervisores NO cambian department
-                raw_department = user.department
-
-                user.role = raw_role
-                user.active = bool(request.form.get("active", ""))
-
-            # admin: puede cambiar role/active/department dentro de assignable_roles
-            elif actor_role == "admin":
-                if raw_role not in assignable_roles:
-                    flash("You are not allowed to assign this role.", "danger")
-                    return render_template(
-                        "users/form.html",
-                        page_title="Edit user",
-                        user=user,
-                        assignable_roles=assignable_roles,
-                    )
-                user.role = raw_role
-                user.active = bool(request.form.get("active", ""))
-                user.department = raw_department or None
+                # user.active se queda como está
 
             else:
-                # Rol raro → no toca role/active/department
-                raw_role = (user.role or "user").lower()
-                raw_department = user.department
+                # employee → NO toca role / active / department de OTROS
+                if actor_role == "employee":
+                    raw_role = (user.role or "user").lower()
+                    raw_department = user.department
+                    # user.active no se toca
 
-            # Para roles no admin/supervisor, aseguramos que no hemos tocado department
-            if actor_role in ("employee",) or (not actor_role.endswith("supervisor") and actor_role != "admin"):
-                user.department = user.department  # explícito pero inútil: no cambia nada
+                # supervisores
+                elif actor_role.endswith("supervisor"):
+                    if raw_role not in ("user", "employee"):
+                        flash("Supervisors can only assign 'user' or 'employee' roles.", "danger")
+                        return render_template(
+                            "users/form.html",
+                            page_title="Edit user",
+                            user=user,
+                            assignable_roles=assignable_roles,
+                        )
 
-            # Password: cualquiera puede cambiar SU password si la rellena
+                    if raw_role not in assignable_roles:
+                        flash("You are not allowed to assign this role.", "danger")
+                        return render_template(
+                            "users/form.html",
+                            page_title="Edit user",
+                            user=user,
+                            assignable_roles=assignable_roles,
+                        )
+
+                    # Supervisor no cambia department
+                    raw_department = user.department
+                    user.role = raw_role
+                    user.active = bool(request.form.get("active", ""))
+
+                # admin: puede cambiar role/active/department dentro de assignable_roles
+                elif actor_role == "admin":
+                    if raw_role not in assignable_roles:
+                        flash("You are not allowed to assign this role.", "danger")
+                        return render_template(
+                            "users/form.html",
+                            page_title="Edit user",
+                            user=user,
+                            assignable_roles=assignable_roles,
+                        )
+                    user.role = raw_role
+                    user.active = bool(request.form.get("active", ""))
+                    user.department = raw_department or None
+
+                else:
+                    # Rol raro → no toca role/active/department
+                    raw_role = (user.role or "user").lower()
+                    raw_department = user.department
+
+                # Para roles no admin/supervisor, aseguramos que no hemos tocado department
+                if actor_role in ("employee",) or (not actor_role.endswith("supervisor") and actor_role != "admin"):
+                    user.department = user.department  # explícito pero inútil
+
+            # ==========================
+            # PASSWORD
+            # ==========================
             new_password = request.form.get("password", "")
             if new_password:
                 user.password_hash = bcrypt.hashpw(
@@ -404,18 +450,18 @@ def edit_user(user_id):
                 print("IntegrityError on edit_user:", detail)
 
                 if "users_uid_key" in detail:
-                    flash("UID ya está en uso por otro usuario.", "danger")
+                    flash("UID is already in use by another user.", "danger")
                 elif "users_username_key" in detail:
-                    flash("Username ya está en uso por otro usuario.", "danger")
+                    flash("Username is already in use by another user.", "danger")
                 elif "users_email_key" in detail:
-                    flash("Email ya está en uso por otro usuario.", "danger")
+                    flash("Email is already in use by another user.", "danger")
                 else:
                     print(e)
-                    flash("Error de integridad en BD (constraint UNIQUE).", "danger")
+                    flash("Integrity error in DB (UNIQUE constraint).", "danger")
             except SQLAlchemyError as e:
                 db.rollback()
                 print("SQLAlchemyError on edit_user:", e)
-                flash("Error de base de datos al actualizar el usuario.", "danger")
+                flash("Database error while updating user.", "danger")
 
         # GET o POST con error
         return render_template(
@@ -550,21 +596,17 @@ def read_uid_once():
     finally:
         db.close()
 
-from flask_login import current_user
-from flask import abort
 
 def can_edit_user(actor, target) -> bool:
     """
-    Reglas de edición de usuario:
-
-    - Admin: puede editar a cualquiera (da igual departamento).
+    - Admin: puede editar a cualquiera.
     - Cualquiera: puede editarse a sí mismo.
-    - Excepción especial:
-        * supervisor / employee pueden editar a user aunque NO sea del mismo dept.
-    - Para el resto de ediciones a OTROS:
-        * Debe ser MISMO departamento (no vacío).
-        * supervisor: puede editar employee o user de su mismo dept.
-        * employee / user: no pueden editar a otros (salvo la excepción anterior).
+    - Supervisor:
+        * Puede editar users (role 'user') de cualquier departamento.
+        * Puede editar employees de su mismo departamento.
+        * No puede editar otros supervisors ni admins.
+    - Employee / user:
+        * Solo pueden editarse a sí mismos.
     """
     if not getattr(actor, "is_authenticated", False):
         return False
@@ -574,29 +616,81 @@ def can_edit_user(actor, target) -> bool:
     actor_dept = (actor.department or "").strip().lower()
     target_dept = (target.department or "").strip().lower()
 
-    actor_level = _role_level(actor_role)
-    target_level = _role_level(target_role)
-
-    # 1) Admin siempre puede editar
-    if actor_level == "admin":
+    # 1) Admin: todo
+    if actor_role == "admin":
         return True
 
-    # 2) Cualquiera puede editarse a sí mismo (da igual departamento)
+    # 2) Cualquiera puede editarse a sí mismo
     if actor.id == target.id:
         return True
 
-    # 3) Excepción: supervisor / employee pueden editar a user,
-    #    aunque no compartan departamento
-    if actor_level in ("supervisor", "employee") and target_level == "user":
-        return True
+    # 3) Supervisor
+    if actor_role == "supervisor":
+        # Puede editar cualquier 'user'
+        if target_role == "user":
+            return True
 
-    # 4) Para el resto de casos: solo si ambos tienen dept y es el mismo
-    if not actor_dept or not target_dept or actor_dept != target_dept:
+        # Puede editar 'employee' de su mismo dept
+        if (
+            target_role == "employee"
+            and actor_dept
+            and target_dept
+            and actor_dept == target_dept
+        ):
+            return True
+
+        # No puede editar otros supervisors ni admins
         return False
 
-    # 5) Supervisor puede editar employee / user de su mismo dept
-    if actor_level == "supervisor":
-        return target_level in ("employee", "user")
-
-    # 6) employee / user no editan a otros (salvo la excepción del punto 3)
+    # 4) employee / user: sólo su propia ficha (ya cubierta arriba)
     return False
+
+@bp.route("/users", methods=["GET"])
+def users_list():
+    db = SessionLocal()
+
+    # Leer parámetros de la URL (GET)
+    username = request.args.get("username", type=str)
+    first_name = request.args.get("first_name", type=str)
+    last_name = request.args.get("last_name", type=str)
+    role = request.args.get("role", type=str)
+    department = request.args.get("department", type=str)
+
+    q = db.query(User)
+
+    # Filtro por username
+    if username:
+        q = q.filter(User.username.ilike(f"%{username.strip()}%"))
+
+    # Filtro por nombre
+    if first_name:
+        q = q.filter(User.first_name.ilike(f"%{first_name.strip()}%"))
+
+    # Filtro por apellido
+    if last_name:
+        q = q.filter(User.last_name.ilike(f"%{last_name.strip()}%"))
+
+    # Filtro por rol (ajusta según tu modelo)
+    if role:
+        # Si `role` es un string en User (ej: 'admin', 'supervisor', etc.)
+        q = q.filter(User.role == role)
+
+        # Si tienes tabla Role y relación:
+        # q = q.join(User.role_rel).filter(Role.name == role)
+
+    # Filtro por departamento
+    if department:
+        q = q.filter(User.department.ilike(f"%{department.strip()}%"))
+
+    users = q.order_by(User.id).all()
+
+    return render_template(
+        "users/list.html",
+        users=users,
+        # reenviamos los valores al template para rellenar el formulario
+        username=username or "",
+        first_name=first_name or "",
+        last_name=last_name or "",
+        role=role or "",
+        department=department or "",
+    )

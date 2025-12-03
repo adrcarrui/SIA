@@ -9,11 +9,29 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timedelta
 from app.scripts import log_movement
-from app.models import Assignment, Course, Device
+from app.models import Assignment, Course, Device, User
 
 PER_PAGE = 20  # ajusta a tu gusto
 
-COURSE_STATUSES = ["planned", "active", "finished", "cancelled"]
+# Estados TCO (negocio)
+COURSE_TCO_STATUSES = ["planned", "active", "finished", "cancelled"]
+
+# Estados ITC (soporte)
+COURSE_ITC_STATUSES = [
+    "start",
+    "cancel or error",
+    "completed",
+    "delivered",
+    "end",
+    "collected",
+    "RT delivered",
+    "loan",
+    "MSN loaded",
+    "MSN delivered",
+]
+
+# Lista combinada para filtros en el index
+COURSE_STATUSES = sorted(set(COURSE_TCO_STATUSES + COURSE_ITC_STATUSES))
 
 
 def normalize_field(value: str):
@@ -30,10 +48,23 @@ def normalize_field(value: str):
 def index():
     q = (request.args.get("q") or "").strip()
     page = max(int(request.args.get("page", 1)), 1)
+    per_page = int(request.args.get("per_page", PER_PAGE))
+
+    # Column filters
+    course_code = (request.args.get("course") or "").strip()
+    name        = (request.args.get("name") or "").strip()
+    client      = (request.args.get("client") or "").strip()
+    status      = (request.args.get("status") or "").strip()
+    trainees_s  = (request.args.get("trainees") or "").strip()
+    notes       = (request.args.get("notes") or "").strip()
+    start_str   = (request.args.get("start_date") or "").strip()
+    end_str     = (request.args.get("end_date") or "").strip()
 
     db = SessionLocal()
     try:
         qry = db.query(models.Course)
+
+        # Búsqueda global
         if q:
             like = f"%{q}%"
             qry = qry.filter(
@@ -44,12 +75,55 @@ def index():
                 )
             )
 
+        # Filtros por columna (AND)
+        if course_code:
+            qry = qry.filter(models.Course.course.ilike(f"%{course_code}%"))
+
+        if name:
+            qry = qry.filter(models.Course.name.ilike(f"%{name}%"))
+
+        if client:
+            qry = qry.filter(models.Course.client.ilike(f"%{client}%"))
+
+        if status:
+            # filtramos por estado TCO o ITC que coincidan con el valor
+            qry = qry.filter(
+                or_(
+                    models.Course.status_tco == status,
+                    models.Course.status_itc == status,
+                )
+            )
+
+        if trainees_s:
+            try:
+                trainees_val = int(trainees_s)
+                qry = qry.filter(models.Course.trainees == trainees_val)
+            except ValueError:
+                pass
+
+        if notes:
+            qry = qry.filter(models.Course.notes.ilike(f"%{notes}%"))
+
+        if start_str:
+            try:
+                start_date = datetime.strptime(start_str, "%Y-%m-%d").date()
+                qry = qry.filter(models.Course.start_date == start_date)
+            except ValueError:
+                pass
+
+        if end_str:
+            try:
+                end_date = datetime.strptime(end_str, "%Y-%m-%d").date()
+                qry = qry.filter(models.Course.end_date == end_date)
+            except ValueError:
+                pass
+
         total = qry.count()
-        pages = max(ceil(total / PER_PAGE), 1)
+        pages = max(ceil(total / per_page), 1)
         courses = (
             qry.order_by(models.Course.id.asc())
-            .offset((page - 1) * PER_PAGE)
-            .limit(PER_PAGE)
+            .offset((page - 1) * per_page)
+            .limit(per_page)
             .all()
         )
 
@@ -57,12 +131,25 @@ def index():
             "courses/index.html",
             page_title="TCO GUI",
             courses=courses,
+            # búsqueda global
             q=q,
+            # paginación
             page=page,
             pages=pages,
             total=total,
+            per_page=per_page,
             has_prev=page > 1,
             has_next=page < pages,
+            # filtros por columna (para los inputs)
+            filter_course=course_code,
+            filter_name=name,
+            filter_client=client,
+            filter_status=status,
+            filter_trainees=trainees_s,
+            filter_notes=notes,
+            filter_start_date=start_str,
+            filter_end_date=end_str,
+            COURSE_STATUSES=COURSE_STATUSES,
         )
     finally:
         db.close()
@@ -85,26 +172,55 @@ def new_course():
 
             # estados separados
             status_tco = (request.form.get("status_tco") or "planned").strip() or "planned"
-            status_itc = (request.form.get("status_itc") or "planned").strip() or "planned"
+            status_itc = (request.form.get("status_itc") or "start").strip() or "start"
 
-            # saneo básico contra lista
-            if status_tco not in COURSE_STATUSES:
+            # saneo contra listas
+            if status_tco not in COURSE_TCO_STATUSES:
                 status_tco = "planned"
-            if status_itc not in COURSE_STATUSES:
-                status_itc = "planned"
+            if status_itc not in COURSE_ITC_STATUSES:
+                status_itc = "start"
+
+            # ITC (no admin) no puede decidir el estado TCO
+            actor_role = (getattr(current_user, "role", "") or "").lower()
+            actor_dept = (getattr(current_user, "department", "") or "")
+            is_itc_only = (actor_dept == "ITC support" and actor_role != "admin")
+            if is_itc_only:
+                status_tco = "planned"
 
             notes = (request.form.get("notes") or "").strip()
+            client = (request.form.get("client") or "").strip()
+
             start_dt = to_date(request.form.get("start_date"))
             end_dt = to_date(request.form.get("end_date"))
 
-            # responsable: si no viene nada, usamos al usuario actual
+            # responsable: combo limitado a TCO supervisor/employee,
+            # pero por defecto el responsable será el que crea el curso
             resp_raw = (request.form.get("responsible_id") or "").strip()
             responsible_id = None
+
             if resp_raw:
                 try:
-                    responsible_id = int(resp_raw)
+                    candidate_id = int(resp_raw)
                 except ValueError:
-                    responsible_id = None
+                    candidate_id = None
+
+                if candidate_id:
+                    resp_user = db.query(models.User).get(candidate_id)
+                    if (
+                        resp_user
+                        and resp_user.active
+                        and resp_user.department == "TCO"
+                        and resp_user.role in ("supervisor", "employee")
+                    ):
+                        responsible_id = resp_user.id
+                    else:
+                        flash(
+                            "Selected responsible is not a valid TCO supervisor/employee.",
+                            "warning",
+                        )
+
+            # Si no se ha elegido un responsable válido, por defecto
+            # responsable = usuario que crea el curso
             if not responsible_id and current_user.is_authenticated:
                 responsible_id = current_user.id
 
@@ -117,6 +233,30 @@ def new_course():
             except ValueError:
                 trainees = 0
 
+            # Comprobación mínima: course o name
+            if not course and not name:
+                flash("You must fill either 'Course' or 'Name'.", "warning")
+
+                responsibles = (
+                    db.query(models.User)
+                    .filter(
+                        models.User.department == "TCO",
+                        models.User.active.is_(True),
+                        models.User.role.in_(["supervisor", "employee"]),
+                    )
+                    .order_by(models.User.name.asc(), models.User.surname.asc())
+                    .all()
+                )
+
+                return render_template(
+                    "courses/form.html",
+                    page_title="New course",
+                    c=None,
+                    COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
+                    COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
+                    responsibles=responsibles,
+                )
+
             new_course = models.Course(
                 course=course or None,
                 name=name or None,
@@ -127,6 +267,7 @@ def new_course():
                 start_date=start_dt,
                 end_date=end_dt,
                 responsible_id=responsible_id,
+                client=client or None,
             )
             db.add(new_course)
             db.flush()
@@ -153,8 +294,9 @@ def new_course():
                     "status_itc": new_course.status_itc,
                     "notes": new_course.notes,
                     "responsible_id": new_course.responsible_id,
+                    "client": new_course.client,
                 },
-                description=f"Course '{new_course.course}' created",
+                description=f"Course '{new_course.course or new_course.name}' created",
                 success=True,
                 user_agent=request.user_agent.string,
             )
@@ -163,22 +305,53 @@ def new_course():
             except IntegrityError:
                 db.rollback()
                 flash(
-                    "No se pudo crear el curso. Revisa valores únicos.",
+                    "Course could not be created. Check unique constraints.",
                     "danger",
                 )
+
+                responsibles = (
+                    db.query(models.User)
+                    .filter(
+                        models.User.department == "TCO",
+                        models.User.active.is_(True),
+                        models.User.role.in_(["supervisor", "employee"]),
+                    )
+                    .order_by(models.User.name.asc(), models.User.surname.asc())
+                    .all()
+                )
+
                 return render_template(
                     "courses/form.html",
                     page_title="New course",
                     c=None,
+                    COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
+                    COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
+                    responsibles=responsibles,
                 )
-            flash("Curso creado.", "success")
+
+            flash("Course created.", "success")
             return redirect(url_for("courses.index"))
 
-        return render_template("courses/form.html", page_title="New Course", c=None)
-    except Exception as e:
-        db.rollback()
-        flash(f"❌ Error creando curso: {e}", "danger")
-        return render_template("courses/form.html", page_title="New course", c=None)
+        # GET
+        responsibles = (
+            db.query(models.User)
+            .filter(
+                models.User.department == "TCO",
+                models.User.active.is_(True),
+                models.User.role.in_(["supervisor", "employee"]),
+            )
+            .order_by(models.User.name.asc(), models.User.surname.asc())
+            .all()
+        )
+
+        return render_template(
+            "courses/form.html",
+            page_title="New course",
+            c=None,
+            COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
+            COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
+            responsibles=responsibles,
+        )
     finally:
         db.close()
 
@@ -190,7 +363,7 @@ def edit_course(course_id):
     try:
         c = db.query(models.Course).get(course_id)
         if not c:
-            flash("Course no encontrado.", "danger")
+            flash("Course not found.", "danger")
             return redirect(url_for("courses.index"))
 
         if request.method == "POST":
@@ -206,10 +379,13 @@ def edit_course(course_id):
                 "status_itc": c.status_itc,
                 "notes": c.notes,
                 "responsible_id": c.responsible_id,
+                "client": c.client,
             }
 
             course_code = normalize_field((request.form.get("course") or ""))
             name = normalize_field((request.form.get("name") or ""))
+            client = normalize_field((request.form.get("client") or ""))
+
             start_str = (request.form.get("start_date") or "").strip()
             end_str = (request.form.get("end_date") or "").strip()
             trainees = (request.form.get("trainees") or "").strip()
@@ -217,22 +393,44 @@ def edit_course(course_id):
 
             # estados separados
             status_tco = (request.form.get("status_tco") or "").strip() or c.status_tco or "planned"
-            status_itc = (request.form.get("status_itc") or "").strip() or c.status_itc or "planned"
+            status_itc = (request.form.get("status_itc") or "").strip() or c.status_itc or "start"
 
-            if status_tco not in COURSE_STATUSES:
-                flash("Invalid TCO state. 'planned' will be used.", "warning")
+            if status_tco not in COURSE_TCO_STATUSES:
+                flash("Invalid TCO status. 'planned' will be used.", "warning")
                 status_tco = "planned"
 
-            if status_itc not in COURSE_STATUSES:
-                flash("Invalid ITC state. 'planned' will be used.", "warning")
-                status_itc = "planned"
+            if status_itc not in COURSE_ITC_STATUSES:
+                flash("Invalid ITC status. 'start' will be used.", "warning")
+                status_itc = "start"
+
+            # ITC (no admin) NO puede tocar el status_tco
+            actor_role = (getattr(current_user, "role", "") or "").lower()
+            actor_dept = (getattr(current_user, "department", "") or "")
+            is_itc_only = (actor_dept == "ITC support" and actor_role != "admin")
+            if is_itc_only:
+                status_tco = c.status_tco or "planned"
 
             if not course_code and not name:
                 flash("You must fill either 'Course' or 'Name'.", "warning")
+
+                responsibles = (
+                    db.query(models.User)
+                    .filter(
+                        models.User.department == "TCO",
+                        models.User.active.is_(True),
+                        models.User.role.in_(["supervisor", "employee"]),
+                    )
+                    .order_by(models.User.name.asc(), models.User.surname.asc())
+                    .all()
+                )
+
                 return render_template(
                     "courses/form.html",
                     page_title="Edit course",
                     c=c,
+                    COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
+                    COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
+                    responsibles=responsibles,
                 )
 
             def parse_date(s):
@@ -254,6 +452,7 @@ def edit_course(course_id):
             # Aplicar cambios
             c.course = course_code
             c.name = name or None
+            c.client = client or None
             c.start_date = start_date
             c.end_date = end_date
             c.trainees = trainees_val
@@ -261,13 +460,29 @@ def edit_course(course_id):
             c.status_itc = status_itc
             c.notes = notes or None
 
-            # responsable (opcionalmente permitir cambiarlo)
+            # responsable (solo TCO supervisor/employee si se cambia)
             resp_raw = (request.form.get("responsible_id") or "").strip()
             if resp_raw:
                 try:
-                    c.responsible_id = int(resp_raw)
+                    candidate_id = int(resp_raw)
                 except ValueError:
-                    pass
+                    candidate_id = None
+
+                if candidate_id:
+                    resp_user = db.query(models.User).get(candidate_id)
+                    if (
+                        resp_user
+                        and resp_user.active
+                        and resp_user.department == "TCO"
+                        and resp_user.role in ("supervisor", "employee")
+                    ):
+                        c.responsible_id = resp_user.id
+                    else:
+                        flash(
+                            "Selected responsible is not a valid TCO supervisor/employee.",
+                            "warning",
+                        )
+            # Si va vacío, no tocamos c.responsible_id
 
             db.flush()
 
@@ -282,6 +497,7 @@ def edit_course(course_id):
                 "status_itc": c.status_itc,
                 "notes": c.notes,
                 "responsible_id": c.responsible_id,
+                "client": c.client,
             }
 
             log_movement(
@@ -292,7 +508,7 @@ def edit_course(course_id):
                 action="update",
                 before_data=before_data,
                 after_data=after_data,
-                description=f"Course '{c.course}' updated",
+                description=f"Course '{c.course or c.name}' updated",
                 success=True,
                 user_agent=request.user_agent.string,
             )
@@ -302,23 +518,52 @@ def edit_course(course_id):
             except IntegrityError:
                 db.rollback()
                 flash(
-                    "No se pudo actualizar el curso. Revisa valores únicos.",
+                    "Course could not be updated. Check unique constraints.",
                     "danger",
                 )
+
+                responsibles = (
+                    db.query(models.User)
+                    .filter(
+                        models.User.department == "TCO",
+                        models.User.active.is_(True),
+                        models.User.role.in_(["supervisor", "employee"]),
+                    )
+                    .order_by(models.User.name.asc(), models.User.surname.asc())
+                    .all()
+                )
+
                 return render_template(
                     "courses/form.html",
                     page_title="Edit course",
                     c=c,
+                    COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
+                    COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
+                    responsibles=responsibles,
                 )
 
-            flash("Course actualizado.", "success")
+            flash("Course updated.", "success")
             return redirect(url_for("courses.index"))
 
         # GET
+        responsibles = (
+            db.query(models.User)
+            .filter(
+                models.User.department == "TCO",
+                models.User.active.is_(True),
+                models.User.role.in_(["supervisor", "employee"]),
+            )
+            .order_by(models.User.name.asc(), models.User.surname.asc())
+            .all()
+        )
+
         return render_template(
             "courses/form.html",
             page_title="Edit course",
             c=c,
+            COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
+            COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
+            responsibles=responsibles,
         )
     finally:
         db.close()
@@ -331,7 +576,7 @@ def delete_course(course_id):
     try:
         c = db.query(models.Course).get(course_id)
         if not c:
-            flash("Course no encontrado.", "danger")
+            flash("Course not found.", "danger")
             return redirect(url_for("courses.index"))
 
         before_data = {
@@ -368,12 +613,12 @@ def delete_course(course_id):
         except IntegrityError:
             db.rollback()
             flash(
-                "No se pudo eliminar el curso. Puede estar referenciado en otros registros.",
+                "The course could not be deleted. It may be referenced in other records.",
                 "danger",
             )
             return redirect(url_for("courses.index"))
 
-        flash("Course eliminado.", "success")
+        flash("Course deleted.", "success")
         return redirect(url_for("courses.index"))
 
     finally:

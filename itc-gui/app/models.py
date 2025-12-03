@@ -178,8 +178,8 @@ class Movements(db.Model):
 
     user_id = Column(
         Integer,
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
     )
     entity_type = Column(String(50), nullable=False)
     entity_id = Column(Integer, nullable=True)
@@ -209,59 +209,15 @@ class Assignment(db.Model):
     __tablename__ = "assignments"
 
     id = Column(Integer, primary_key=True, index=True)
-
-    device_id = Column(
-        Integer,
-        ForeignKey("devices.id", onupdate="CASCADE", ondelete="RESTRICT"),
-        nullable=False,
-    )
-
-    course_id = Column(
-        Integer,
-        ForeignKey("courses.id", onupdate="CASCADE", ondelete="RESTRICT"),
-        nullable=False,
-    )
-
-    assigned_at = Column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=datetime.utcnow,
-    )
-
-    released_at = Column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    status = Column(
-        String(20),
-        nullable=False,
-        default="active",
-    )
-
-    created_by = Column(
-        Integer,
-        ForeignKey("users.id", onupdate="CASCADE", ondelete="SET NULL"),
-        nullable=True,
-    )
-
-    notes = Column(
-        String(255),
-        nullable=True,
-    )
-
-    created_at = Column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=datetime.utcnow,
-    )
-
-    updated_at = Column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-    )
+    device_id = Column(Integer,ForeignKey("devices.id", onupdate="CASCADE", ondelete="RESTRICT"),nullable=False,)
+    course_id = Column(Integer,ForeignKey("courses.id", onupdate="CASCADE", ondelete="RESTRICT"),nullable=False,)
+    assigned_at = Column(DateTime(timezone=True),nullable=False,default=datetime.utcnow,)
+    released_at = Column(DateTime(timezone=True),nullable=True,)
+    status = Column(String(20),nullable=False,default="active",)
+    created_by = Column(Integer,ForeignKey("users.id", onupdate="CASCADE", ondelete="SET NULL"),nullable=True,)
+    notes = Column(String(255),nullable=True,)
+    created_at = Column(DateTime(timezone=True),nullable=False,default=datetime.utcnow,)
+    updated_at = Column(DateTime(timezone=True),nullable=False,default=datetime.utcnow,onupdate=datetime.utcnow,)
 
     # Relaciones
     device = relationship("Device", back_populates="assignments")

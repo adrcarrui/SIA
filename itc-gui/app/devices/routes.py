@@ -19,14 +19,23 @@ DEVICE_STATUSES = ["assigned", "available", "lost", "annulled"]
 @bp.route("/")
 @login_required
 def index():
-    """Listado con búsqueda"""
+    """Listado con búsqueda y filtros por columna"""
     q = (request.args.get("q") or "").strip()
     page = max(int(request.args.get("page", 1)), 1)
     per_page = 20
 
+    # Column filters
+    name   = (request.args.get("name") or "").strip()
+    uid    = (request.args.get("uid") or "").strip()
+    dtype  = (request.args.get("type") or "").strip()
+    status = (request.args.get("status") or "").strip()
+    notes  = (request.args.get("notes") or "").strip()
+
     db = SessionLocal()
     try:
         query = db.query(models.Device)
+
+        # Global search (q) - lo que ya tenías
         if q:
             like = f"%{q}%"
             query = query.filter(
@@ -39,6 +48,19 @@ def index():
                 )
             )
 
+        # Column filters (se acumulan con AND)
+        if name:
+            query = query.filter(models.Device.name.ilike(f"%{name}%"))
+        if uid:
+            query = query.filter(models.Device.uid.ilike(f"%{uid}%"))
+        if dtype:
+            # usamos igualdad porque tienes un set cerrado: vending, canteen, etc.
+            query = query.filter(models.Device.type == dtype)
+        if status:
+            query = query.filter(models.Device.status == status)
+        if notes:
+            query = query.filter(models.Device.notes.ilike(f"%{notes}%"))
+
         total = query.count()
         devices = (
             query.order_by(models.Device.id.asc())
@@ -47,14 +69,30 @@ def index():
                  .all()
         )
         pages = ceil(total / per_page) if total else 1
-        return render_template("devices/index.html",
-                               page_title="TCO GUI",
-                               devices=devices,
-                               q=q,
-                               page=page, per_page=per_page, total=total, pages=pages,
-                               has_prev=page > 1,
-                               has_next=page < pages,
-                               )
+
+        return render_template(
+            "devices/index.html",
+            page_title="TCO GUI",
+            devices=devices,
+            # búsqueda global
+            q=q,
+            # paginación
+            page=page,
+            per_page=per_page,
+            total=total,
+            pages=pages,
+            has_prev=page > 1,
+            has_next=page < pages,
+            # filtros por columna (para mantener los valores en los inputs)
+            filter_name=name,
+            filter_uid=uid,
+            filter_type=dtype,
+            filter_status=status,
+            filter_notes=notes,
+            # por si quieres usar las listas en el template algún día
+            DEVICE_TYPES=DEVICE_TYPES,
+            DEVICE_STATUSES=DEVICE_STATUSES,
+        )
     finally:
         db.close()
 

@@ -1,19 +1,31 @@
 {% extends "base.html" %}
 {% block content %}
 
-<h2 class="mb-3">{{ page_title or (c and 'Edit course' or 'New course') }}</h2>
+{% set current_tco = (c.status_tco if c and c.status_tco else 'planned') %}
+{% set current_itc = (c.status_itc if c and c.status_itc else 'start') %}
+
+{# info del actor para la lógica de visibilidad #}
+{% set actor_role = (current_user.role or '')|lower %}
+{% set actor_dept = (current_user.department or '') %}
+{% set show_itc = (actor_role == 'admin') or (actor_dept == 'ITC support') %}
+
+<h2 class="mb-3">
+  {{ page_title or (c and 'Edit course' or 'New course') }}
+</h2>
 
 <div class="course-form">
   <form method="post" action="">
 
     <div class="row g-3">
+
+      {# --------- FILA 1: Course / Name / Client --------- #}
       <div class="row g-3">
         <div class="col-md-4">
           <label class="form-label">Course</label>
           <input
             name="course"
             class="form-control"
-            value="{% if c and c.course not in [None, 'None', '']%}{{ c.course }}{% endif %}"
+            value="{% if c and c.course not in [None, 'None', ''] %}{{ c.course }}{% endif %}"
           >
         </div>
 
@@ -22,7 +34,7 @@
           <input
             name="name"
             class="form-control"
-            value="{% if c and c.name not in [None, 'None', '']%}{{ c.name }}{% endif %}"
+            value="{% if c and c.name not in [None, 'None', ''] %}{{ c.name }}{% endif %}"
           >
         </div>
 
@@ -36,6 +48,7 @@
         </div>
       </div>
 
+      {# --------- FILA 2: Fechas --------- #}
       <div class="col-md-6">
         <label class="form-label">Start date</label>
         <input
@@ -62,6 +75,7 @@
         >
       </div>
 
+      {# --------- FILA 3: Trainees / Responsible --------- #}
       <div class="col-md-6">
         <label class="form-label">Trainees</label>
         <input
@@ -74,9 +88,103 @@
         >
       </div>
 
+      <div class="col-md-6">
+        <label class="form-label">Responsible</label>
+        <select name="responsible_id" class="form-select">
+          <option value="">
+            {% if c and c.responsible %}
+              {{ c.responsible.name }} {{ c.responsible.surname or '' }} (current)
+            {% elif c and not c.responsible %}
+              No responsible assigned
+            {% else %}
+              Creator will be responsible ({{ current_user.name }} {{ current_user.surname or '' }})
+            {% endif %}
+          </option>
+          {% for u in responsibles %}
+            <option value="{{ u.id }}"
+              {% if c and c.responsible_id == u.id %}selected{% endif %}
+            >
+              {{ u.name }} {{ u.surname or '' }}
+            </option>
+          {% endfor %}
+        </select>
+        <div class="form-text">
+          Only TCO supervisors / employees appear in the list. If you leave it empty, the course creator will be set as responsible.
+        </div>
+      </div>
+
+{# --------- FILA 4: Status TCO / Status ITC --------- #}
+
+{% set dept = (current_user.department | default('') | trim) %}
+
+{% if dept == 'TCO' or dept == '' %}
+  {# Usuario TCO o sin departamento:
+     - NO ve ningún estado
+     - Pero seguimos mandando los valores actuales para no romper nada #}
+  <input type="hidden" name="status_tco" value="{{ current_tco }}">
+  <input type="hidden" name="status_itc" value="{{ current_itc }}">
+
+{% else %}
+  {# Resto de usuarios (ITC, admin, otros) #}
+
+  <div class="col-md-6">
+    <label class="form-label">TCO status</label>
+    <select
+      name="status_tco"
+      class="form-select"
+    >
+      {% for s in COURSE_TCO_STATUSES %}
+        <option value="{{ s }}"
+          {% if current_tco == s %}selected{% endif %}
+        >
+          {{ s }}
+        </option>
+      {% endfor %}
+    </select>
+    <div class="form-text">
+      Business status of the course (TCO).
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    {% if show_itc %}
+      <label class="form-label">ITC status</label>
+      <select
+        name="status_itc"
+        class="form-select"
+      >
+        {% for s in COURSE_ITC_STATUSES %}
+          <option value="{{ s }}"
+            {% if current_itc == s %}selected{% endif %}
+          >
+            {{ s }}
+          </option>
+        {% endfor %}
+      </select>
+      <div class="form-text">
+        ITC support status of the course.
+      </div>
+    {% else %}
+      {# No lo ve, pero no queremos que machaque el valor actual #}
+      <input
+        type="hidden"
+        name="status_itc"
+        value="{{ current_itc }}"
+      >
+    {% endif %}
+  </div>
+
+{% endif %}
+
+
+      {# --------- Notas --------- #}
       <div class="col-12">
         <label class="form-label">Notes</label>
-        <textarea name="notes" rows="3" class="form-control">{% if c and c.notes not in [None, 'None', ''] %}{{ c.notes }}{% endif %}</textarea>
+        <textarea
+          name="notes"
+          rows="3"
+          class="form-control"
+        >{% if c and c.notes not in [None, 'None', ''] %}{{ c.notes }}{% endif %}</textarea>
       </div>
     </div>
 
@@ -88,6 +196,7 @@
     </div>
   </form>
 </div>
+
 {% block scripts %}
   {{ super() }}
   <script>
@@ -122,7 +231,6 @@
           if (courseInput) courseInput.setCustomValidity(msg);
           if (nameInput) nameInput.setCustomValidity(msg);
 
-          // Forzar que el navegador enseñe el mensaje en uno de los dos
           if (courseInput) {
             courseInput.reportValidity();
           } else if (nameInput) {

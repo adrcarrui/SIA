@@ -4,90 +4,229 @@
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h2 class="mb-0">Courses</h2>
   <div class="d-flex align-items-center gap-2">
-    <form class="d-flex" method="get" action="{{ url_for('courses.index') }}">
-      <input name="q" value="{{ q or '' }}" class="form-control form-control-sm me-2" placeholder="Search course...">
+    <!--<form class="d-flex" method="get" action="{{ url_for('courses.index') }}">
+      <input name="q"
+             value="{{ q or '' }}"
+             class="form-control form-control-sm me-2"
+             placeholder="Search course...">
       <button class="btn btn-sm btn-outline-primary ms-2">🔎</button>
-    </form>
+    </form>-->
     <a class="btn btn-sm btn-primary" href="{{ url_for('courses.new_course') }}">New course</a>
   </div>
 </div>
 
 <div class="table-responsive">
-  <table class="table table-sm align-middle">
-    <thead class="table-light">
-      <tr>
-        <th style="width:70px;">ID</th>
-        <th>Course</th>
-        <th>Name</th>
-        <th>Client</th>
-        <th>Start</th>
-        <th>End</th>
-        <th>Status</th>
-        <th>Trainees</th>
-        <th>Notes</th>
-        <th style="width:150px;">Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for c in courses %}
-      <tr>
-        <td class="text-muted">{{ c.id }}</td>
-        <td>{{ c.course or '—'}}</td>
-        <td>{{ c.name or '—' }}</td>
-        <td>{{ c.client or '—' }}</td>
-        <td class="text-nowrap">
-          {{ c.start_date if c.start_date is not none else '—' }}
-        </td>
-        <td class="text-nowrap">
-          {{ c.end_date if c.end_date is not none else '—' }}
-        </td>
-        <td>
-          {% set status_color = {
-            'active':'success',
-            'finished':'secondary',
-            'lost':'warning',
-            'cancelled':'danger',
-            'planned':"dark"
-          }.get((c.auto_status or '')|lower, 'light') %}
-          <span class="badge text-bg-{{ status_color }}">{{ c.auto_status or '—' }}</span>
-        </td>
-        <td>{{ c.trainees }}</td>
-        <td class="text-truncate" style="max-width:260px;">
-          {{ c.notes if c is defined and c.notes is not none else '' }}
-        </td>
-        <td class="text-end">
-          <div class="d-flex align-items-center gap-2">
-                  <a href="{{ url_for('assignments.new_bulk', course_id=c.id) }}"
-                class="btn btn-sm btn-primary">
+  <form method="get" action="{{ url_for('courses.index') }}">
+    {# mantener búsqueda global y resetear página al filtrar #}
+    <input type="hidden" name="q" value="{{ q or '' }}">
+    <input type="hidden" name="page" value="1">
+    <input type="hidden" name="per_page" value="{{ per_page }}">
+
+    <table class="table table-sm align-middle">
+      <thead class="table-light">
+        <tr>
+          <th style="width:70px;">ID</th>
+          <th>Course</th>
+          <th>Name</th>
+          <th>Client</th>
+          <th>Start</th>
+          <th>End</th>
+          <th>Status</th>
+          <th>Trainees</th>
+          <th>Notes</th>
+          <th style="width:150px;">Actions</th>
+        </tr>
+
+        {# fila de filtros por columna #}
+        <tr>
+          <th>
+            {# si quieres filtrar por ID, puedes poner un input aquí #}
+          </th>
+
+          <th>
+            <input
+              type="text"
+              class="form-control form-control-sm"
+              name="course"
+              placeholder="Course"
+              value="{{ filter_course or '' }}"
+            >
+          </th>
+
+          <th>
+            <input
+              type="text"
+              class="form-control form-control-sm"
+              name="name"
+              placeholder="Name"
+              value="{{ filter_name or '' }}"
+            >
+          </th>
+
+          <th>
+            <input
+              type="text"
+              class="form-control form-control-sm"
+              name="client"
+              placeholder="Client"
+              value="{{ filter_client or '' }}"
+            >
+          </th>
+
+          <th>
+            <input
+              type="date"
+              class="form-control form-control-sm"
+              name="start_date"
+              value="{{ filter_start_date or '' }}"
+            >
+          </th>
+
+          <th>
+            <input
+              type="date"
+              class="form-control form-control-sm"
+              name="end_date"
+              value="{{ filter_end_date or '' }}"
+            >
+          </th>
+
+          <th>
+            <select
+              name="status"
+              class="form-select form-select-sm"
+            >
+              <option value="">All</option>
+              <option value="planned"   {% if filter_status == 'planned' %}selected{% endif %}>planned</option>
+              <option value="active"    {% if filter_status == 'active' %}selected{% endif %}>active</option>
+              <option value="finished"  {% if filter_status == 'finished' %}selected{% endif %}>finished</option>
+              <option value="cancelled" {% if filter_status == 'cancelled' %}selected{% endif %}>cancelled</option>
+            </select>
+          </th>
+
+          <th>
+            <input
+              type="number"
+              min="0"
+              class="form-control form-control-sm"
+              name="trainees"
+              placeholder="="
+              value="{{ filter_trainees or '' }}"
+            >
+          </th>
+
+          <th>
+            <input
+              type="text"
+              class="form-control form-control-sm"
+              name="notes"
+              placeholder="Notes"
+              value="{{ filter_notes or '' }}"
+            >
+          </th>
+
+          <th class="text-end">
+            <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+            <a href="{{ url_for('courses.index') }}" class="btn btn-secondary btn-sm">Clear</a>
+          </th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for c in courses %}
+        <tr>
+          <td class="text-muted">{{ c.id }}</td>
+          <td>{{ c.course or '—'}}</td>
+          <td>{{ c.name or '—' }}</td>
+          <td>{{ c.client or '—' }}</td>
+          <td class="text-nowrap">
+            {{ c.start_date if c.start_date is not none else '—' }}
+          </td>
+          <td class="text-nowrap">
+            {{ c.end_date if c.end_date is not none else '—' }}
+          </td>
+          <td>
+            {% set status_color = {
+              'active':'success',
+              'finished':'secondary',
+              'lost':'warning',
+              'cancelled':'danger',
+              'planned':"dark"
+            }.get((c.auto_status or '')|lower, 'light') %}
+            <span class="badge text-bg-{{ status_color }}">{{ c.auto_status or '—' }}</span>
+          </td>
+          <td>{{ c.trainees }}</td>
+          <td class="text-truncate" style="max-width:260px;">
+            {{ c.notes if c is defined and c.notes is not none else '' }}
+          </td>
+          <td class="text-end">
+            <div class="d-flex align-items-center gap-2">
+              <a href="{{ url_for('assignments.new_bulk', course_id=c.id) }}"
+                 class="btn btn-sm btn-primary">
                 Associate
               </a>
-            <a href="{{ url_for('courses.edit_course', course_id=c.id) }}" class="btn btn-secondary btn-sm">Edit</a>
-            <form action="{{ url_for('courses.delete_course', course_id=c.id) }}" method="post" onsubmit="return confirm('¿Delete course #{{ c.id }}?');">
-              <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-            </form>
-          </div>
-        </td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="6" class="text-center text-muted py-4">
-          {% if q %}No hay resultados para “{{ q }}”.{% else %}No hay cursos registrados.{% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+              <a href="{{ url_for('courses.edit_course', course_id=c.id) }}"
+                 class="btn btn-secondary btn-sm">
+                Edit
+              </a>
+              <form action="{{ url_for('courses.delete_course', course_id=c.id) }}"
+                    method="post"
+                    onsubmit="return confirm('Delete course #{{ c.id }}?');">
+                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="10" class="text-center text-muted py-4">
+            {% if q %}
+              No courses found for “{{ q }}”.
+            {% else %}
+              No courses registered.
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </form>
 </div>
-  <nav aria-label="Paginación">
-    <ul class="pagination">
-      <li class="page-item {% if not has_prev %}disabled{% endif %}">
-        <a class="page-link" href="{{ url_for('courses.index', q=q, page=(page-1 if page>1 else 1), per_page=per_page) }}">«</a>
-      </li>
-      <li class="page-item active"><span class="page-link">{{ page }}</span></li>
-      <li class="page-item {% if not has_next %}disabled{% endif %}">
-        <a class="page-link" href="{{ url_for('courses.index', q=q, page=(page+1 if has_next else page), per_page=per_page) }}">»</a>
-      </li>
-    </ul>
-  </nav>
+
+<nav aria-label="Pagination">
+  <ul class="pagination">
+    <li class="page-item {% if not has_prev %}disabled{% endif %}">
+      <a class="page-link"
+         href="{{ url_for('courses.index',
+                          q=q,
+                          page=(page-1 if page>1 else 1),
+                          per_page=per_page,
+                          course=filter_course,
+                          name=filter_name,
+                          client=filter_client,
+                          status=filter_status,
+                          trainees=filter_trainees,
+                          start_date=filter_start_date,
+                          end_date=filter_end_date,
+                          notes=filter_notes) }}">«</a>
+    </li>
+    <li class="page-item active"><span class="page-link">{{ page }}</span></li>
+    <li class="page-item {% if not has_next %}disabled{% endif %}">
+      <a class="page-link"
+         href="{{ url_for('courses.index',
+                          q=q,
+                          page=(page+1 if has_next else page),
+                          per_page=per_page,
+                          course=filter_course,
+                          name=filter_name,
+                          client=filter_client,
+                          status=filter_status,
+                          trainees=filter_trainees,
+                          start_date=filter_start_date,
+                          end_date=filter_end_date,
+                          notes=filter_notes) }}">»</a>
+    </li>
+  </ul>
+</nav>
 
 {% endblock %}

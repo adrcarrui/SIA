@@ -7,7 +7,6 @@ from app.db import SessionLocal
 from app.models import Assignment, Device, Course, User, Movements
 from datetime import date, datetime, timedelta
 from app.scripts import get_overdue_assignments, log_movement
-from app.models import Device, Assignment
 
 def log_bulk_return_movement(db, *, user_id, items, action="return", success=True):
     """
@@ -361,6 +360,7 @@ def new():
             )
 
             db.commit()
+            check_cards_vs_trainees(db,course.id)
             flash("Assignment created.", "success")
             return redirect(url_for("assignments.index"))
 
@@ -554,7 +554,7 @@ def new_bulk():
             )
 
         db.commit()
-
+        check_cards_vs_trainees(db,course_id_value)
         # Mensajes
         if created_count:
             flash(f"{created_count} devices assigned to course.", "success")
@@ -759,7 +759,8 @@ def bulk_return():
             info["pending"] = pending
 
         db.commit()
-
+        for cid in per_course.keys():
+            check_cards_vs_trainees(db, cid)
         # Mensajes flash como antes
         if returned_count:
             flash(f"{returned_count} devices returned.", "success")
@@ -893,8 +894,10 @@ def bulk_returns():
                 action="return",
                 success=True,
             )
-
+        course_ids = {a.course_id for a in assignments if a.course_id is not None}
         db.commit()
+        for cid in course_ids:
+            check_cards_vs_trainees(db, cid)
         flash(f"{len(assignments)} card associations deleted and devices set to available.", "success")
         return redirect(url_for("main.index"))
 
@@ -1031,3 +1034,57 @@ def bulk_return_find():
         })
     finally:
         db.close()
+
+def check_cards_vs_trainees(db, course_id: int):
+    """
+    Comprueba si el número de tarjetas activas asignadas a un curso
+    coincide con el número de trainees. Si no coincide, lanza un flash.
+
+    - Cuenta solo Assignment con released_at IS NULL.
+    - Ignora cursos sin trainees (> 0).
+    """
+    course = db.query(Course).get(course_id)
+    if not course:
+        return
+
+    # Si no hay número de trainees definido o es 0, no molestamos
+    if course.trainees is None or course.trainees <= 0:
+        return
+
+    # Contamos solo asignaciones 'vivas'
+    assigned = (
+        db.query(Assignment)
+        .filter(
+            Assignment.course_id == course_id,
+            Assignment.released_at.is_(None),
+        )
+        .count()
+    )
+
+    # Si coincide, silencio administrativo
+    if assigned == course.trainees:
+        return
+
+    diff = course.trainees - assigned
+
+    # Nombre legible del curso
+    course_label = (
+        (course.name or "").strip()
+        or (course.course or "").strip()
+        or f"Course #{course.id}"
+    )
+
+    if diff > 0:
+        # Faltan tarjetas
+        flash(
+            f"[{course_label}] There are {diff} missing cards for this course "
+            f"(assigned {assigned} / trainees {course.trainees}).",
+            "warning",
+        )
+    else:
+        # Sobran tarjetas
+        flash(
+            f"[{course_label}] There are {-diff} extra cards assigned for this course "
+            f"(assigned {assigned} / trainees {course.trainees}).",
+            "warning",
+        )
