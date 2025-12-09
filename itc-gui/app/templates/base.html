@@ -9,9 +9,9 @@
   <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
 
   <!-- CSS app -->
-  <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet">
-
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fullcalendar/main.min.css') }}">
+
+    <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet">
 
   <style>
     .bg-content {
@@ -31,35 +31,46 @@
     })();
   </script>
 
-  <div class="d-flex"><!-- contenedor principal: sidebar + contenido -->
+<div class="d-flex"><!-- contenedor principal: sidebar + contenido -->
 
-    {% if not hide_sidebar %}
-    <!-- Sidebar (menú) -->
-    <nav id="sidebar" class="sidebar bg-body-tertiary border-end">
-      <div class="p-3">
-        <ul class="nav nav-pills flex-column mb-2">
-          <!-- Botón para plegar/desplegar -->
-          <li class="nav-item mb-2">
-            <button id="btn-toggle-sidebar"
-                    type="button"
-                    class="nav-link d-flex align-items-center gap-2"
-                    aria-controls="sidebar"
-                    aria-expanded="true"
-                    aria-label="Mostrar/ocultar menú">
-              <span class="icon" aria-hidden="true">☰</span>
-            </button>
-          </li>
+  {# Normalizamos role y department para usarlos en el menú #}
+  {% if current_user.is_authenticated %}
+    {% set role = (current_user.role or 'user')|lower %}
+    {% set department = current_user.department or '' %}
+  {% else %}
+    {% set role = 'user' %}
+    {% set department = '' %}
+  {% endif %}
 
-          <!-- Dashboard -->
-          <li class="nav-item">
-            <a href="{{ url_for('main.index') }}"
-               class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint == 'main.index' else '' }}"
-               title="Dashboard">
-              <span class="icon" aria-hidden="true">🧭</span>
-              <span class="label">Dashboard</span>
-            </a>
-          </li>
+  {% if not hide_sidebar %}
+  <!-- Sidebar (menú) -->
+  <nav id="sidebar" class="sidebar bg-body-tertiary border-end">
+    <div class="p-3">
+      <ul class="nav nav-pills flex-column mb-2">
+        <!-- Botón para plegar/desplegar -->
+        <li class="nav-item mb-2">
+          <button id="btn-toggle-sidebar"
+                  type="button"
+                  class="nav-link d-flex align-items-center gap-2"
+                  aria-controls="sidebar"
+                  aria-expanded="true"
+                  aria-label="Mostrar/ocultar menú">
+            <span class="icon" aria-hidden="true">☰</span>
+          </button>
+        </li>
 
+        <!-- Dashboard: SIEMPRE visible -->
+        <li class="nav-item">
+          <a href="{{ url_for('main.index') }}"
+             class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint == 'main.index' else '' }}"
+             title="Dashboard">
+            <span class="icon" aria-hidden="true">🧭</span>
+            <span class="label">Dashboard</span>
+          </a>
+        </li>
+
+        {# Resto de opciones solo si el rol NO es 'user' #}
+        {% if role != 'user' %}
           <!-- Users -->
           <li class="nav-item">
             <a href="{{ url_for('users.index') }}"
@@ -90,6 +101,33 @@
             </a>
           </li>
 
+          <!-- Alerts -->
+          <li class="nav-item">
+            <a href="{{ url_for('main.alerts_index') }}"
+               class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint == 'main.alerts_index' else '' }}"
+               title="Alerts">
+
+              <span class="position-relative d-inline-flex">
+                <span class="icon" aria-hidden="true">🚨</span>
+
+                {% if alerts_summary is defined %}
+                  {% set total_alerts = (alerts_summary.notice or 0)
+                                        + (alerts_summary.warning or 0)
+                                        + (alerts_summary.critical or 0) %}
+                  {% if total_alerts > 0 %}
+                    <span
+                      class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger alerts-sidebar-badge">
+                      {{ '99+' if total_alerts > 99 else total_alerts }}
+                      <span class="visually-hidden">active alerts</span>
+                    </span>
+                  {% endif %}
+                {% endif %}
+              </span>
+
+              <span class="label">Alerts</span>
+            </a>
+          </li>
+
           <!-- Movements -->
           <li class="nav-item">
             <a href="{{ url_for('movements.index') }}"
@@ -100,26 +138,33 @@
             </a>
           </li>
 
-          <!-- Assignments -->
+          {# Assignments solo si el departamento NO es TCO #}
+          {% if department != 'TCO' %}
           <li class="nav-item">
             <a href="{{ url_for('assignments.index') }}"
-               class="nav-link d-flex align-items-center gap-2"
+               class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint and request.endpoint.startswith('assignments.') else '' }}"
                title="Assignments">
               <span class="icon" aria-hidden="true">🔗</span>
               <span class="label">Assignments</span>
             </a>
           </li>
-        </ul>
-      </div>
-    </nav>
-    {% endif %}
+          {% endif %}
+        {% endif %}
+
+      </ul>
+    </div>
+  </nav>
+  {% endif %}
 
     <!-- Contenido principal -->
     <main class="flex-grow-1 bg-content">
       {% if not hide_topbar %}
       <header id="topbar" class="navbar navbar-expand bg-body border-bottom sticky-top">
         <div class="container-fluid">
-          <!-- Izquierda: título -->
+          <!-- Izquierda: título --><img src="{{ url_for('static', filename='img/tams-logo-wordmark.png') }}"
+       alt="TAMS - Training Assets Management System"
+       class="d-inline-block align-text-top"
+       style="max-height: 40px;">
           <h1 class="navbar-brand fs-6 mb-0">Training Assets Management System</h1>
 
           <!-- Derecha: reloj + usuario + logout -->

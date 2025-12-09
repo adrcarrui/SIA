@@ -60,6 +60,7 @@
           <th class="text-center">Assignment Nº</th>
           <th class="text-center">Device name</th>
           <th class="text-center">Status</th>
+          <th class="text-center">Responsible</th>
           <th class="text-center">Assigned at</th>
           <th class="text-center">Assigned by</th>
           <th class="text-center">Actions</th>
@@ -85,17 +86,17 @@
               <span class="badge bg-success">Active</span>
             {% elif a.status == 'overdue_1' %}
               <span class="badge bg-warning text-dark">
-                Overdue_1 ({{ a.days_late }} día{% if a.days_late != 1 %}s{% endif %})
+                Overdue_1 ({{ a.days_late }} days{% if a.days_late != 1 %}s{% endif %})
               </span>
             {% elif a.status == 'overdue_2' %}
               <span class="badge bg-danger">
-                Lost ({{ a.days_late }} día{% if a.days_late != 1 %}s{% endif %})
+                Lost ({{ a.days_late }} day{% if a.days_late != 1 %}s{% endif %})
               </span>
             {% else %}
               <span class="badge bg-secondary">{{ a.status }}</span>
             {% endif %}
           </td>
-
+          <td class="text-center">{{ a.responsible.username if a.responsible else '-' }}</td>
           <td class="text-center">
             {% if a.assigned_at %}
               {{ a.assigned_at.strftime("%Y-%m-%d %H:%M") }}

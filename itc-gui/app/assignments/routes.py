@@ -837,10 +837,30 @@ def bulk_returns():
 
         # Acumularemos aquí la info para el movimiento único
         bulk_items = []
+        processed_assignments = []
+
+        skipped_assignment_status = []  # assignment no active
+        skipped_device_status = []     # device con estado que no es assigned/lost
+        skipped_no_device = []         # assignment sin device (si se ha roto algo)
 
         for a in assignments:
-            device = a.device    # relación Assignment.device
-            course = a.course    # relación Assignment.course
+            device = a.device
+            course = a.course
+
+            # 1) Solo devolvemos assignments en estado active
+            if a.status != "active":
+                skipped_assignment_status.append(a)
+                continue
+
+            # 2) Si por lo que sea no hay device asociado, lo saltamos
+            if not device:
+                skipped_no_device.append(a)
+                continue
+
+            # 3) Solo devolvemos si el device está en assigned o lost
+            if device.status not in ("assigned", "lost"):
+                skipped_device_status.append((a, device))
+                continue
 
             # Snapshot antes de borrar la asignación
             before_assignment = {
@@ -849,6 +869,7 @@ def bulk_returns():
                 "course_id": a.course_id,
                 "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
                 "released_at": a.released_at.isoformat() if a.released_at else None,
+                "status": a.status,
             }
 
             # Snapshot del device antes
@@ -859,7 +880,7 @@ def bulk_returns():
                 "name": device.name,
             }
 
-            # 1) Poner el device como disponible
+            # 1) Poner el device como disponible (lo recuperamos)
             device.status = "available"
 
             after_device = {
@@ -883,6 +904,7 @@ def bulk_returns():
             })
 
             # 2) Borrar la asociación de la base de datos
+            processed_assignments.append(a)
             db.delete(a)
 
         # Movimiento único para toda la operación
@@ -894,15 +916,61 @@ def bulk_returns():
                 action="return",
                 success=True,
             )
-        course_ids = {a.course_id for a in assignments if a.course_id is not None}
+
+        # Sólo revisamos cursos de las asignaciones realmente procesadas
+        course_ids = {a.course_id for a in processed_assignments if a.course_id is not None}
+
         db.commit()
+
+        # Comprobación cards vs trainees tras devolver
         for cid in course_ids:
             check_cards_vs_trainees(db, cid)
-        flash(f"{len(assignments)} card associations deleted and devices set to available.", "success")
+
+        if processed_assignments:
+            flash(
+                f"{len(processed_assignments)} card associations deleted and devices set to available.",
+                "success",
+            )
+        else:
+            flash("No assignments were returned (no valid status combination).", "warning")
+
+        # Mensajes de lo que se ha saltado
+
+        if skipped_assignment_status:
+            ids_txt = ", ".join(f"#{a.id} (status={a.status})" for a in skipped_assignment_status)
+            flash(
+                "Some assignments were skipped because their status is not 'active': "
+                + ids_txt,
+                "warning",
+            )
+
+        if skipped_device_status:
+            parts = []
+            for a, d in skipped_device_status:
+                device_label = d.name or f"Device #{d.id}"
+                parts.append(
+                    f"assignment #{a.id} -> device {device_label} (status={d.status})"
+                )
+            txt = ", ".join(parts)
+            flash(
+                "Some assignments were skipped because the device status is not 'assigned' or 'lost': "
+                + txt,
+                "warning",
+            )
+
+        if skipped_no_device:
+            ids_txt = ", ".join(f"#{a.id}" for a in skipped_no_device)
+            flash(
+                "Some assignments have no linked device and were skipped: "
+                + ids_txt,
+                "warning",
+            )
+
         return redirect(url_for("main.index"))
 
     finally:
         db.close()
+
 
 @bp.route("/bulk-return/find", methods=["POST"])
 @login_required

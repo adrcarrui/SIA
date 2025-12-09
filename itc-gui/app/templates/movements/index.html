@@ -197,5 +197,68 @@
       </li>
     </ul>
   </nav>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0"></h2>
 
+  <div class="d-flex align-items-center gap-2">
+    <span class="small fw-bold me-1">Download as:</span>
+
+
+<div class="btn-group btn-group-sm" role="group">
+  <a
+    class="btn btn-outline-secondary"
+    href="{{ url_for('movements.export_movements',
+                     format='csv',
+                     q=q,
+                     user=filter_user,
+                     action=filter_action,
+                     entity_type=filter_entity_type,
+                     description=filter_description,
+                     success=filter_success,
+                     date_from=filter_date_from,
+                     date_to=filter_date_to,
+                     page=page,
+                     per_page=per_page) }}"
+  >
+    CSV
+  </a>
+
+  <a
+    class="btn btn-outline-secondary"
+    href="{{ url_for('movements.export_movements',
+                     format='xlsx',
+                     q=q,
+                     user=filter_user,
+                     action=filter_action,
+                     entity_type=filter_entity_type,
+                     description=filter_description,
+                     success=filter_success,
+                     date_from=filter_date_from,
+                     date_to=filter_date_to,
+                     page=page,
+                     per_page=per_page) }}"
+  >
+    Excel
+  </a>
+
+  <a
+    class="btn btn-outline-secondary"
+    href="{{ url_for('movements.export_movements',
+                     format='pdf',
+                     q=q,
+                     user=filter_user,
+                     action=filter_action,
+                     entity_type=filter_entity_type,
+                     description=filter_description,
+                     success=filter_success,
+                     date_from=filter_date_from,
+                     date_to=filter_date_to,
+                     page=page,
+                     per_page=per_page) }}"
+  >
+    PDF
+  </a>
+</div>
+  </div>
+</div>
 {% endblock %}

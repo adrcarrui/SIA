@@ -2,9 +2,11 @@
 #sidebar {
   width: 180px;               /* abierto */
   transition: width 0.2s ease;
+  background-color: #00205d !important;
 }
 body.sidebar-collapsed #sidebar {
   width: 70px;                /* colapsado */
+  background-color: #00205d;
 }
 
 /* Ocultar etiquetas (texto) cuando está colapsado */
@@ -26,6 +28,10 @@ body.sidebar-collapsed #sidebar .nav-link {
   line-height: 1.5;
 }
 
+#sidebar .nav-link .label {
+  color: inherit;
+}
+
 /* Asegurar que el botón de toggle se vea bien en ambas vistas */
 #btn-toggle-sidebar {
   line-height: 1;
@@ -40,6 +46,35 @@ body.sidebar-collapsed #sidebar .nav-link {
 #sidebar .nav-link:focus {
   outline: 2px solid var(--bs-primary);
   outline-offset: 2px;
+}
+
+/* Fondo del sidebar */
+#sidebar {
+  background-color: #00205d !important;
+}
+
+/* Color de los enlaces del sidebar (texto + spans) */
+#sidebar .nav-link {
+  color: #ffffff !important;
+}
+
+/* Asegurar que icono y label sean blancos */
+#sidebar .nav-link .icon,
+#sidebar .nav-link .label {
+  color: #ffffff !important;
+}
+
+/* Hover y foco */
+#sidebar .nav-link:hover,
+#sidebar .nav-link:focus {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff !important;
+}
+
+/* Enlace activo */
+#sidebar .nav-link.active {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff !important;
 }
 
 /* Altura compacta y separación limpia */
@@ -194,11 +229,11 @@ button[data-bs-toggle="dropdown"]::before {
 
 /* Colores aproximados a tu captura */
 .bg-users {
-  background-color: #17c0c9;
+  background-color: #0085ad;
 }
 
 .bg-devices {
-  background-color: #a3c4bc;
+  background-color: #6399ae;
 }
 
 .bg-courses {
@@ -297,4 +332,69 @@ button[data-bs-toggle="dropdown"]::before {
   margin-left: 0.25rem;
   padding-inline: 0.35em;
   padding-block: 0.15em;
+}
+
+
+.badge-lg {
+    font-size: 0.9rem;      /* más grande que la badge normal */
+    padding: 0.45em 0.8em;  /* más alta y más ancha */
+    border-radius: 999px;   /* más “pill” */
+}
+
+/* Día de hoy con solo avisos (notice) */
+.fc .fc-daygrid-day.fc-day-notice {
+  background-color: #dbeafe;      /* azul suave */
+  box-shadow: 0 0 0 2px #3b82f6 inset;
+  border-radius: 6px;
+}
+
+/* Día de hoy con al menos un warning y sin critical */
+.fc .fc-daygrid-day.fc-day-warning {
+  background-color: #fff3cd;      /* amarillo suave */
+  box-shadow: 0 0 0 2px #ffc107 inset;
+  border-radius: 6px;
+}
+
+/* Día de hoy con al menos un critical */
+.fc .fc-daygrid-day.fc-day-critical {
+  background-color: #f8d7da;      /* rojo suave */
+  box-shadow: 0 0 0 2px #dc3545 inset;
+  border-radius: 6px;
+}
+
+/* Botones de FullCalendar con el azul del sidebar */
+.fc .fc-button-primary {
+  background-color: #00205d;
+  border-color: #00205d;
+  color: #ffffff;
+}
+
+/* Hover / activo */
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active,
+.fc .fc-button-primary:not(:disabled):hover {
+  background-color: #001744;  /* un poco más oscuro */
+  border-color: #001744;
+  color: #ffffff;
+}
+
+.btn-tams-primary {
+  background-color: #00205d;
+  border-color: #00205d;
+  color: #ffffff;
+}
+
+.btn-tams-primary:hover,
+.btn-tams-primary:focus {
+  background-color: #001744; /* un poco más oscuro al pasar el ratón */
+  border-color: #001744;
+  color: #ffffff;
+}
+
+.btn-tams-primary:disabled,
+.btn-tams-primary.disabled {
+  background-color: #00205d;
+  border-color: #00205d;
+  opacity: 0.65;
+  color: #ffffff;
 }

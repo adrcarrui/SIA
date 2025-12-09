@@ -2,48 +2,97 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h2>Dashboard</h2>
+<h2 class="mb-3 d-flex justify-content-between align-items-center">
+  <span>Dashboard</span>
+</h2>
+{# FILA DE TARJETAS RÁPIDAS (Devices + Alerts resumen) #}
+<div class="row mb-4 g-3 row-cols-1 row-cols-md-2">
+  <!-- ahora mismo está vacía, por si en el futuro quieres meter más tarjetas -->
+</div>
 
-{# FILA DE 4/5 CUADRADOS #}
-<div class="row mb-4 g-3 row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-5">
-
-  {# 1. Users #}
-  <div class="col">
-    <div class="card text-white border-0 stat-card stat-card-users bg-users">
-      <div class="card-body position-relative p-3">
-        <div class="fs-3 fw-bold">
-          {{ "{:,}".format(total_users or 0) }}
+{# FILA PRINCIPAL: CALENDARIO + ALERTAS #}
+<div class="container-fluid py-3">
+  <div class="row">
+    <!-- Columna calendario -->
+    <div class="col-lg-8 mb-3">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h3 class="mb-0">Course calendar</h3>
+                  <a href="{{ url_for('assignments.bulk_returns') }}"
+           class="btn btn-sm btn-tams-primary ms-2 me-3">
+          Return cards
+        </a>
         </div>
-        <div class="small">Users</div>
+        <div class="card-body">
+          <div id="calendar" style="min-height: 500px;"></div>
+        </div>
+      </div>
 
-        <div class="stat-card-footer mt-3 pt-2 text-center">
-          <a href="{{ url_for('users.index') }}"
-             class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
-            <span>view all</span>
-            <i class="bi bi-arrow-right-circle"></i>
-          </a>
+      <!-- Modal único para ver detalles de curso -->
+      <div class="modal fade" id="courseModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Course details</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="courseModalBody">
+              <!-- Aquí se cargará el fragmento del curso -->
+              <div class="text-center py-5">
+                <div class="spinner-border" role="status">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  {# 2. Devices #}
-  <div class="col">
-    <div class="card border-0 stat-card stat-card-licenses bg-devices">
-      <div class="card-body position-relative p-3 text-dark">
-        <div class="fw-semibold text-center mb-2">
-          <h4 class="mb-0">Devices</h4>
-        </div>
+    <!-- Columna alertas -->
+    <div class="col-lg-4 mb-3" id="alerts-panel">
 
-        {% if device_stats %}
-          <div class="mt-2">
-            <table
-              class="table table-sm align-middle mb-0 small"
-              style="--bs-table-bg: transparent;"
-            >
-              <thead>
-                <tr>
-                  <th class="fw-normal text-muted"></th>
+{# Devices #}
+<div class="col-8 mb-3">
+  <div class="accordion" id="devicesAccordion">
+    <div class="accordion-item">
+
+      <h2 class="accordion-header d-flex align-items-center" id="devicesHeading">
+        {# Botón que abre/cierra el accordion #}
+        <button
+          class="accordion-button flex-grow-1 bg-devices"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#devicesCollapse"
+          aria-expanded="true"
+          aria-controls="devicesCollapse"
+        >
+          <span class="fw-semibold">Devices</span>
+        </button>
+
+        {# Botón Return cards al lado, no dentro del <button> #}
+
+      </h2>
+
+      <div
+        id="devicesCollapse"
+        class="accordion-collapse collapse show"
+        aria-labelledby="devicesHeading"
+        data-bs-parent="#devicesAccordion"
+      >
+        <div class="accordion-body">
+
+          {% if device_stats %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0 small">
+                <thead>
+                  <tr>
+                    <th class="fw-normal text-muted">Type</th>
+                    <th class="fw-normal text-center">Loan</th>
+                    <th class="fw-normal text-center">% Use</th>
+                  </tr>
+                </thead>
+                <tbody>
                   {% for row in device_stats %}
                     {% set tkey = row.type or "Unknown" %}
                     {% set tcolor = {
@@ -52,210 +101,169 @@
                       'instructor': 'warning',
                       'guest': 'secondary'
                     }.get(tkey, 'light') %}
-                    <th class="fs-6 text-center fw-normal">
-                      <span class="badge text-bg-{{ tcolor }}">
-                        {{ tkey }}
-                      </span>
-                    </th>
-                  {% endfor %}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="fw-semibold text-center">Loan</td>
-                  {% for row in device_stats %}
-                    <td class="text-center text-muted">
-                      <span>
+                    <tr>
+                      <td class="fs-6">
+                        <span class="badge text-bg-{{ tcolor }}">
+                          {{ tkey }}
+                        </span>
+                      </td>
+                      <td class="text-center text-muted">
                         {{ row.assigned }}/{{ row.total }}
-                      </span>
-                    </td>
+                      </td>
+                      <td class="text-center fw-semibold text-muted">
+                        {{ row.ratio|round(0, 'floor') }}%
+                      </td>
+                    </tr>
                   {% endfor %}
-                </tr>
-                <tr>
-                  <td class="fw-semibold text-center">% Use</td>
-                  {% for row in device_stats %}
-                    <td class="text-center fw-semibold text-muted">
-                      {{ row.ratio|round(0, 'floor') }}%
-                    </td>
-                  {% endfor %}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <p class="text-center mb-0 text-muted">
-            No devices registered.
-          </p>
-        {% endif %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-center mb-0 text-muted">
+              No devices registered.
+            </p>
+          {% endif %}
 
-        <div class="stat-card-footer mt-3 pt-2 text-center">
-          <a href="{{ url_for('devices.index') }}"
-             class="small text-decoration-none d-inline-flex align-items-center gap-1 text-dark">
-            <span>view all</span>
-            <i class="bi bi-arrow-right-circle"></i>
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  {# 3. Alerts (resumen) #}
-  <div class="col">
-    <div class="card border-0 stat-card stat-card-licenses bg-alerts">
-      <div class="card-body position-relative p-3 text-dark">
-        <div class="fw-semibold text-center mb-2">
-          <h4 class="mb-0">Alerts</h4>
-          <div class="stat-card-footer mt-3 pt-2 text-center">
+          <div class="mt-3 text-center">
             <a href="{{ url_for('devices.index') }}"
-               class="small text-decoration-none d-inline-flex align-items-center gap-1 text-dark">
-              <span>view all</span>
+               class="small text-decoration-none d-inline-flex align-items-center gap-1">
+              <span>View all</span>
               <i class="bi bi-arrow-right-circle"></i>
             </a>
           </div>
+
         </div>
       </div>
     </div>
   </div>
-
-  {# 4. Courses #}
-  <div class="col">
-    <div class="card text-white border-0 stat-card stat-card-accessories bg-courses">
-      <div class="card-body position-relative p-3">
-        <div class="fs-3 fw-bold">{{ "{:,}".format(total_courses or 0) }}</div>
-        <div class="small">Courses</div>
-
-        <div class="stat-card-footer mt-3 pt-2 text-center">
-          <a href="{{ url_for('courses.index') }}"
-             class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
-            <span>view all</span>
-            <i class="bi bi-arrow-right-circle"></i>
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  {# 5. Assignments #}
-  <div class="col">
-    <div class="card text-white border-0 stat-card stat-card-components bg-assignments">
-      <div class="card-body position-relative p-3">
-        <div class="fs-3 fw-bold">{{ "{:,}".format(total_assignments or 0) }}</div>
-        <div class="small">Assignments</div>
-
-        <div class="stat-card-footer mt-3 pt-2 text-center">
-          <a href="{{ url_for('assignments.index') }}"
-             class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
-            <span>view all</span>
-            <i class="bi bi-arrow-right-circle"></i>
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  {# 6. Movements #}
-  <div class="col">
-    <div class="card text-white border-0 stat-card stat-card-people bg-movements">
-      <div class="card-body position-relative p-3">
-        <div class="fs-3 fw-bold">{{ "{:,}".format(total_movements or 0) }}</div>
-        <div class="small">Movements</div>
-
-        <div class="stat-card-footer mt-3 pt-2 text-center">
-          <a href="{{ url_for('movements.index') }}"
-             class="small text-white text-decoration-none d-inline-flex align-items-center gap-1">
-            <span>view all</span>
-            <i class="bi bi-arrow-right-circle"></i>
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-
 </div>
 
-{# FILA PRINCIPAL: CALENDARIO + ALERTAS #}
-<div class="container-fluid py-3">
-  <div class="row">
-    <!-- Columna calendario -->
-    <div class="col-lg-8 mb-3">
-      <h2 class="mb-3">Course calendar</h2>
-      <div id="calendar" style="min-height: 500px;"></div>
-    </div>
+{# Alerts resumen #}
+<div class="col-8">
+  <div class="accordion" id="alertsAccordion">
+    <div class="accordion-item">
 
+      <h2 class="accordion-header d-flex align-items-center" id="alertsHeading">
+        {# Botón que abre/cierra el accordion #}
+        <button
+          class="accordion-button flex-grow-1 bg-alerts"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#alertsCollapse"
+          aria-expanded="true"
+          aria-controls="alertsCollapse"
+        >
+          <span class="fw-semibold">Alerts</span>
 
-<!-- Modal único para ver detalles de curso -->
-<div class="modal fade" id="courseModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Course details</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body" id="courseModalBody">
-        <!-- Aquí se cargará el fragmento del curso -->
-        <div class="text-center py-5">
-          <div class="spinner-border" role="status">
-            <span class="visually-hidden">Loading...</span>
+          {# Total de alertas a la derecha dentro del botón #}
+          <span class="ms-auto badge rounded-pill bg-danger">
+            {{ alerts|length if alerts else 0 }}
+          </span>
+        </button>
+      </h2>
+
+      <div
+        id="alertsCollapse"
+        class="accordion-collapse collapse show"
+        aria-labelledby="alertsHeading"
+        data-bs-parent="#alertsAccordion"
+      >
+        <div class="accordion-body">
+
+          {% if alerts_summary %}
+            <div class="mt-2 small d-flex flex-wrap gap-2">
+              <span class="badge bg-info text-dark">
+                Notice: {{ alerts_summary.notice or 0 }}
+              </span>
+              <span class="badge bg-warning text-dark">
+                Warning: {{ alerts_summary.warning or 0 }}
+              </span>
+              <span class="badge bg-danger">
+                Critical: {{ alerts_summary.critical or 0 }}
+              </span>
+            </div>
+          {% else %}
+            <p class="text-center mb-0 text-muted">
+              No alerts.
+            </p>
+          {% endif %}
+
+          <div class="mt-3 text-center">
+            <a href="{{ url_for('main.alerts_index') }}"
+               class="small text-decoration-none d-inline-flex align-items-center gap-1">
+              <span>View alerts</span>
+              <i class="bi bi-arrow-right-circle"></i>
+            </a>
           </div>
+
         </div>
       </div>
+
     </div>
   </div>
 </div>
+        </div>
 
-<h5 class="mt-3">Cards vs trainees</h5>
-  <div class="table-responsive">
-    <table class="table table-sm table-bordered align-middle mb-0">
-      <thead class="table-light">
-        <tr class="text-center">
-          <th>Course</th>
-          <th>Assigned</th>
-          <th>Trainees</th>
-          <th>Δ</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% if cards_alerts %}
-          {% for a in cards_alerts %}
-            {% set c = a.course %}
-            <tr class="text-center
-                       {% if a.type == 'missing' %}table-warning
-                       {% elif a.type == 'extra' %}table-danger
-                       {% endif %}">
-              <td class="text-start">
-                <a href="{{ url_for('courses.detail', course_id=c.id) }}">
-                  {{ c.name or c.course or ('Course #' ~ c.id) }}
-                </a>
-              </td>
-              <td>{{ a.assigned }}</td>
-              <td>{{ a.trainees }}</td>
-              <td>
-                {% if a.type == 'missing' %}
-                  -{{ a.diff }}
-                {% else %}
-                  +{{ -a.diff }}
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        {% else %}
-          <tr>
-            <td colspan="4" class="text-center text-muted small">
-              No mismatches between cards and trainees.
-            </td>
-          </tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </div>
+      </div> {# /row g-0 #}
+    </div> {# /col-lg-4 #}
+  </div> {# /row #}
+</div> {# /container-fluid #}
 </div>
-
 {% endblock %}
 
 {% block scripts %}
   {{ super() }}
-  <script>
-    // Función común para cargar el fragmento de detalle en el modal
+<div id="alerts-data"
+     data-summary='{{ alerts_summary | default({"notice":0,"warning":0,"critical":0}) | tojson | e }}'>
+</div>
+<script>
+    // Lee el resumen de alertas desde el data-attribute (JS puro, sin Jinja dentro)
+    function getAlertsSummaryFromDOM() {
+      const el = document.getElementById('alerts-data');
+      let summary = { notice: 0, warning: 0, critical: 0 };
+
+      if (!el) {
+        return summary;
+      }
+
+      const raw = el.dataset.summary || '';
+      if (!raw) {
+        return summary;
+      }
+
+      try {
+        const parsed = JSON.parse(raw);
+        // Mezclamos con defaults por si falta alguna clave
+        return {
+          notice:   parsed.notice   ?? 0,
+          warning:  parsed.warning  ?? 0,
+          critical: parsed.critical ?? 0,
+        };
+      } catch (err) {
+        console.error("Error parsing alerts summary JSON:", err);
+        return summary;
+      }
+    }
+
+    function getTodaySeverityClass(alertsSummary) {
+      if (alertsSummary.critical > 0) {
+        return 'fc-day-critical';
+      } else if (alertsSummary.warning > 0) {
+        return 'fc-day-warning';
+      } else if (alertsSummary.notice > 0) {
+        return 'fc-day-notice';
+      }
+      return null;
+    }
+
+    function formatLocalDate(d) {
+      const y   = d.getFullYear();
+      const mon = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${mon}-${day}`;
+    }
+
+    // Modal de detalle de curso
     function loadCourseDetail(url) {
       const modalEl = document.getElementById('courseModal');
       const modalBody = document.getElementById('courseModalBody');
@@ -296,13 +304,16 @@
         });
     }
 
-    // FullCalendar en el dashboard
     document.addEventListener('DOMContentLoaded', function () {
       const calendarEl = document.getElementById('calendar');
       if (!calendarEl) {
         console.error("Dashboard: #calendar not found");
         return;
       }
+
+      const alertsSummary = getAlertsSummaryFromDOM();
+      const todayStr = formatLocalDate(new Date());
+      const todaySeverityClass = getTodaySeverityClass(alertsSummary);
 
       const calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
@@ -317,13 +328,19 @@
         dayMaxEvents: true,
         events: "{{ url_for('courses.api_calendar_events') }}",
 
+        dayCellDidMount: function(info) {
+          const cellDateStr = formatLocalDate(info.date);
+          if (cellDateStr === todayStr && todaySeverityClass) {
+            info.el.classList.add(todaySeverityClass);
+          }
+        },
+
         eventClick: function (info) {
           const detailUrl = info.event.extendedProps.detail_url;
           if (detailUrl) {
             info.jsEvent.preventDefault();
             loadCourseDetail(detailUrl);
           } else if (info.event.extendedProps.course_url) {
-            // fallback por si algún evento no tiene detail_url
             window.location.href = info.event.extendedProps.course_url;
           }
         }
@@ -332,7 +349,7 @@
       calendar.render();
     });
 
-    // Modal de detalles de curso (overdue) - reutiliza la misma función
+    // Botones "View" que abren el modal reutilizando la misma función
     document.addEventListener('click', function (e) {
       const btn = e.target.closest('[data-bs-target="#courseModal"][data-url]');
       if (!btn) return;

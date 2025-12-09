@@ -11,6 +11,27 @@
              placeholder="Search course...">
       <button class="btn btn-sm btn-outline-primary ms-2">🔎</button>
     </form>-->
+        <a
+      href="{{ url_for('courses.index') }}"
+      class="btn btn-sm btn-outline-secondary {% if not filter_my %}active{% endif %}">
+      All
+    </a>
+                <a
+  href="{{ url_for('courses.index',
+                   q=q,
+                   course=filter_course,
+                   name=filter_name,
+                   client=filter_client,
+                   status=filter_status,
+                   trainees=filter_trainees,
+                   notes=filter_notes,
+                   start_date=filter_start_date,
+                   end_date=filter_end_date,
+                   my=1) }}"
+  class="btn btn-primary btn-sm {% if filter_my == '1' %}active{% endif %}">
+  My Courses
+</a>
+
     <a class="btn btn-sm btn-primary" href="{{ url_for('courses.new_course') }}">New course</a>
   </div>
 </div>
@@ -228,5 +249,66 @@
     </li>
   </ul>
 </nav>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0"></h2>
+
+  <div class="d-flex align-items-center gap-2">
+    <span class="small fw-bold me-1">Download as:</span>
+
+    <div class="btn-group btn-group-sm" role="group">
+      <a
+        class="btn btn-outline-secondary"
+        href="{{ url_for('courses.export_courses',
+                         format='csv',
+                         q=q,
+                         course=filter_course,
+                         name=filter_name,
+                         client=filter_client,
+                         status=filter_status,
+                         trainees=filter_trainees,
+                         notes=filter_notes,
+                         start_date=filter_start_date,
+                         end_date=filter_end_date,
+                         page=page,
+                         per_page=per_page) }}"
+      >CSV</a>
+
+      <a
+        class="btn btn-outline-secondary"
+        href="{{ url_for('courses.export_courses',
+                         format='xlsx',
+                         q=q,
+                         course=filter_course,
+                         name=filter_name,
+                         client=filter_client,
+                         status=filter_status,
+                         trainees=filter_trainees,
+                         notes=filter_notes,
+                         start_date=filter_start_date,
+                         end_date=filter_end_date,
+                         page=page,
+                         per_page=per_page) }}"
+      >Excel</a>
+
+      <a
+        class="btn btn-outline-secondary"
+        href="{{ url_for('courses.export_courses',
+                         format='pdf',
+                         q=q,
+                         course=filter_course,
+                         name=filter_name,
+                         client=filter_client,
+                         status=filter_status,
+                         trainees=filter_trainees,
+                         notes=filter_notes,
+                         start_date=filter_start_date,
+                         end_date=filter_end_date,
+                         page=page,
+                         per_page=per_page) }}"
+      >PDF</a>
+    </div>
+  </div>
+</div>
+
 
 {% endblock %}

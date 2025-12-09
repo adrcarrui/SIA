@@ -200,5 +200,60 @@
       </li>
     </ul>
   </nav>
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h2 class="mb-0"></h2>
+
+  <div class="d-flex align-items-center gap-3">
+    <div class="d-flex align-items-center gap-2">
+      <span class="small fw-bold me-1">Download as:</span>
+      <div class="btn-group btn-group-sm" role="group">
+        <a
+          class="btn btn-outline-secondary"
+          href="{{ url_for('users.export_users',
+                           format='csv',
+                           q=q,
+                           page=page,
+                           per_page=per_page,
+                           name=filter_name,
+                           surname=filter_surname,
+                           username=filter_username,
+                           uid=filter_uid,
+                           email=filter_email,
+                           role=filter_role) }}"
+        >CSV</a>
+
+        <a
+          class="btn btn-outline-secondary"
+          href="{{ url_for('users.export_users',
+                           format='xlsx',
+                           q=q,
+                           page=page,
+                           per_page=per_page,
+                           name=filter_name,
+                           surname=filter_surname,
+                           username=filter_username,
+                           uid=filter_uid,
+                           email=filter_email,
+                           role=filter_role) }}"
+        >Excel</a>
+
+        <a
+          class="btn btn-outline-secondary"
+          href="{{ url_for('users.export_users',
+                           format='pdf',
+                           q=q,
+                           page=page,
+                           per_page=per_page,
+                           name=filter_name,
+                           surname=filter_surname,
+                           username=filter_username,
+                           uid=filter_uid,
+                           email=filter_email,
+                           role=filter_role) }}"
+        >PDF</a>
+      </div>
+    </div>
+  </div>
+</div>
 
 {% endblock %}

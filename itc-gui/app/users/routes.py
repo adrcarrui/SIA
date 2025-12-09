@@ -1,4 +1,14 @@
-from flask import render_template, request, redirect, url_for, flash,jsonify,abort
+from flask import (
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    jsonify,
+    abort,
+    send_file,
+    Response,
+)
 from . import bp
 from app.db import SessionLocal
 import app.models as models
@@ -9,8 +19,16 @@ from smartcard.Exceptions import NoCardException
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from flask_login import login_required, current_user
 from app.scripts import log_movement
-import bcrypt
 from app.models import User
+
+from io import StringIO, BytesIO
+import csv
+from openpyxl import Workbook
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+
 # === NFC: imports y flag de disponibilidad ===
 try:
     NFC_AVAILABLE = True
@@ -24,6 +42,7 @@ except Exception:
     NFC_AVAILABLE = False
 
 ALL_ROLES = ["admin", "supervisor", "employee", "user"]
+
 
 def _role_level(role: str) -> str:
     """
@@ -88,6 +107,7 @@ def can_delete_user(actor, target) -> bool:
     # User normal: no borra a nadie
     return False
 
+
 def get_assignable_roles(actor_role: str):
     """
     Devuelve la lista de roles que el usuario actual puede asignar a otros.
@@ -109,6 +129,104 @@ def get_assignable_roles(actor_role: str):
     # role == "user" o cualquier otra cosa → no puede crear/editar usuarios
     return []
 
+
+def can_edit_user(actor, target) -> bool:
+    """
+    - Admin: puede editar a cualquiera.
+    - Cualquiera: puede editarse a sí mismo.
+    - Supervisor:
+        * Puede editar users (role 'user') de cualquier departamento.
+        * Puede editar employees de su mismo departamento.
+        * No puede editar otros supervisors ni admins.
+    - Employee / user:
+        * Solo pueden editarse a sí mismos.
+    """
+    if not getattr(actor, "is_authenticated", False):
+        return False
+
+    actor_role = (actor.role or "user").lower()
+    target_role = (target.role or "user").lower()
+    actor_dept = (actor.department or "").strip().lower()
+    target_dept = (target.department or "").strip().lower()
+
+    # 1) Admin: todo
+    if actor_role == "admin":
+        return True
+
+    # 2) Cualquiera puede editarse a sí mismo
+    if actor.id == target.id:
+        return True
+
+    # 3) Supervisor
+    if actor_role == "supervisor":
+        # Puede editar cualquier 'user'
+        if target_role == "user":
+            return True
+
+        # Puede editar 'employee' de su mismo dept
+        if (
+            target_role == "employee"
+            and actor_dept
+            and target_dept
+            and actor_dept == target_dept
+        ):
+            return True
+
+        # No puede editar otros supervisors ni admins
+        return False
+
+    # 4) employee / user: sólo su propia ficha (ya cubierta arriba)
+    return False
+
+
+def build_users_query(db, args):
+    """
+    Construye la query de User con los mismos filtros que el índice.
+    """
+    # Búsqueda global
+    q = (args.get("q") or "").strip()
+
+    # Filtros por columna
+    username = (args.get("username") or "").strip()
+    name = (args.get("name") or "").strip()
+    surname = (args.get("surname") or "").strip()
+    uid = (args.get("uid") or "").strip()
+    email = (args.get("email") or "").strip()
+    role = (args.get("role") or "").strip()
+
+    query = db.query(models.User)
+
+    # Filtro global q
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                models.User.name.ilike(like),
+                models.User.surname.ilike(like),
+                models.User.username.ilike(like),
+                models.User.uid.ilike(like),
+                models.User.email.ilike(like),
+                models.User.role.ilike(like),
+            )
+        )
+
+    # Filtros por columna (AND)
+    if name:
+        query = query.filter(models.User.name.ilike(f"%{name}%"))
+    if surname:
+        query = query.filter(models.User.surname.ilike(f"%{surname}%"))
+    if username:
+        query = query.filter(models.User.username.ilike(f"%{username}%"))
+    if uid:
+        query = query.filter(models.User.uid.ilike(f"%{uid}%"))
+    if email:
+        query = query.filter(models.User.email.ilike(f"%{email}%"))
+    if role:
+        query = query.filter(models.User.role.ilike(f"%{role}%"))
+
+    return query
+
+
 @bp.route("/")
 @login_required
 def index():
@@ -120,11 +238,11 @@ def index():
 
     # Filtros por columna (fila encima de la tabla)
     username = (request.args.get("username") or "").strip()
-    name     = (request.args.get("name") or "").strip()
-    surname  = (request.args.get("surname") or "").strip()
-    uid      = (request.args.get("uid") or "").strip()
-    email    = (request.args.get("email") or "").strip()
-    role     = (request.args.get("role") or "").strip()
+    name = (request.args.get("name") or "").strip()
+    surname = (request.args.get("surname") or "").strip()
+    uid = (request.args.get("uid") or "").strip()
+    email = (request.args.get("email") or "").strip()
+    role = (request.args.get("role") or "").strip()
 
     db = SessionLocal()
     try:
@@ -133,14 +251,16 @@ def index():
         # Filtro global q (como antes)
         if q:
             like = f"%{q}%"
-            query = query.filter(or_(
-                models.User.name.ilike(like),
-                models.User.surname.ilike(like),
-                models.User.username.ilike(like),
-                models.User.uid.ilike(like),
-                models.User.email.ilike(like),
-                models.User.role.ilike(like),
-            ))
+            query = query.filter(
+                or_(
+                    models.User.name.ilike(like),
+                    models.User.surname.ilike(like),
+                    models.User.username.ilike(like),
+                    models.User.uid.ilike(like),
+                    models.User.email.ilike(like),
+                    models.User.role.ilike(like),
+                )
+            )
 
         # Filtros por columna (se acumulan con AND)
         if name:
@@ -159,9 +279,9 @@ def index():
         total = query.count()
         users = (
             query.order_by(models.User.id.asc())
-                 .offset((page-1)*per_page)
-                 .limit(per_page)
-                 .all()
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
         )
 
         return render_template(
@@ -209,7 +329,7 @@ def new_user():
         raw_role = (request.form.get("role", "user") or "user").strip().lower()
         active = bool(request.form.get("active"))
 
-        # 🔒 validar que el rol elegido está permitido para el actor
+        # validar rol
         if raw_role not in assignable_roles:
             flash("You are not allowed to assign this role.", "danger")
             return render_template(
@@ -219,12 +339,13 @@ def new_user():
                 assignable_roles=assignable_roles,
             )
 
-        # 🔒 Hashear la contraseña antes de guardarla
-        hashed_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        hashed_password = bcrypt.hashpw(
+            password.encode("utf-8"), bcrypt.gensalt()
+        ).decode("utf-8")
 
         uid = raw_uid or None
         email = raw_email or None
-        role = raw_role  # ya validado
+        role = raw_role
 
         db = SessionLocal()
         actor_id = getattr(current_user, "id", None)
@@ -279,7 +400,6 @@ def new_user():
     )
 
 
-
 @bp.route("/<int:user_id>/edit", methods=["GET", "POST"])
 @login_required
 def edit_user(user_id):
@@ -294,24 +414,19 @@ def edit_user(user_id):
         actor = current_user
         actor_role = (getattr(actor, "role", None) or "user").lower()
         actor_id = getattr(actor, "id", None)
-        is_self = (actor_id == user.id)
+        is_self = actor_id == user.id
 
-        # 🔒 Reglas de acceso (rol + departamento)
         if not can_edit_user(actor, user):
             flash("You are not allowed to edit this user.", "danger")
             return redirect(url_for("users.index"))
 
-        # Roles asignables según el actor
         assignable_roles = get_assignable_roles(actor_role)
 
-        # Si edita a OTRO y no tiene roles asignables, fuera
         if not is_self and not assignable_roles:
             flash("You are not allowed to change roles for this user.", "danger")
             return redirect(url_for("users.index"))
 
         if request.method == "POST":
-
-            # Estado ANTES
             before_data = {
                 "id": user.id,
                 "username": user.username,
@@ -322,9 +437,6 @@ def edit_user(user_id):
                 "department": user.department,
             }
 
-            # ==========================
-            # DATOS NEUTROS (cualquiera)
-            # ==========================
             user.name = request.form["name"].strip()
             user.surname = request.form.get("surname", "").strip()
 
@@ -338,30 +450,26 @@ def edit_user(user_id):
             raw_email = (request.form.get("email") or "").strip()
             user.email = raw_email or None
 
-            # ==========================
-            # ROLE / ACTIVE / DEPARTMENT
-            # ==========================
-            raw_role = (request.form.get("role", user.role or "user") or "user").strip().lower()
-            raw_department = (request.form.get("department", user.department or "") or "").strip()
+            raw_role = (
+                request.form.get("role", user.role or "user") or "user"
+            ).strip().lower()
+            raw_department = (
+                request.form.get("department", user.department or "") or ""
+            ).strip()
 
             if is_self:
-                # Editando SUS PROPIOS DATOS:
-                # no dejamos que cambie role / department / active desde el form
                 raw_role = (user.role or "user").lower()
                 raw_department = user.department
-                # user.active se queda como está
-
             else:
-                # employee → NO toca role / active / department de OTROS
                 if actor_role == "employee":
                     raw_role = (user.role or "user").lower()
                     raw_department = user.department
-                    # user.active no se toca
-
-                # supervisores
-                elif actor_role.endswith("supervisor"):
+                elif actor_role == "supervisor":
                     if raw_role not in ("user", "employee"):
-                        flash("Supervisors can only assign 'user' or 'employee' roles.", "danger")
+                        flash(
+                            "Supervisors can only assign 'user' or 'employee' roles.",
+                            "danger",
+                        )
                         return render_template(
                             "users/form.html",
                             page_title="Edit user",
@@ -378,12 +486,9 @@ def edit_user(user_id):
                             assignable_roles=assignable_roles,
                         )
 
-                    # Supervisor no cambia department
                     raw_department = user.department
                     user.role = raw_role
                     user.active = bool(request.form.get("active", ""))
-
-                # admin: puede cambiar role/active/department dentro de assignable_roles
                 elif actor_role == "admin":
                     if raw_role not in assignable_roles:
                         flash("You are not allowed to assign this role.", "danger")
@@ -396,26 +501,21 @@ def edit_user(user_id):
                     user.role = raw_role
                     user.active = bool(request.form.get("active", ""))
                     user.department = raw_department or None
-
                 else:
-                    # Rol raro → no toca role/active/department
                     raw_role = (user.role or "user").lower()
                     raw_department = user.department
 
-                # Para roles no admin/supervisor, aseguramos que no hemos tocado department
-                if actor_role in ("employee",) or (not actor_role.endswith("supervisor") and actor_role != "admin"):
-                    user.department = user.department  # explícito pero inútil
+                if actor_role in ("employee",) or (
+                    not actor_role.endswith("supervisor") and actor_role != "admin"
+                ):
+                    user.department = user.department
 
-            # ==========================
-            # PASSWORD
-            # ==========================
             new_password = request.form.get("password", "")
             if new_password:
                 user.password_hash = bcrypt.hashpw(
                     new_password.encode("utf-8"), bcrypt.gensalt()
                 ).decode("utf-8")
 
-            # Estado DESPUÉS
             after_data = {
                 "id": user.id,
                 "username": user.username,
@@ -463,7 +563,6 @@ def edit_user(user_id):
                 print("SQLAlchemyError on edit_user:", e)
                 flash("Database error while updating user.", "danger")
 
-        # GET o POST con error
         return render_template(
             "users/form.html",
             page_title="Edit user",
@@ -488,19 +587,16 @@ def delete_user(user_id):
 
         actor = current_user
 
-        # 🔒 Regla global: nadie se borra a sí mismo
         if getattr(actor, "id", None) == user.id:
             flash("You cannot delete your own user.", "warning")
             return redirect(url_for("users.index"))
 
-        # 🔒 Reglas por rol + departamento
         if not can_delete_user(actor, user):
             flash("You are not allowed to delete this user.", "danger")
             return redirect(url_for("users.index"))
 
         actor_id = getattr(actor, "id", None)
 
-        # estado ANTES de borrar
         before_data = {
             "id": user.id,
             "username": user.username,
@@ -526,7 +622,6 @@ def delete_user(user_id):
         db.delete(user)
         db.commit()
 
-        # Verifica de inmediato
         still = db.query(models.User.id).filter_by(id=user_id).first()
         print("Deleted?", "NO (still exists)" if still else "YES")
         flash(f"🗑️ User '{username}' deleted successfully.", "success")
@@ -544,6 +639,7 @@ def delete_user(user_id):
 
     return redirect(url_for("users.index"))
 
+
 @bp.route("/read-uid", methods=["POST"])
 def read_uid_once():
     """
@@ -551,105 +647,62 @@ def read_uid_once():
     No modifica la BD, solo sirve para rellenar el campo 'uid' del formulario.
     """
     if not NFC_AVAILABLE:
-        return jsonify({
-            "success": False,
-            "reason": "nfc_unavailable",
-            "error": "NFC no disponible en el servidor."
-        })
+        return jsonify(
+            {
+                "success": False,
+                "reason": "nfc_unavailable",
+                "error": "NFC no disponible en el servidor.",
+            }
+        )
 
     try:
         reader = ACR122()
-        info = reader.get_uid()          # puede lanzar NoCardException
+        info = reader.get_uid()  # puede lanzar NoCardException
         uid = info.get("uid_hex", "").upper()
     except NoCardException:
-        return jsonify({
-            "success": False,
-            "reason": "no_card",
-            "error": "No se ha detectado ninguna tarjeta."
-        })
+        return jsonify(
+            {
+                "success": False,
+                "reason": "no_card",
+                "error": "No se ha detectado ninguna tarjeta.",
+            }
+        )
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "reason": "reader_error",
-            "error": f"Error del lector NFC: {e}"
-        })
+        return jsonify(
+            {
+                "success": False,
+                "reason": "reader_error",
+                "error": f"Error del lector NFC: {e}",
+            }
+        )
 
     if not uid:
-        return jsonify({
-            "success": False,
-            "reason": "no_uid",
-            "error": "No se ha podido obtener un UID válido."
-        })
+        return jsonify(
+            {
+                "success": False,
+                "reason": "no_uid",
+                "error": "No se ha podido obtener un UID válido.",
+            }
+        )
     db = SessionLocal()
     try:
-        device = (
-            db.query(models.Device)
-              .filter(models.Device.uid == uid)
-              .first()
+        device = db.query(models.Device).filter(models.Device.uid == uid).first()
+        return jsonify(
+            {
+                "success": True,
+                "uid": uid,
+                "device_id": device.id if device else None,
+                "device_name": device.name if device else None,
+            }
         )
-        return jsonify({
-            "success": True,
-            "uid": uid,
-            "device_id": device.id if device else None,
-            "device_name": device.name if device else None,
-        })
     finally:
         db.close()
 
-
-def can_edit_user(actor, target) -> bool:
-    """
-    - Admin: puede editar a cualquiera.
-    - Cualquiera: puede editarse a sí mismo.
-    - Supervisor:
-        * Puede editar users (role 'user') de cualquier departamento.
-        * Puede editar employees de su mismo departamento.
-        * No puede editar otros supervisors ni admins.
-    - Employee / user:
-        * Solo pueden editarse a sí mismos.
-    """
-    if not getattr(actor, "is_authenticated", False):
-        return False
-
-    actor_role = (actor.role or "user").lower()
-    target_role = (target.role or "user").lower()
-    actor_dept = (actor.department or "").strip().lower()
-    target_dept = (target.department or "").strip().lower()
-
-    # 1) Admin: todo
-    if actor_role == "admin":
-        return True
-
-    # 2) Cualquiera puede editarse a sí mismo
-    if actor.id == target.id:
-        return True
-
-    # 3) Supervisor
-    if actor_role == "supervisor":
-        # Puede editar cualquier 'user'
-        if target_role == "user":
-            return True
-
-        # Puede editar 'employee' de su mismo dept
-        if (
-            target_role == "employee"
-            and actor_dept
-            and target_dept
-            and actor_dept == target_dept
-        ):
-            return True
-
-        # No puede editar otros supervisors ni admins
-        return False
-
-    # 4) employee / user: sólo su propia ficha (ya cubierta arriba)
-    return False
 
 @bp.route("/users", methods=["GET"])
 def users_list():
     db = SessionLocal()
 
-    # Leer parámetros de la URL (GET)
     username = request.args.get("username", type=str)
     first_name = request.args.get("first_name", type=str)
     last_name = request.args.get("last_name", type=str)
@@ -658,27 +711,18 @@ def users_list():
 
     q = db.query(User)
 
-    # Filtro por username
     if username:
         q = q.filter(User.username.ilike(f"%{username.strip()}%"))
 
-    # Filtro por nombre
     if first_name:
         q = q.filter(User.first_name.ilike(f"%{first_name.strip()}%"))
 
-    # Filtro por apellido
     if last_name:
         q = q.filter(User.last_name.ilike(f"%{last_name.strip()}%"))
 
-    # Filtro por rol (ajusta según tu modelo)
     if role:
-        # Si `role` es un string en User (ej: 'admin', 'supervisor', etc.)
         q = q.filter(User.role == role)
 
-        # Si tienes tabla Role y relación:
-        # q = q.join(User.role_rel).filter(Role.name == role)
-
-    # Filtro por departamento
     if department:
         q = q.filter(User.department.ilike(f"%{department.strip()}%"))
 
@@ -687,10 +731,183 @@ def users_list():
     return render_template(
         "users/list.html",
         users=users,
-        # reenviamos los valores al template para rellenar el formulario
         username=username or "",
         first_name=first_name or "",
         last_name=last_name or "",
         role=role or "",
         department=department or "",
     )
+
+
+# ===========================
+#   EXPORT: CSV / EXCEL / PDF
+# ===========================
+
+
+def _user_rows(users):
+    """
+    Filas comunes para exportar usuarios.
+    """
+    rows = []
+    rows.append(
+        [
+            "ID",
+            "Name",
+            "Surname",
+            "Username",
+            "Email",
+            "Role",
+            "Active",
+        ]
+    )
+
+    for u in users:
+        if u.active is True:
+            active_str = "Yes"
+        elif u.active is False:
+            active_str = "No"
+        else:
+            active_str = ""
+
+        rows.append(
+            [
+                u.id,
+                u.name or "",
+                u.surname or "",
+                u.username or "",
+                u.email or "",
+                u.role or "",
+                active_str,
+            ]
+        )
+
+    return rows
+
+
+def _export_users_csv(users):
+    output = StringIO()
+    writer = csv.writer(output)
+
+    for row in _user_rows(users):
+        writer.writerow(row)
+
+    csv_data = output.getvalue()
+    output.close()
+
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=users.csv"},
+    )
+
+
+def _export_users_excel(users):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Users"
+
+    for row in _user_rows(users):
+        ws.append(row)
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name="users.xlsx",
+    )
+
+
+def _export_users_pdf(users):
+    buffer = BytesIO()
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=40,
+        bottomMargin=30,
+    )
+
+    styles = getSampleStyleSheet()
+    elements = []
+
+    title = Paragraph("Users report", styles["Heading1"])
+    elements.append(title)
+    elements.append(Spacer(1, 12))
+
+    data = _user_rows(users)
+    table = Table(data, repeatRows=1)
+
+    table_style = TableStyle(
+        [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#00205d")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 9),
+            ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE", (0, 1), (-1, -1), 8),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (0, 1), (0, -1), "RIGHT"),
+            ("ALIGN", (1, 1), (-1, -1), "LEFT"),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.black),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ]
+    )
+
+    table.setStyle(table_style)
+    elements.append(table)
+
+    doc.build(elements)
+    buffer.seek(0)
+
+    return send_file(
+        buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name="users.pdf",
+    )
+
+
+@bp.route("/export", methods=["GET"])
+@login_required
+def export_users():
+    """
+    Exporta EXACTAMENTE los usuarios que el usuario está viendo:
+    mismos filtros + misma página.
+    """
+    fmt = (request.args.get("format") or "pdf").lower()
+
+    page = max(int(request.args.get("page", 1)), 1)
+    per_page = int(request.args.get("per_page", 20))
+
+    db = SessionLocal()
+    try:
+        query = build_users_query(db, request.args)
+
+        users = (
+            query.order_by(models.User.id.asc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+        )
+    finally:
+        db.close()
+
+    if fmt == "pdf":
+        return _export_users_pdf(users)
+    elif fmt == "csv":
+        return _export_users_csv(users)
+    elif fmt in ("xlsx", "excel"):
+        return _export_users_excel(users)
+    else:
+        return Response("Unsupported format", status=400)

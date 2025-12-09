@@ -17,6 +17,7 @@
 
 <p class="text-muted">Total devices: {{ "{:,}".format(total or 0) }}</p>
 
+
 <div class="table-responsive">
   <form method="get" action="{{ url_for('devices.index') }}">
     {# mantener búsqueda global y resetear a página 1 al filtrar #}
@@ -186,4 +187,61 @@
   </ul>
 </nav>
 
+
+<div class="d-flex justify-content-between align-items-center">
+  <h3 class="mb-0 fs-5"></h3>
+
+  <div class="d-flex align-items-center gap-2">
+    <span class="small text-muted fw-bold me-1">Download as:</span>
+
+    <div class="btn-group btn-group-sm" role="group">
+      <a
+        href="{{ url_for('devices.export_devices',
+                         format='csv',
+                         q=q,
+                         name=filter_name,
+                         uid=filter_uid,
+                         type=filter_type,
+                         status=filter_status,
+                         notes=filter_notes,
+                         page=page,
+                         per_page=per_page) }}"
+        class="btn btn-outline-secondary"
+      >
+        CSV
+      </a>
+      <a
+        href="{{ url_for('devices.export_devices',
+                         format='xlsx',
+                         q=q,
+                         name=filter_name,
+                         uid=filter_uid,
+                         type=filter_type,
+                         status=filter_status,
+                         notes=filter_notes,
+                         page=page,
+                         per_page=per_page) }}"
+        class="btn btn-outline-secondary"
+      >
+        Excel
+      </a>
+      <a
+        href="{{ url_for('devices.export_devices',
+                         format='pdf',
+                         q=q,
+                         name=filter_name,
+                         uid=filter_uid,
+                         type=filter_type,
+                         status=filter_status,
+                         notes=filter_notes,
+                         page=page,
+                         per_page=per_page) }}"
+        class="btn btn-outline-secondary"
+      >
+        PDF
+      </a>
+    </div>
+
+  </div>
+</div>
 {% endblock %}

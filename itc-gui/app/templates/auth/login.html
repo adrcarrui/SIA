@@ -6,10 +6,22 @@
     <div class="card shadow-sm">
       <div class="card-body">
 
-        <h2 class="h4 mb-3 text-center">Login</h2>
+        <!-- BLOQUE DE LOGO -->
+        <div class="text-center mb-4">
+          <img src="{{ url_for('static', filename='img/tams-logo-wordmark.png') }}"
+               alt="TAMS - Training Assets Management System"
+               class="img-fluid mb-1"
+               style="max-height: 150px;">
+          <div class="small text-muted fw-bold">
+            Training Assets Management System
+          </div>
+        </div>
+        <!-- FIN BLOQUE DE LOGO -->
+
+        <h2 class="h5 mb-3 text-center">Login</h2>
 
         <div class="mb-4 text-center">
-          <div class="display-4 mb-2">📡</div>
+          <div class="display-6 mb-2">📡</div>
           <p class="text-muted mb-1" id="nfc-message">
             Bring your NFC card close to the reader to log in…
           </p>
@@ -82,7 +94,6 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      // Manejo según razón
       if (data.reason === 'no_card') {
         err.textContent = '';
       } else if (data.reason === 'unknown_uid') {
@@ -104,7 +115,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  // Arrancamos el bucle de lectura automática
   pollNFC();
 });
 </script>

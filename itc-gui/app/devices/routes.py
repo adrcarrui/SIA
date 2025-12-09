@@ -1,7 +1,15 @@
-from flask import render_template, request, redirect, url_for, flash
+from flask import render_template, request, redirect, url_for, flash, send_file, Response
 from flask_login import login_required, current_user
 from . import bp
-
+from io import StringIO, BytesIO
+import csv
+from openpyxl import Workbook
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 from app.db import SessionLocal
 import app.models as models
 from sqlalchemy import or_
@@ -15,16 +23,58 @@ from app.scripts import log_movement
 DEVICE_TYPES = ["vending", "canteen", "instructor", "guest"]
 DEVICE_STATUSES = ["assigned", "available", "lost", "annulled"]
 
+def build_devices_query(db, args):
+    """
+    Aplica EXACTAMENTE los mismos filtros que el listado de devices:
+    q, name, uid, type, status, notes.
+    """
+    q      = (args.get("q") or "").strip()
+    name   = (args.get("name") or "").strip()
+    uid    = (args.get("uid") or "").strip()
+    dtype  = (args.get("type") or "").strip()
+    status = (args.get("status") or "").strip()
+    notes  = (args.get("notes") or "").strip()
+
+    query = db.query(models.Device)
+
+    # Búsqueda global (q)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                models.Device.name.ilike(like),
+                models.Device.uid.ilike(like),
+                models.Device.type.ilike(like),
+                models.Device.status.ilike(like),
+                models.Device.notes.ilike(like),
+            )
+        )
+
+    # Filtros de columna
+    if name:
+        query = query.filter(models.Device.name.ilike(f"%{name}%"))
+    if uid:
+        query = query.filter(models.Device.uid.ilike(f"%{uid}%"))
+    if dtype:
+        query = query.filter(models.Device.type == dtype)
+    if status:
+        query = query.filter(models.Device.status == status)
+    if notes:
+        query = query.filter(models.Device.notes.ilike(f"%{notes}%"))
+
+    return query
+
 
 @bp.route("/")
 @login_required
 def index():
     """Listado con búsqueda y filtros por columna"""
-    q = (request.args.get("q") or "").strip()
-    page = max(int(request.args.get("page", 1)), 1)
+    # Parámetros de paginación y búsqueda
+    q        = (request.args.get("q") or "").strip()
+    page     = max(int(request.args.get("page", 1)), 1)
     per_page = 20
 
-    # Column filters
+    # Column filters (estos nombres son los de tus inputs)
     name   = (request.args.get("name") or "").strip()
     uid    = (request.args.get("uid") or "").strip()
     dtype  = (request.args.get("type") or "").strip()
@@ -33,49 +83,28 @@ def index():
 
     db = SessionLocal()
     try:
-        query = db.query(models.Device)
-
-        # Global search (q) - lo que ya tenías
-        if q:
-            like = f"%{q}%"
-            query = query.filter(
-                or_(
-                    models.Device.name.ilike(like),
-                    models.Device.uid.ilike(like),
-                    models.Device.type.ilike(like),
-                    models.Device.status.ilike(like),
-                    models.Device.notes.ilike(like),
-                )
-            )
-
-        # Column filters (se acumulan con AND)
-        if name:
-            query = query.filter(models.Device.name.ilike(f"%{name}%"))
-        if uid:
-            query = query.filter(models.Device.uid.ilike(f"%{uid}%"))
-        if dtype:
-            # usamos igualdad porque tienes un set cerrado: vending, canteen, etc.
-            query = query.filter(models.Device.type == dtype)
-        if status:
-            query = query.filter(models.Device.status == status)
-        if notes:
-            query = query.filter(models.Device.notes.ilike(f"%{notes}%"))
+        # Misma lógica de filtros que se usa en export_devices
+        query = build_devices_query(db, request.args)
 
         total = query.count()
+
         devices = (
             query.order_by(models.Device.id.asc())
-                 .offset((page-1)*per_page)
+                 .offset((page - 1) * per_page)
                  .limit(per_page)
                  .all()
         )
+
         pages = ceil(total / per_page) if total else 1
 
         return render_template(
             "devices/index.html",
-            page_title="TCO GUI",
+            page_title="Devices",
             devices=devices,
+
             # búsqueda global
             q=q,
+
             # paginación
             page=page,
             per_page=per_page,
@@ -83,13 +112,14 @@ def index():
             pages=pages,
             has_prev=page > 1,
             has_next=page < pages,
-            # filtros por columna (para mantener los valores en los inputs)
+
+            # filtros por columna (para mantener valores en inputs)
             filter_name=name,
             filter_uid=uid,
             filter_type=dtype,
             filter_status=status,
             filter_notes=notes,
-            # por si quieres usar las listas en el template algún día
+
             DEVICE_TYPES=DEVICE_TYPES,
             DEVICE_STATUSES=DEVICE_STATUSES,
         )
@@ -351,3 +381,174 @@ def delete_device(device_id):
 
     finally:
         db.close()
+
+@bp.route("/export")
+@login_required
+def export_devices():
+    """
+    Exporta EXACTAMENTE los devices que el usuario está viendo:
+    - mismos filtros (q, name, uid, type, status, notes)
+    - misma página (page, per_page)
+    """
+    fmt = request.args.get("format", "csv").lower()
+
+    page     = max(int(request.args.get("page", 1)), 1)
+    per_page = int(request.args.get("per_page", 20))
+
+    db = SessionLocal()
+    try:
+        # Misma query que en index(), con los mismos filtros
+        query = build_devices_query(db, request.args)
+
+        # Solo la página que el usuario ve, no toda la tabla
+        devices = (
+            query.order_by(models.Device.id.asc())
+                 .offset((page - 1) * per_page)
+                 .limit(per_page)
+                 .all()
+        )
+    finally:
+        db.close()
+
+    if fmt == "csv":
+        return _export_devices_csv(devices)
+    elif fmt in ("xlsx", "excel"):
+        return _export_devices_excel(devices)
+    elif fmt == "pdf":
+        return _export_devices_pdf(devices)
+    else:
+        return Response("Unsupported format", status=400)
+
+
+def _device_rows(devices):
+    """Genera filas comunes para todos los formatos."""
+    rows = []
+    # Cabecera
+    rows.append(["ID", "Name", "UID", "Type", "Status", "Notes"])
+    # Filas
+    for d in devices:
+        rows.append([
+            d.id,
+            d.name or "",
+            d.uid or "",
+            d.type or "",
+            d.status or "",
+            d.notes or "",
+        ])
+    return rows
+
+
+def _export_devices_csv(devices):
+    output = StringIO()
+    writer = csv.writer(output)
+    for row in _device_rows(devices):
+        writer.writerow(row)
+
+    csv_data = output.getvalue()
+    output.close()
+
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=devices.csv"
+        }
+    )
+
+
+def _export_devices_excel(devices):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Devices"
+
+    for row in _device_rows(devices):
+        ws.append(row)
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name="devices.xlsx"
+    )
+
+
+def _export_devices_pdf(devices):
+    buffer = BytesIO()
+
+    # Documento básico
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=40,
+        bottomMargin=30,
+    )
+
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Título
+    title = Paragraph("Devices report", styles["Heading1"])
+    elements.append(title)
+    elements.append(Spacer(1, 12))
+
+    # Datos de la tabla
+    data = _device_rows(devices)
+
+    # Tabla
+    table = Table(data, repeatRows=1)  # repeatRows=1 -> cabecera en cada página
+
+    # Estilos de tabla
+    table_style = TableStyle([
+        # Cabecera
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#00205d")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 10),
+
+        # Celdas
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 1), (-1, -1), 9),
+        ("ALIGN", (0, 1), (0, -1), "RIGHT"),   # ID
+        ("ALIGN", (1, 1), (4, -1), "LEFT"),    # Name, UID, Type, Status
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+
+        # Bordes y rejilla
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.black),
+
+        # Espaciado
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ])
+
+    table.setStyle(table_style)
+
+    elements.append(table)
+
+    # Generar PDF
+    doc.build(elements)
+    buffer.seek(0)
+
+    return send_file(
+        buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name="devices.pdf",
+    )
+
+
+    return send_file(
+        buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name="devices.pdf"
+    )

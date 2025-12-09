@@ -1,15 +1,39 @@
 from math import ceil
-from flask import render_template, request, redirect, url_for, flash, jsonify, abort
+from io import StringIO, BytesIO
+import csv
+
+from flask import (
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    jsonify,
+    abort,
+    send_file,
+    Response,
+)
 from flask_login import login_required, current_user
-from . import bp
-from app.db import SessionLocal
 from sqlalchemy.orm import joinedload
-import app.models as models
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timedelta
+
+from . import bp
+from app.db import SessionLocal
+import app.models as models
 from app.scripts import log_movement
 from app.models import Assignment, Course, Device, User
+from app.scripts.get_overdue_assignments import (
+    get_cards_vs_trainees_alerts,
+    get_overdue_course_alerts,
+)
+
+from openpyxl import Workbook
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 
 PER_PAGE = 20  # ajusta a tu gusto
 
@@ -43,6 +67,80 @@ def normalize_field(value: str):
     return v
 
 
+def build_courses_query(db, args):
+    """
+    Construye la query de Course con los mismos filtros que el index().
+    """
+    q = (args.get("q") or "").strip()
+
+    # Column filters
+    course_code = (args.get("course") or "").strip()
+    name = (args.get("name") or "").strip()
+    client = (args.get("client") or "").strip()
+    status = (args.get("status") or "").strip()
+    trainees_s = (args.get("trainees") or "").strip()
+    notes = (args.get("notes") or "").strip()
+    start_str = (args.get("start_date") or "").strip()
+    end_str = (args.get("end_date") or "").strip()
+
+    qry = db.query(models.Course)
+
+    # Búsqueda global
+    if q:
+        like = f"%{q}%"
+        qry = qry.filter(
+            or_(
+                models.Course.course.ilike(like),
+                models.Course.name.ilike(like),
+                getattr(models.Course, "notes", models.Course.name).ilike(like),
+            )
+        )
+
+    # Filtros por columna (AND)
+    if course_code:
+        qry = qry.filter(models.Course.course.ilike(f"%{course_code}%"))
+
+    if name:
+        qry = qry.filter(models.Course.name.ilike(f"%{name}%"))
+
+    if client:
+        qry = qry.filter(models.Course.client.ilike(f"%{client}%"))
+
+    if status:
+        qry = qry.filter(
+            or_(
+                models.Course.status_tco == status,
+                models.Course.status_itc == status,
+            )
+        )
+
+    if trainees_s:
+        try:
+            trainees_val = int(trainees_s)
+            qry = qry.filter(models.Course.trainees == trainees_val)
+        except ValueError:
+            pass
+
+    if notes:
+        qry = qry.filter(models.Course.notes.ilike(f"%{notes}%"))
+
+    if start_str:
+        try:
+            start_date = datetime.strptime(start_str, "%Y-%m-%d").date()
+            qry = qry.filter(models.Course.start_date == start_date)
+        except ValueError:
+            pass
+
+    if end_str:
+        try:
+            end_date = datetime.strptime(end_str, "%Y-%m-%d").date()
+            qry = qry.filter(models.Course.end_date == end_date)
+        except ValueError:
+            pass
+
+    return qry
+
+
 @bp.route("/")
 @login_required
 def index():
@@ -52,95 +150,45 @@ def index():
 
     # Column filters
     course_code = (request.args.get("course") or "").strip()
-    name        = (request.args.get("name") or "").strip()
-    client      = (request.args.get("client") or "").strip()
-    status      = (request.args.get("status") or "").strip()
-    trainees_s  = (request.args.get("trainees") or "").strip()
-    notes       = (request.args.get("notes") or "").strip()
-    start_str   = (request.args.get("start_date") or "").strip()
-    end_str     = (request.args.get("end_date") or "").strip()
+    name = (request.args.get("name") or "").strip()
+    client = (request.args.get("client") or "").strip()
+    status = (request.args.get("status") or "").strip()
+    trainees_s = (request.args.get("trainees") or "").strip()
+    notes = (request.args.get("notes") or "").strip()
+    start_str = (request.args.get("start_date") or "").strip()
+    end_str = (request.args.get("end_date") or "").strip()
+
+    # 🔥 Nuevo filtro
+    my = request.args.get("my")  # "1" para filtrar solo mis cursos
 
     db = SessionLocal()
     try:
-        qry = db.query(models.Course)
+        qry = build_courses_query(db, request.args)
 
-        # Búsqueda global
-        if q:
-            like = f"%{q}%"
-            qry = qry.filter(
-                or_(
-                    models.Course.course.ilike(like),
-                    models.Course.name.ilike(like),
-                    getattr(models.Course, "notes", models.Course.name).ilike(like),
-                )
-            )
-
-        # Filtros por columna (AND)
-        if course_code:
-            qry = qry.filter(models.Course.course.ilike(f"%{course_code}%"))
-
-        if name:
-            qry = qry.filter(models.Course.name.ilike(f"%{name}%"))
-
-        if client:
-            qry = qry.filter(models.Course.client.ilike(f"%{client}%"))
-
-        if status:
-            # filtramos por estado TCO o ITC que coincidan con el valor
-            qry = qry.filter(
-                or_(
-                    models.Course.status_tco == status,
-                    models.Course.status_itc == status,
-                )
-            )
-
-        if trainees_s:
-            try:
-                trainees_val = int(trainees_s)
-                qry = qry.filter(models.Course.trainees == trainees_val)
-            except ValueError:
-                pass
-
-        if notes:
-            qry = qry.filter(models.Course.notes.ilike(f"%{notes}%"))
-
-        if start_str:
-            try:
-                start_date = datetime.strptime(start_str, "%Y-%m-%d").date()
-                qry = qry.filter(models.Course.start_date == start_date)
-            except ValueError:
-                pass
-
-        if end_str:
-            try:
-                end_date = datetime.strptime(end_str, "%Y-%m-%d").date()
-                qry = qry.filter(models.Course.end_date == end_date)
-            except ValueError:
-                pass
+        # 🔥 aplicar filtro My Courses
+        if my == "1" and current_user.is_authenticated:
+            qry = qry.filter(models.Course.responsible_id == current_user.id)
 
         total = qry.count()
         pages = max(ceil(total / per_page), 1)
         courses = (
             qry.order_by(models.Course.id.asc())
-            .offset((page - 1) * per_page)
-            .limit(per_page)
-            .all()
+               .offset((page - 1) * per_page)
+               .limit(per_page)
+               .all()
         )
 
         return render_template(
             "courses/index.html",
             page_title="TCO GUI",
             courses=courses,
-            # búsqueda global
             q=q,
-            # paginación
             page=page,
             pages=pages,
             total=total,
             per_page=per_page,
             has_prev=page > 1,
             has_next=page < pages,
-            # filtros por columna (para los inputs)
             filter_course=course_code,
             filter_name=name,
             filter_client=client,
@@ -150,6 +198,8 @@ def index():
             filter_start_date=start_str,
             filter_end_date=end_str,
             COURSE_STATUSES=COURSE_STATUSES,
+            # 🔥 Para marcar el botón activo si está seleccionado
+            filter_my=my,
         )
     finally:
         db.close()
@@ -193,8 +243,7 @@ def new_course():
             start_dt = to_date(request.form.get("start_date"))
             end_dt = to_date(request.form.get("end_date"))
 
-            # responsable: combo limitado a TCO supervisor/employee,
-            # pero por defecto el responsable será el que crea el curso
+            # responsable
             resp_raw = (request.form.get("responsible_id") or "").strip()
             responsible_id = None
 
@@ -219,12 +268,9 @@ def new_course():
                             "warning",
                         )
 
-            # Si no se ha elegido un responsable válido, por defecto
-            # responsable = usuario que crea el curso
             if not responsible_id and current_user.is_authenticated:
                 responsible_id = current_user.id
 
-            # trainees entero, NOT NULL
             t_raw = (request.form.get("trainees") or "").strip()
             try:
                 trainees = int(t_raw)
@@ -367,7 +413,6 @@ def edit_course(course_id):
             return redirect(url_for("courses.index"))
 
         if request.method == "POST":
-            # Snapshot ANTES de tocar nada
             before_data = {
                 "id": c.id,
                 "course": c.course,
@@ -391,7 +436,6 @@ def edit_course(course_id):
             trainees = (request.form.get("trainees") or "").strip()
             notes = (request.form.get("notes") or "").strip()
 
-            # estados separados
             status_tco = (request.form.get("status_tco") or "").strip() or c.status_tco or "planned"
             status_itc = (request.form.get("status_itc") or "").strip() or c.status_itc or "start"
 
@@ -403,7 +447,6 @@ def edit_course(course_id):
                 flash("Invalid ITC status. 'start' will be used.", "warning")
                 status_itc = "start"
 
-            # ITC (no admin) NO puede tocar el status_tco
             actor_role = (getattr(current_user, "role", "") or "").lower()
             actor_dept = (getattr(current_user, "department", "") or "")
             is_itc_only = (actor_dept == "ITC support" and actor_role != "admin")
@@ -449,7 +492,6 @@ def edit_course(course_id):
             except ValueError:
                 trainees_val = None
 
-            # Aplicar cambios
             c.course = course_code
             c.name = name or None
             c.client = client or None
@@ -460,7 +502,6 @@ def edit_course(course_id):
             c.status_itc = status_itc
             c.notes = notes or None
 
-            # responsable (solo TCO supervisor/employee si se cambia)
             resp_raw = (request.form.get("responsible_id") or "").strip()
             if resp_raw:
                 try:
@@ -482,7 +523,6 @@ def edit_course(course_id):
                             "Selected responsible is not a valid TCO supervisor/employee.",
                             "warning",
                         )
-            # Si va vacío, no tocamos c.responsible_id
 
             db.flush()
 
@@ -545,7 +585,6 @@ def edit_course(course_id):
             flash("Course updated.", "success")
             return redirect(url_for("courses.index"))
 
-        # GET
         responsibles = (
             db.query(models.User)
             .filter(
@@ -659,9 +698,9 @@ def calendar_data():
                     "name": c.course or c.name,
                     "start_date": c.start_date.isoformat(),
                     "end_date": (c.end_date or c.start_date).isoformat(),
-                    "status": c.auto_status,        # calculado
-                    "status_tco": c.status_tco,    # raw
-                    "status_itc": c.status_itc,    # raw
+                    "status": c.auto_status,
+                    "status_tco": c.status_tco,
+                    "status_itc": c.status_itc,
                     "trainees": c.trainees,
                     "detail_url": url_for("courses.detail_fragment", course_id=c.id),
                 }
@@ -741,7 +780,6 @@ def update_assignment_overdue_status_for_course(db, course):
     Actualiza Assignment.status para las asignaciones 'vivas' de un curso
     según la fecha de fin del curso y la fecha actual.
     """
-    print("Llamada funcion update fecha")
     today = date.today()
 
     if not course.end_date:
@@ -768,7 +806,6 @@ def update_assignment_overdue_status_for_course(db, course):
             dl = days_late
 
         a.status = new_status
-        print("status: " + new_status)
         a.days_late = dl
 
 
@@ -777,6 +814,34 @@ def update_assignment_overdue_status_for_course(db, course):
 def api_calendar_events():
     db = SessionLocal()
     try:
+        # 1) Calculamos severidad por curso usando tus helpers de alertas
+        cards_alerts = get_cards_vs_trainees_alerts(db)
+        overdue_alerts = get_overdue_course_alerts(db)
+
+        severity_order = {"notice": 1, "warning": 2, "critical": 3}
+        severity_by_course = {}
+
+        def bump_severity(course_id, sev):
+            if sev not in severity_order:
+                return
+            current = severity_by_course.get(course_id)
+            if current is None or severity_order[sev] > severity_order[current]:
+                severity_by_course[course_id] = sev
+
+        for a in cards_alerts:
+            c = a["course"]
+            if c and c.id:
+                bump_severity(c.id, "notice")
+
+        for o in overdue_alerts:
+            c = o["course"]
+            if not c or not c.id:
+                continue
+            if o["type"] == "overdue_1":
+                bump_severity(c.id, "warning")
+            elif o["type"] == "overdue_2":
+                bump_severity(c.id, "critical")
+
         courses = db.query(Course).all()
 
         events = []
@@ -791,54 +856,233 @@ def api_calendar_events():
             )
             detail_url = url_for("courses.detail_fragment", course_id=c.id)
 
-            # Evento de INICIO (verde)
-            if c.start_date:
-                events.append(
-                    {
-                        "id": f"{c.id}-start",
-                        "title": title,
-                        "start": c.start_date.isoformat(),
-                        "allDay": True,
-                        "classNames": ["fc-course-start"],
-                        "extendedProps": {
-                            "course_id": c.id,
-                            "status": c.auto_status,
-                            "status_tco": c.status_tco,
-                            "status_itc": c.status_itc,
-                            "trainees": c.trainees,
-                            "client": c.client,
-                            "course_code": c.course,
-                            "course_url": f"/courses/{c.id}",
-                            "detail_url": detail_url,
-                            "kind": "start",
-                        },
-                    }
-                )
+            sev = severity_by_course.get(c.id)
 
-            # Evento de FIN (azul)
+            base_extended = {
+                "course_id": c.id,
+                "status": getattr(c, "auto_status", None),
+                "status_tco": c.status_tco,
+                "status_itc": getattr(c, "status_itc", None),
+                "trainees": c.trainees,
+                "client": c.client,
+                "course_code": c.course,
+                "course_url": f"/courses/{c.id}",
+                "detail_url": detail_url,
+                "severity": sev,
+            }
+
+            if c.start_date:
+                ev = {
+                    "id": f"{c.id}-start",
+                    "title": title,
+                    "start": c.start_date.isoformat(),
+                    "allDay": True,
+                    "classNames": ["fc-course-start"],
+                    "extendedProps": {
+                        **base_extended,
+                        "kind": "start",
+                    },
+                }
+                events.append(ev)
+
             if c.end_date and (not c.start_date or c.end_date != c.start_date):
-                events.append(
-                    {
-                        "id": f"{c.id}-end",
-                        "title": title,
-                        "start": c.end_date.isoformat(),
-                        "allDay": True,
-                        "classNames": ["fc-course-end"],
-                        "extendedProps": {
-                            "course_id": c.id,
-                            "status": c.auto_status,
-                            "status_tco": c.status_tco,
-                            "status_itc": c.status_itc,
-                            "trainees": c.trainees,
-                            "client": c.client,
-                            "course_code": c.course,
-                            "course_url": f"/courses/{c.id}",
-                            "detail_url": detail_url,
-                            "kind": "end",
-                        },
-                    }
-                )
+                ev = {
+                    "id": f"{c.id}-end",
+                    "title": title,
+                    "start": c.end_date.isoformat(),
+                    "allDay": True,
+                    "classNames": ["fc-course-end"],
+                    "extendedProps": {
+                        **base_extended,
+                        "kind": "end",
+                    },
+                }
+                events.append(ev)
 
         return jsonify(events)
     finally:
         db.close()
+
+
+# ===========================
+#   EXPORT: CSV / EXCEL / PDF
+# ===========================
+
+
+def _course_rows(courses):
+    """
+    Filas comunes para exportar cursos: cabecera + datos.
+    """
+    rows = []
+    rows.append([
+        "ID",
+        "Course code",
+        "Name",
+        "Client",
+        "Trainees",
+        "Start date",
+        "End date",
+    ])
+
+    for c in courses:
+        start = c.start_date
+        end = c.end_date
+
+        if start:
+            try:
+                start_str = start.strftime("%Y-%m-%d")
+            except AttributeError:
+                start_str = str(start)
+        else:
+            start_str = ""
+
+        if end:
+            try:
+                end_str = end.strftime("%Y-%m-%d")
+            except AttributeError:
+                end_str = str(end)
+        else:
+            end_str = ""
+
+        rows.append([
+            c.id,
+            c.course or "",
+            c.name or "",
+            c.client or "",
+            c.trainees if c.trainees is not None else "",
+            start_str,
+            end_str,
+        ])
+
+    return rows
+
+
+def _export_courses_csv(courses):
+    output = StringIO()
+    writer = csv.writer(output)
+
+    for row in _course_rows(courses):
+        writer.writerow(row)
+
+    csv_data = output.getvalue()
+    output.close()
+
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=courses.csv"},
+    )
+
+
+def _export_courses_excel(courses):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Courses"
+
+    for row in _course_rows(courses):
+        ws.append(row)
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name="courses.xlsx",
+    )
+
+
+def _export_courses_pdf(courses):
+    buffer = BytesIO()
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=40,
+        bottomMargin=30,
+    )
+
+    styles = getSampleStyleSheet()
+    elements = []
+
+    title = Paragraph("Courses report", styles["Heading1"])
+    elements.append(title)
+    elements.append(Spacer(1, 12))
+
+    data = _course_rows(courses)
+    table = Table(data, repeatRows=1)
+
+    table_style = TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#00205d")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 1), (-1, -1), 8),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+
+        ("ALIGN", (0, 1), (0, -1), "RIGHT"),
+        ("ALIGN", (1, 1), (-1, -1), "LEFT"),
+
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.black),
+
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ])
+
+    table.setStyle(table_style)
+    elements.append(table)
+
+    doc.build(elements)
+    buffer.seek(0)
+
+    return send_file(
+        buffer,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name="courses.pdf",
+    )
+
+
+@bp.route("/export", methods=["GET"])
+@login_required
+def export_courses():
+    """
+    Exporta EXACTAMENTE los cursos que el usuario está viendo:
+    mismos filtros + misma página.
+    """
+    fmt = (request.args.get("format") or "pdf").lower()
+
+    page = max(int(request.args.get("page", 1)), 1)
+    per_page = int(request.args.get("per_page", PER_PAGE))
+
+    db = SessionLocal()
+    try:
+        qry = build_courses_query(db, request.args)
+
+        courses = (
+            qry.order_by(models.Course.id.asc())
+               .offset((page - 1) * per_page)
+               .limit(per_page)
+               .all()
+        )
+    finally:
+        db.close()
+
+    if fmt == "pdf":
+        return _export_courses_pdf(courses)
+    elif fmt == "csv":
+        return _export_courses_csv(courses)
+    elif fmt in ("xlsx", "excel"):
+        return _export_courses_excel(courses)
+    else:
+        return Response("Unsupported format", status=400)

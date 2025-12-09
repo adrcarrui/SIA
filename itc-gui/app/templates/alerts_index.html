@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-3">
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h2 class="mb-0">Alerts</h2>
+
+  <div class="d-flex align-items-center gap-2">
+    <span class="small fw-bold me-1">View:</span>
+
+    <a
+      href="{{ url_for('main.alerts_index') }}"
+      class="btn btn-sm btn-outline-secondary {% if not filter_my %}active{% endif %}">
+      All
+    </a>
+
+    <a
+      href="{{ url_for('main.alerts_index', my=1) }}"
+      class="btn btn-sm btn-outline-primary {% if filter_my == '1' %}active{% endif %}">
+      My Alerts
+    </a>
+  </div>
+</div>
+  <form method="get">
+    <table class="table table-sm table-striped align-middle">
+      <thead>
+        <!-- Cabecera normal -->
+        <tr>
+          <th>Severity</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Course</th>
+          <th>Responsible</th>
+          <th>Actions</th>
+        </tr>
+
+        <!-- Fila de filtros (mismo estilo que Users) -->
+        <tr>
+          <th>
+            <select
+              name="severity"
+              class="form-select form-select-sm"
+            >
+              <option value="">All</option>
+              <option value="notice"   {% if severity == 'notice' %}selected{% endif %}>Notice</option>
+              <option value="warning"  {% if severity == 'warning' %}selected{% endif %}>Warning</option>
+              <option value="critical" {% if severity == 'critical' %}selected{% endif %}>Critical</option>
+            </select>
+          </th>
+
+          <th>
+            <select
+              name="type"
+              class="form-select form-select-sm"
+            >
+              <option value="">All</option>
+              <option value="cards_missing" {% if type == 'cards_missing' %}selected{% endif %}>Cards &lt; trainees</option>
+              <option value="cards_extra"   {% if type == 'cards_extra' %}selected{% endif %}>Cards &gt; trainees</option>
+              <option value="overdue_1"     {% if type == 'overdue_1' %}selected{% endif %}>Overdue ≤ 7 days</option>
+              <option value="overdue_2"     {% if type == 'overdue_2' %}selected{% endif %}>Overdue &gt; 7 days</option>
+            </select>
+          </th>
+
+          <th>
+            <input
+              type="text"
+              class="form-control form-control-sm"
+              name="q"
+              placeholder="Search text"
+              value="{{ q or '' }}"
+            >
+          </th>
+
+          <th></th>
+
+          <th>
+            <input
+              type="text"
+              class="form-control form-control-sm"
+              name="responsible"
+              placeholder="Responsible"
+              value="{{ responsible or '' }}"
+            >
+          </th>
+
+          <th class="text-nowrap">
+            <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+            <a href="{{ url_for('main.alerts_index') }}" class="btn btn-secondary btn-sm">Clear</a>
+          </th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for alert in alerts %}
+        <tr>
+          {# SEVERITY CON BADGE #}
+          <td>
+            {% if alert.severity == 'notice' %}
+              <span class="badge bg-info text-dark">Notice</span>
+            {% elif alert.severity == 'warning' %}
+              <span class="badge bg-warning text-dark">Warning</span>
+            {% elif alert.severity == 'critical' %}
+              <span class="badge bg-danger">Critical</span>
+            {% else %}
+              -
+            {% endif %}
+          </td>
+
+          {# TYPE BONITO #}
+          <td>
+            {% if alert.type == 'cards_missing' %}
+              Cards &lt; trainees
+            {% elif alert.type == 'cards_extra' %}
+              Cards &gt; trainees
+            {% elif alert.type == 'overdue_1' %}
+              Overdue ≤ 7 days
+            {% elif alert.type == 'overdue_2' %}
+              Overdue &gt; 7 days
+            {% else %}
+              -
+            {% endif %}
+          </td>
+
+          <td>{{ alert.message }}</td>
+
+          <td>
+            {% if alert.course %}
+              {{ alert.course.name or alert.course.course or ('Course #' ~ alert.course.id) }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+
+          <td>
+            {% set resp = alert.responsible %}
+            {% if resp %}
+              {{ resp.username or (resp.name ~ ' ' ~ (resp.surname or '')) }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+
+          <td>
+            {% if alert.course %}
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary"
+                data-bs-toggle="modal"
+                data-bs-target="#courseModal"
+                data-url="{{ url_for('courses.detail_fragment', course_id=alert.course.id) }}"
+              >
+                View
+              </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center text-muted small">
+            No alerts found.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </form>
+</div>
+
+{# Modal de detalles de curso #}
+<div class="modal fade" id="courseModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Course details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"
+                aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="courseModalBody">
+        <div class="text-center py-5">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script>
+    function loadCourseDetail(url) {
+      const modalEl = document.getElementById('courseModal');
+      const modalBody = document.getElementById('courseModalBody');
+      if (!modalEl || !modalBody) {
+        console.error("Course modal not found");
+        return;
+      }
+
+      modalBody.innerHTML = `
+        <div class="text-center py-5">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      `;
+
+      fetch(url)
+        .then(resp => {
+          if (!resp.ok) {
+            throw new Error("HTTP " + resp.status);
+          }
+          return resp.text();
+        })
+        .then(html => {
+          modalBody.innerHTML = html;
+          const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+          modal.show();
+        })
+        .catch(err => {
+          console.error(err);
+          modalBody.innerHTML = `
+            <div class="alert alert-danger">
+              Error loading course details.
+            </div>
+          `;
+          const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+          modal.show();
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-bs-target="#courseModal"][data-url]');
+      if (!btn) return;
+
+      e.preventDefault();
+      const url = btn.dataset.url;
+      if (url) {
+        loadCourseDetail(url);
+      }
+    });
+  </script>
+{% endblock %}
