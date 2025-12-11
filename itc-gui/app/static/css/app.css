@@ -343,21 +343,21 @@ button[data-bs-toggle="dropdown"]::before {
 
 /* Día de hoy con solo avisos (notice) */
 .fc .fc-daygrid-day.fc-day-notice {
-  background-color: #dbeafe;      /* azul suave */
-  box-shadow: 0 0 0 2px #3b82f6 inset;
+  background-color: #ffc107;      /* azul suave */
+  box-shadow: 0 0 0 2px #ffc107 inset;
   border-radius: 6px;
 }
 
 /* Día de hoy con al menos un warning y sin critical */
 .fc .fc-daygrid-day.fc-day-warning {
-  background-color: #fff3cd;      /* amarillo suave */
-  box-shadow: 0 0 0 2px #ffc107 inset;
+  background-color: #fd7e14;      /* amarillo suave */
+  box-shadow: 0 0 0 2px #fd7e14 inset;
   border-radius: 6px;
 }
 
 /* Día de hoy con al menos un critical */
 .fc .fc-daygrid-day.fc-day-critical {
-  background-color: #f8d7da;      /* rojo suave */
+  background-color: #dc3545;      /* rojo suave */
   box-shadow: 0 0 0 2px #dc3545 inset;
   border-radius: 6px;
 }
@@ -396,5 +396,17 @@ button[data-bs-toggle="dropdown"]::before {
   background-color: #00205d;
   border-color: #00205d;
   opacity: 0.65;
+  color: #ffffff;
+}
+
+.btn-notice-primary{
+  background-color: #ffc107;
+  border-color: #ffc107;
+  color: #ffffff;
+}
+
+.btn-warning-primary{
+  background-color: #fd7e14;
+  border-color: #fd7e14;
   color: #ffffff;
 }

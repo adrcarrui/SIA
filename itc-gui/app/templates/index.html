@@ -172,13 +172,13 @@
 
           {% if alerts_summary %}
             <div class="mt-2 small d-flex flex-wrap gap-2">
-              <span class="badge bg-info text-dark">
+              <span class="badge btn-notice-primary text-dark">
                 Notice: {{ alerts_summary.notice or 0 }}
               </span>
-              <span class="badge bg-warning text-dark">
+              <span class="badge btn-warning-primary text-dark">
                 Warning: {{ alerts_summary.warning or 0 }}
               </span>
-              <span class="badge bg-danger">
+              <span class="badge bg-danger text-dark">
                 Critical: {{ alerts_summary.critical or 0 }}
               </span>
             </div>
