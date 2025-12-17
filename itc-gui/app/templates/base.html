@@ -127,7 +127,18 @@
               <span class="label">Alerts</span>
             </a>
           </li>
-
+          <!--Assets-->
+          {% set role = (current_user.role or '') %}
+          {% if 'admin' in role or 'supervisor' in role %}
+            <li class="nav-item">
+              <a href="{{ url_for('asset_types.index') }}"
+                class="nav-link d-flex align-items-center gap-2"
+                title="Asset types">
+                <span class="icon" aria-hidden="true">🧩</span>
+                <span class="label">Asset types</span>
+              </a>
+            </li>
+          {% endif %}
           <!-- Movements -->
           <li class="nav-item">
             <a href="{{ url_for('movements.index') }}"

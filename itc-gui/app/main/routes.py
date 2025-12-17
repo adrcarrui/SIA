@@ -9,6 +9,27 @@ from app.scripts.get_overdue_assignments import (
 from app.models import User, Device, Course, Assignment, Movements
 from sqlalchemy import func, case
 
+
+def _alerts_scope_for_user():
+    dept = (getattr(current_user, "department", "") or "").strip()
+    role = (getattr(current_user, "role", "") or "").strip().lower()
+
+    # Admin ve todo
+    if "admin" in role:
+        return None
+
+    # ITC support ve solo ITC
+    if dept.lower() == "itc support":
+        return "ITC support"
+
+    # TCO ve solo TCO
+    if dept.upper() == "TCO":
+        return "TCO"
+
+    # fallback: nada (o todo). Mejor nada para no mezclar departamentos.
+    return None
+
+
 @bp.app_context_processor
 def inject_alerts_summary():
     """
@@ -17,37 +38,26 @@ def inject_alerts_summary():
     """
     db = SessionLocal()
     try:
-        cards_alerts = get_cards_vs_trainees_alerts(db)
-        overdue_alerts = get_overdue_course_alerts(db)
+        managed_by = _alerts_scope_for_user()
+
+        cards_alerts = get_cards_vs_trainees_alerts(db, managed_by=managed_by)
+        overdue_alerts = get_overdue_course_alerts(db, managed_by=managed_by)
 
         alerts = []
 
         # +/- tarjetas  → notice
         for a in cards_alerts:
-            c = a["course"]
-
-            if a["type"] == "cards_missing":
-                severity = "notice"
-            else:
-                severity = "notice"
-
             alerts.append({
-                "severity": severity,
-                "course": c,
+                "severity": "notice",
+                "course": a["course"],
             })
 
         # overdue → warning / critical
         for o in overdue_alerts:
-            c = o["course"]
-
-            if o["type"] == "overdue_1":
-                severity = "warning"
-            else:
-                severity = "critical"
-
+            severity = "warning" if o["type"] == "overdue_1" else "critical"
             alerts.append({
                 "severity": severity,
-                "course": c,
+                "course": o["course"],
             })
 
         summary = {
@@ -59,6 +69,7 @@ def inject_alerts_summary():
         return dict(alerts_summary=summary)
     finally:
         db.close()
+
 
 @bp.route("/")
 @login_required
@@ -72,14 +83,14 @@ def index():
         total_assignments = db.query(func.count(Assignment.id)).scalar() or 0
         total_movements = db.query(func.count(Movements.id)).scalar() or 0
 
-        # Tarjetas activas
+        # Tarjetas activas (esto ahora mismo cuenta TODO; si quieres, luego lo filtramos por dept también)
         total_active_cards = (
             db.query(func.count(Assignment.id))
               .filter(Assignment.released_at.is_(None))
               .scalar()
         ) or 0
 
-        # Stats de devices
+        # Stats de devices (legacy por Device.type)
         raw_stats = (
             db.query(
                 Device.type.label("type"),
@@ -109,9 +120,10 @@ def index():
                 }
             )
 
-        # Bloques de alertas
-        cards_alerts = get_cards_vs_trainees_alerts(db)
-        overdue_alerts = get_overdue_course_alerts(db)
+        # Bloques de alertas (filtrados por dept)
+        managed_by = _alerts_scope_for_user()
+        cards_alerts = get_cards_vs_trainees_alerts(db, managed_by=managed_by)
+        overdue_alerts = get_overdue_course_alerts(db, managed_by=managed_by)
 
         alerts = []
 
@@ -126,18 +138,16 @@ def index():
                     f"(missing {a['diff']})."
                 )
                 alert_type = "cards_missing"
-                severity = "notice"
             else:
                 msg = (
                     f"{cname}: {a['assigned']} cards / {a['trainees']} trainees "
                     f"(extra {-a['diff']})."
                 )
                 alert_type = "cards_extra"
-                severity = "notice"
 
             alerts.append({
                 "type": alert_type,
-                "severity": severity,
+                "severity": "notice",
                 "course": c,
                 "message": msg,
             })
@@ -152,19 +162,15 @@ def index():
                 f"{o['days_late']} day(s) after course end."
             )
 
-            if o["type"] == "overdue_1":
-                severity = "warning"
-            else:  # overdue_2
-                severity = "critical"
+            severity = "warning" if o["type"] == "overdue_1" else "critical"
 
             alerts.append({
                 "type": o["type"],     # 'overdue_1' o 'overdue_2'
-                "severity": severity,  # 'warning' o 'critical'
+                "severity": severity,
                 "course": c,
                 "message": msg,
             })
 
-        # Resumen por severidad (lo que pinta tu badge en el sidebar)
         alerts_summary = {
             "notice":   sum(1 for a in alerts if a["severity"] == "notice"),
             "warning":  sum(1 for a in alerts if a["severity"] == "warning"),
@@ -178,6 +184,7 @@ def index():
             total_courses=total_courses,
             total_assignments=total_assignments,
             total_movements=total_movements,
+            total_active_cards=total_active_cards,
             device_stats=device_stats,
             alerts=alerts,
             alerts_summary=alerts_summary,
@@ -197,11 +204,13 @@ def test_calendar():
 def alerts_index():
     db = SessionLocal()
     try:
-        # "my=1" -> solo alertas de cursos donde soy responsable
         my = request.args.get("my")
 
-        cards_alerts = get_cards_vs_trainees_alerts(db)
-        overdue_alerts = get_overdue_course_alerts(db)
+        # Scope por dept
+        managed_by = _alerts_scope_for_user()
+
+        cards_alerts = get_cards_vs_trainees_alerts(db, managed_by=managed_by)
+        overdue_alerts = get_overdue_course_alerts(db, managed_by=managed_by)
 
         alerts = []
 
@@ -216,18 +225,16 @@ def alerts_index():
                     f"(missing {a['diff']})."
                 )
                 alert_type = "cards_missing"
-                severity = "notice"
             else:
                 msg = (
                     f"{cname}: {a['assigned']} cards / {a['trainees']} trainees "
                     f"(extra {-a['diff']})."
                 )
                 alert_type = "cards_extra"
-                severity = "notice"
 
             alerts.append({
                 "type": alert_type,
-                "severity": severity,
+                "severity": "notice",
                 "course": c,
                 "message": msg,
             })
@@ -242,10 +249,7 @@ def alerts_index():
                 f"{o['days_late']} day(s) after course end."
             )
 
-            if o["type"] == "overdue_1":
-                severity = "warning"
-            else:
-                severity = "critical"
+            severity = "warning" if o["type"] == "overdue_1" else "critical"
 
             alerts.append({
                 "type": o["type"],
@@ -254,19 +258,14 @@ def alerts_index():
                 "message": msg,
             })
 
-        # 🔥 Filtro "My Alerts": solo cursos donde el usuario autenticado es responsable
+        # Filtro "My Alerts": solo cursos donde soy responsable
         if my == "1" and current_user.is_authenticated:
             user_id = current_user.id
+            alerts = [
+                a for a in alerts
+                if getattr(a.get("course"), "responsible_id", None) == user_id
+            ]
 
-            def is_mine(alert):
-                c = alert.get("course")
-                if not c:
-                    return False
-                return getattr(c, "responsible_id", None) == user_id
-
-            alerts = [a for a in alerts if is_mine(a)]
-
-        # Resumen por severidad (para usar también aquí si quieres)
         alerts_summary = {
             "notice":   sum(1 for a in alerts if a["severity"] == "notice"),
             "warning":  sum(1 for a in alerts if a["severity"] == "warning"),

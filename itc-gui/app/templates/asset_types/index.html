@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h2 class="mb-0">Asset types</h2>
+  <div class="d-flex gap-2">
+    <form method="get" class="d-flex gap-2" action="{{ url_for('asset_types.index') }}">
+      <input class="form-control form-control-sm" name="q" value="{{ q or '' }}" placeholder="Search...">
+      <button class="btn btn-sm btn-outline-primary">Search</button>
+    </form>
+    <a class="btn btn-sm btn-primary" href="{{ url_for('asset_types.new') }}">New asset type</a>
+  </div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-sm align-middle">
+    <thead class="table-light">
+      <tr>
+        <th style="width:120px;">Code</th>
+        <th>Name</th>
+        <th>Department</th>
+        <th>RFID</th>
+        <th>Barcode</th>
+        <th>Calendar</th>
+        <th>Active</th>
+        <th class="text-end" style="width:160px;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      {% for r in roots %}
+        <tr class="table-secondary">
+          <td><code>{{ r.code }}</code></td>
+          <td><strong>{{ r.name }}</strong></td>
+          <td>{{ r.managed_by_department }}</td>
+          <td>{{ 'Yes' if r.requires_rfid else 'No' }}</td>
+          <td>{{ 'Yes' if r.requires_barcode else 'No' }}</td>
+          <td>{{ 'Yes' if r.show_in_calendar else 'No' }}</td>
+          <td>{{ 'Yes' if r.active else 'No' }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('asset_types.edit', at_id=r.id) }}">Edit</a>
+            <form class="d-inline" method="post" action="{{ url_for('asset_types.delete', at_id=r.id) }}">
+              <button class="btn btn-sm btn-outline-danger"
+                      onclick="return confirm('Delete {{ r.code }}?')">Delete</button>
+            </form>
+          </td>
+        </tr>
+
+        {% for c in (children_map.get(r.id, [])) %}
+          <tr>
+            <td class="text-muted ps-4">↳ <code>{{ c.code }}</code></td>
+            <td class="ps-4">{{ c.name }}</td>
+            <td>{{ c.managed_by_department }}</td>
+            <td>{{ 'Yes' if c.requires_rfid else 'No' }}</td>
+            <td>{{ 'Yes' if c.requires_barcode else 'No' }}</td>
+            <td>{{ 'Yes' if c.show_in_calendar else 'No' }}</td>
+            <td>{{ 'Yes' if c.active else 'No' }}</td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('asset_types.edit', at_id=c.id) }}">Edit</a>
+              <form class="d-inline" method="post" action="{{ url_for('asset_types.delete', at_id=c.id) }}">
+                <button class="btn btn-sm btn-outline-danger"
+                        onclick="return confirm('Delete {{ c.code }}?')">Delete</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+
+      {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No asset types.</td></tr>
+      {% endfor %}
+
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

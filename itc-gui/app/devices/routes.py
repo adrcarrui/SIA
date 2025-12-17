@@ -5,8 +5,6 @@ from io import StringIO, BytesIO
 import csv
 from openpyxl import Workbook
 from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
@@ -14,49 +12,118 @@ from app.db import SessionLocal
 import app.models as models
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload, aliased
 from math import ceil
-from datetime import datetime,timezone
+from datetime import datetime, timezone
 
 from app.scripts import log_movement
 
-# Opciones (ajústalas si usas ENUM en la DB)
+# Opciones (legacy)
 DEVICE_TYPES = ["vending", "canteen", "instructor", "guest"]
 DEVICE_STATUSES = ["assigned", "available", "lost", "annulled"]
 
+
+def get_asset_roots_and_children_map(db):
+    roots = (
+        db.query(models.AssetType)
+          .filter(models.AssetType.parent_id.is_(None), models.AssetType.active.is_(True))
+          .order_by(models.AssetType.sort_order.asc(), models.AssetType.code.asc())
+          .all()
+    )
+
+    children = (
+        db.query(models.AssetType)
+          .filter(models.AssetType.parent_id.isnot(None), models.AssetType.active.is_(True))
+          .order_by(models.AssetType.sort_order.asc(), models.AssetType.code.asc())
+          .all()
+    )
+
+    children_map = {}
+    for c in children:
+        children_map.setdefault(str(c.parent_id), []).append({
+            "id": c.id,
+            "name": c.name,
+            "requires_rfid": bool(getattr(c, "requires_rfid", False)),
+            "requires_barcode": bool(getattr(c, "requires_barcode", False)),
+        })
+
+    return roots, children_map
+
+
+def legacy_type_from_asset_code(asset_code: str) -> str:
+    if not asset_code:
+        return "guest"
+    c = asset_code.upper()
+    if c == "CARD_VENDING":
+        return "vending"
+    if c == "CARD_CANTEEN":
+        return "canteen"
+    if c == "CARD_INSTRUCTOR":
+        return "instructor"
+    if c == "CARD_GUEST":
+        return "guest"
+    return "guest"
+
+
 def build_devices_query(db, args):
     """
-    Aplica EXACTAMENTE los mismos filtros que el listado de devices:
-    q, name, uid, type, status, notes.
+    Filtros:
+    q, name, uid, root_type_id, asset_type_id, status, notes.
     """
-    q      = (args.get("q") or "").strip()
-    name   = (args.get("name") or "").strip()
-    uid    = (args.get("uid") or "").strip()
-    dtype  = (args.get("type") or "").strip()
-    status = (args.get("status") or "").strip()
-    notes  = (args.get("notes") or "").strip()
+    q       = (args.get("q") or "").strip()
+    name    = (args.get("name") or "").strip()
+    uid     = (args.get("uid") or "").strip()
+    barcode = (args.get("barcode") or "").strip()
+    root_id = (args.get("root_type_id") or "").strip()
+    sub_id  = (args.get("asset_type_id") or "").strip()
+    status  = (args.get("status") or "").strip()
+    notes   = (args.get("notes") or "").strip()
 
-    query = db.query(models.Device)
+    Parent = aliased(models.AssetType)
 
-    # Búsqueda global (q)
+    query = (
+        db.query(models.Device)
+          .outerjoin(models.AssetType, models.Device.asset_type_id == models.AssetType.id)
+          .outerjoin(Parent, models.AssetType.parent_id == Parent.id)
+          .options(joinedload(models.Device.asset_type).joinedload(models.AssetType.parent))
+    )
+
     if q:
         like = f"%{q}%"
         query = query.filter(
             or_(
                 models.Device.name.ilike(like),
                 models.Device.uid.ilike(like),
-                models.Device.type.ilike(like),
                 models.Device.status.ilike(like),
                 models.Device.notes.ilike(like),
+                models.AssetType.name.ilike(like),
+                models.AssetType.code.ilike(like),
+                Parent.name.ilike(like),
+                Parent.code.ilike(like),
             )
         )
 
-    # Filtros de columna
     if name:
         query = query.filter(models.Device.name.ilike(f"%{name}%"))
     if uid:
         query = query.filter(models.Device.uid.ilike(f"%{uid}%"))
-    if dtype:
-        query = query.filter(models.Device.type == dtype)
+    if barcode:
+        query = query.filter(models.Device.barcode.ilike(f"%{barcode}%"))
+
+    if root_id:
+        try:
+            root_id_int = int(root_id)
+            query = query.filter(Parent.id == root_id_int)
+        except ValueError:
+            pass
+
+    if sub_id:
+        try:
+            sub_id_int = int(sub_id)
+            query = query.filter(models.Device.asset_type_id == sub_id_int)
+        except ValueError:
+            pass
+
     if status:
         query = query.filter(models.Device.status == status)
     if notes:
@@ -65,47 +132,61 @@ def build_devices_query(db, args):
     return query
 
 
+def _load_subtype_or_error(db, asset_type_id_raw):
+    """
+    Devuelve (asset_type, error_msg)
+    - asset_type debe existir, estar activo y ser subtipo (parent_id != None)
+    """
+    asset_type_id = int(asset_type_id_raw) if (asset_type_id_raw or "").isdigit() else None
+    if not asset_type_id:
+        return None, "Subtype es obligatorio."
+
+    at = (
+        db.query(models.AssetType)
+          .filter(models.AssetType.id == asset_type_id, models.AssetType.active.is_(True))
+          .first()
+    )
+    if not at:
+        return None, "Subtype inválido."
+    if at.parent_id is None:
+        return None, "Debes seleccionar un subtipo, no un tipo raíz."
+    return at, None
+
+
 @bp.route("/")
 @login_required
 def index():
-    """Listado con búsqueda y filtros por columna"""
-    # Parámetros de paginación y búsqueda
     q        = (request.args.get("q") or "").strip()
     page     = max(int(request.args.get("page", 1)), 1)
     per_page = 20
 
-    # Column filters (estos nombres son los de tus inputs)
-    name   = (request.args.get("name") or "").strip()
-    uid    = (request.args.get("uid") or "").strip()
-    dtype  = (request.args.get("type") or "").strip()
-    status = (request.args.get("status") or "").strip()
-    notes  = (request.args.get("notes") or "").strip()
+    name          = (request.args.get("name") or "").strip()
+    uid           = (request.args.get("uid") or "").strip()
+    barcode = (request.args.get("barcode") or "").strip()
+    root_type_id  = (request.args.get("root_type_id") or "").strip()
+    asset_type_id = (request.args.get("asset_type_id") or "").strip()
+    status        = (request.args.get("status") or "").strip()
+    notes         = (request.args.get("notes") or "").strip()
 
     db = SessionLocal()
     try:
-        # Misma lógica de filtros que se usa en export_devices
+        roots, children_map = get_asset_roots_and_children_map(db)
         query = build_devices_query(db, request.args)
 
         total = query.count()
-
         devices = (
             query.order_by(models.Device.id.asc())
                  .offset((page - 1) * per_page)
                  .limit(per_page)
                  .all()
         )
-
         pages = ceil(total / per_page) if total else 1
 
         return render_template(
             "devices/index.html",
             page_title="Devices",
             devices=devices,
-
-            # búsqueda global
             q=q,
-
-            # paginación
             page=page,
             per_page=per_page,
             total=total,
@@ -113,14 +194,16 @@ def index():
             has_prev=page > 1,
             has_next=page < pages,
 
-            # filtros por columna (para mantener valores en inputs)
             filter_name=name,
             filter_uid=uid,
-            filter_type=dtype,
+            filter_barcode=barcode,
+            filter_root_type_id=root_type_id,
+            filter_asset_type_id=asset_type_id,
             filter_status=status,
             filter_notes=notes,
 
-            DEVICE_TYPES=DEVICE_TYPES,
+            roots=roots,
+            children_map=children_map,
             DEVICE_STATUSES=DEVICE_STATUSES,
         )
     finally:
@@ -132,46 +215,89 @@ def index():
 def new_device():
     db = SessionLocal()
     try:
+        roots, children_map = get_asset_roots_and_children_map(db)
+
         if request.method == "POST":
-            # JAMÁS leas id del form si tienes serial autoincremental
+            page_title = "New device"
+
             name   = (request.form.get("name") or "").strip()
             uid    = (request.form.get("uid") or "").strip()
-            dtype  = (request.form.get("type") or "guest").strip() or "guest"
             status = (request.form.get("status") or "available").strip() or "available"
             notes  = (request.form.get("notes") or "").strip()
+            barcode = (request.form.get("barcode") or "").strip() or None
 
-            # Checkbox opcional; si no lo envías, DB tiene default true
+            asset_type_id_raw = (request.form.get("asset_type_id") or "").strip()
+
             active_val = request.form.get("active")
-            active = True if active_val is None else (active_val == "on")
-
-            if not uid:
-                flash("UID es obligatorio.", "warning")
-                return render_template(
-                    "devices/form.html",
-                    page_title="New device",
-                    device=None,
-                    DEVICE_TYPES=DEVICE_TYPES,
-                    DEVICE_STATUSES=DEVICE_STATUSES,
-                )
-
-            if dtype not in DEVICE_TYPES:
-                flash("Tipo inválido. Se usará 'guest'.", "warning")
-                dtype = "guest"
+            active = True if active_val is None else (active_val in ("on", "1", "true", "True"))
 
             if status not in DEVICE_STATUSES:
                 flash("Estado inválido. Se usará 'available'.", "warning")
                 status = "available"
 
+            # ✅ Validar subtipo
+            at, err = _load_subtype_or_error(db, asset_type_id_raw)
+            if err:
+                flash(err, "danger")
+                return render_template(
+                    "devices/form.html",
+                    page_title=page_title,
+                    device=None,
+                    DEVICE_STATUSES=DEVICE_STATUSES,
+                    roots=roots,
+                    children_map=children_map,
+                    selected_root_id=None,
+                    selected_child_id=None,
+                )
+
+            selected_root_id = at.parent_id
+            selected_child_id = at.id
+
+            # ✅ Reglas por flags
+            if getattr(at, "requires_rfid", False) and not uid:
+                flash("UID es obligatorio para este tipo de asset.", "danger")
+                return render_template(
+                    "devices/form.html",
+                    page_title=page_title,
+                    device=None,
+                    DEVICE_STATUSES=DEVICE_STATUSES,
+                    roots=roots,
+                    children_map=children_map,
+                    selected_root_id=selected_root_id,
+                    selected_child_id=selected_child_id,
+                )
+
+            if getattr(at, "requires_barcode", False) and not barcode:
+                flash("Barcode es obligatorio para este tipo de asset.", "danger")
+                return render_template(
+                    "devices/form.html",
+                    page_title=page_title,
+                    device=None,
+                    DEVICE_STATUSES=DEVICE_STATUSES,
+                    roots=roots,
+                    children_map=children_map,
+                    selected_root_id=selected_root_id,
+                    selected_child_id=selected_child_id,
+                )
+
+            # limpia valores si no aplican
+            if not getattr(at, "requires_rfid", False):
+                uid = None
+            if not getattr(at, "requires_barcode", False):
+                barcode = None
+
+            dtype = legacy_type_from_asset_code(at.code)
+
             d = models.Device(
-                # id lo genera la DB
                 uid=uid,
-                name=name or None,   # name puede ser NULL según tu schema
-                type=dtype,
+                name=name or None,
+                type=dtype,  # legacy
                 status=status,
-                active=active,        # si tu modelo lo permite; si no, quítalo y deja default server-side
-                notes=notes or None,  # notes puede ser NULL
-                # Si tu modelo incluye created_at/updated_at con defaults de DB, no asignes aquí
-                updated_at=datetime.now(timezone.utc),  # opcional, si no tienes trigger
+                active=active,
+                notes=notes or None,
+                asset_type_id=at.id,
+                barcode=barcode,
+                updated_at=datetime.now(timezone.utc),
             )
 
             db.add(d)
@@ -189,6 +315,8 @@ def new_device():
                     "name": d.name,
                     "uid": d.uid,
                     "type": d.type,
+                    "asset_type_id": d.asset_type_id,
+                    "barcode": getattr(d, "barcode", None),
                     "status": d.status,
                     "active": d.active,
                     "notes": d.notes,
@@ -200,17 +328,18 @@ def new_device():
 
             try:
                 db.commit()
-            except IntegrityError as e:
+            except IntegrityError:
                 db.rollback()
-                # Si uid es UNIQUE, caes aquí; si no lo es, esto será otro conflicto
                 flash("No se pudo crear el dispositivo. Revisa UID y valores únicos.", "danger")
-                # Opcional: loggear e.orig para diagnóstico
                 return render_template(
                     "devices/form.html",
-                    page_title="New device",
+                    page_title=page_title,
                     device=None,
-                    DEVICE_TYPES=DEVICE_TYPES,
                     DEVICE_STATUSES=DEVICE_STATUSES,
+                    roots=roots,
+                    children_map=children_map,
+                    selected_root_id=selected_root_id,
+                    selected_child_id=selected_child_id,
                 )
 
             flash("Device creado.", "success")
@@ -221,8 +350,11 @@ def new_device():
             "devices/form.html",
             page_title="New device",
             device=None,
-            DEVICE_TYPES=DEVICE_TYPES,
             DEVICE_STATUSES=DEVICE_STATUSES,
+            roots=roots,
+            children_map=children_map,
+            selected_root_id=None,
+            selected_child_id=None,
         )
     finally:
         db.close()
@@ -231,7 +363,6 @@ def new_device():
 @bp.route("/<int:device_id>/edit", methods=["GET", "POST"])
 @login_required
 def edit_device(device_id):
-    from datetime import datetime, timezone
     db = SessionLocal()
     try:
         d = db.query(models.Device).get(device_id)
@@ -239,13 +370,25 @@ def edit_device(device_id):
             flash("Dispositivo no encontrado", "warning")
             return redirect(url_for("devices.index"))
 
+        roots, children_map = get_asset_roots_and_children_map(db)
+
+        selected_child_id = getattr(d, "asset_type_id", None)
+        selected_root_id = None
+        if selected_child_id:
+            child = db.query(models.AssetType).filter(models.AssetType.id == selected_child_id).first()
+            if child and child.parent_id:
+                selected_root_id = child.parent_id
+
         if request.method == "POST":
-            # JAMÁS tocar d.id ni leer 'id' del form
+            page_title = "Edit device"
+
             before_data = {
                 "id": d.id,
                 "name": d.name,
                 "uid": d.uid,
                 "type": d.type,
+                "asset_type_id": getattr(d, "asset_type_id", None),
+                "barcode": getattr(d, "barcode", None),
                 "status": d.status,
                 "active": d.active,
                 "notes": d.notes,
@@ -253,50 +396,95 @@ def edit_device(device_id):
 
             uid    = (request.form.get("uid") or "").strip()
             name   = (request.form.get("name") or "").strip()
-            dtype  = (request.form.get("type") or "guest").strip() or "guest"
             status = (request.form.get("status") or "available").strip() or "available"
             notes  = (request.form.get("notes") or "").strip()
+            barcode = (request.form.get("barcode") or "").strip() or None
             active_val = request.form.get("active")
 
-            if not uid:
-                flash("UID es obligatorio.", "danger")
-                return render_template("devices/form.html",
-                                       page_title="Edit device",
-                                       device=d,
-                                       DEVICE_TYPES=DEVICE_TYPES,
-                                       DEVICE_STATUSES=DEVICE_STATUSES)
-            
-            if dtype not in DEVICE_TYPES:
-                flash("Tipo inválido. Se usará 'guest'.", "warning")
-                dtype = "guest"
+            asset_type_id_raw = (request.form.get("asset_type_id") or "").strip()
 
             if status not in DEVICE_STATUSES:
                 flash("Estado inválido. Se usará 'available'.", "warning")
                 status = "available"
 
-            # Normaliza valores
-            d.uid    = uid
-            d.name   = name or None
-            d.type   = dtype
+            # ✅ Validar subtipo
+            at, err = _load_subtype_or_error(db, asset_type_id_raw)
+            if err:
+                flash(err, "danger")
+                return render_template(
+                    "devices/form.html",
+                    page_title=page_title,
+                    device=d,
+                    DEVICE_STATUSES=DEVICE_STATUSES,
+                    roots=roots,
+                    children_map=children_map,
+                    selected_root_id=selected_root_id,
+                    selected_child_id=selected_child_id,
+                )
+
+            selected_root_id = at.parent_id
+            selected_child_id = at.id
+
+            if getattr(at, "requires_rfid", False) and not uid:
+                flash("UID es obligatorio para este tipo de asset.", "danger")
+                return render_template(
+                    "devices/form.html",
+                    page_title=page_title,
+                    device=d,
+                    DEVICE_STATUSES=DEVICE_STATUSES,
+                    roots=roots,
+                    children_map=children_map,
+                    selected_root_id=selected_root_id,
+                    selected_child_id=selected_child_id,
+                )
+
+            if getattr(at, "requires_barcode", False) and not barcode:
+                flash("Barcode es obligatorio para este tipo de asset.", "danger")
+                return render_template(
+                    "devices/form.html",
+                    page_title=page_title,
+                    device=d,
+                    DEVICE_STATUSES=DEVICE_STATUSES,
+                    roots=roots,
+                    children_map=children_map,
+                    selected_root_id=selected_root_id,
+                    selected_child_id=selected_child_id,
+                )
+
+            if not getattr(at, "requires_rfid", False):
+                uid = None
+            if not getattr(at, "requires_barcode", False):
+                barcode = None
+
+            dtype = legacy_type_from_asset_code(at.code)
+
+            d.uid = uid
+            d.name = name or None
+            d.asset_type_id = at.id
+            d.barcode = barcode
+            d.type = dtype
             d.status = status
-            d.notes  = notes or None
+            d.notes = notes or None
             if hasattr(d, "active"):
                 d.active = (active_val == "on")
 
-            # Timestamp si no tienes trigger
             if hasattr(d, "updated_at"):
                 d.updated_at = datetime.now(timezone.utc)
 
             db.flush()
+
             after_data = {
                 "id": d.id,
                 "name": d.name,
                 "uid": d.uid,
                 "type": d.type,
+                "asset_type_id": getattr(d, "asset_type_id", None),
+                "barcode": getattr(d, "barcode", None),
                 "status": d.status,
                 "active": d.active,
                 "notes": d.notes,
             }
+
             log_movement(
                 db,
                 user_id=getattr(current_user, "id", None),
@@ -309,6 +497,7 @@ def edit_device(device_id):
                 success=True,
                 user_agent=request.user_agent.string,
             )
+
             try:
                 db.commit()
             except IntegrityError:
@@ -316,21 +505,31 @@ def edit_device(device_id):
                 flash("No se pudo actualizar el dispositivo. Revisa UID y valores únicos.", "danger")
                 return render_template(
                     "devices/form.html",
-                    page_title="Edit device",
+                    page_title=page_title,
                     device=d,
-                    DEVICE_TYPES=DEVICE_TYPES,
                     DEVICE_STATUSES=DEVICE_STATUSES,
+                    roots=roots,
+                    children_map=children_map,
+                    selected_root_id=selected_root_id,
+                    selected_child_id=selected_child_id,
                 )
+
             flash("Dispositivo actualizado.", "success")
             return redirect(url_for("devices.index"))
 
-        return render_template("devices/form.html",
-                               page_title="Edit device",
-                               device=d,
-                               DEVICE_TYPES=DEVICE_TYPES,
-                               DEVICE_STATUSES=DEVICE_STATUSES)
+        return render_template(
+            "devices/form.html",
+            page_title="Edit device",
+            device=d,
+            roots=roots,
+            children_map=children_map,
+            selected_root_id=selected_root_id,
+            selected_child_id=selected_child_id,
+            DEVICE_STATUSES=DEVICE_STATUSES,
+        )
     finally:
         db.close()
+
 
 @bp.route("/<int:device_id>/delete", methods=["POST"])
 @login_required
@@ -342,7 +541,6 @@ def delete_device(device_id):
             flash("Device no encontrado.", "danger")
             return redirect(url_for("devices.index"))
 
-        # Snapshot ANTES de borrar
         before_data = {
             "id": d.id,
             "name": d.name,
@@ -378,18 +576,13 @@ def delete_device(device_id):
 
         flash("Device eliminado.", "success")
         return redirect(url_for("devices.index"))
-
     finally:
         db.close()
+
 
 @bp.route("/export")
 @login_required
 def export_devices():
-    """
-    Exporta EXACTAMENTE los devices que el usuario está viendo:
-    - mismos filtros (q, name, uid, type, status, notes)
-    - misma página (page, per_page)
-    """
     fmt = request.args.get("format", "csv").lower()
 
     page     = max(int(request.args.get("page", 1)), 1)
@@ -397,15 +590,15 @@ def export_devices():
 
     db = SessionLocal()
     try:
-        # Misma query que en index(), con los mismos filtros
         query = build_devices_query(db, request.args)
-
-        # Solo la página que el usuario ve, no toda la tabla
         devices = (
-            query.order_by(models.Device.id.asc())
-                 .offset((page - 1) * per_page)
-                 .limit(per_page)
-                 .all()
+            query.options(
+                joinedload(models.Device.asset_type).joinedload(models.AssetType.parent)
+            )
+            .order_by(models.Device.id.asc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
         )
     finally:
         db.close()
@@ -421,20 +614,47 @@ def export_devices():
 
 
 def _device_rows(devices):
-    """Genera filas comunes para todos los formatos."""
+    """
+    Exporta el listado mostrando:
+    - Root type = asset_type.parent.name
+    - Subtype = asset_type.name
+    - UID y Barcode según aplique
+    """
     rows = []
-    # Cabecera
-    rows.append(["ID", "Name", "UID", "Type", "Status", "Notes"])
-    # Filas
+
+    has_barcode = False
+    if devices:
+        has_barcode = hasattr(devices[0], "barcode")
+
+    header = ["ID", "Name", "UID", "Root type", "Subtype", "Status", "Notes"]
+    if has_barcode:
+        header.insert(3, "Barcode")
+    rows.append(header)
+
     for d in devices:
-        rows.append([
+        root_name = ""
+        sub_name = ""
+
+        if getattr(d, "asset_type", None):
+            sub_name = getattr(d.asset_type, "name", "") or ""
+            if getattr(d.asset_type, "parent", None):
+                root_name = getattr(d.asset_type.parent, "name", "") or ""
+
+        row = [
             d.id,
             d.name or "",
             d.uid or "",
-            d.type or "",
+            root_name,
+            sub_name,
             d.status or "",
             d.notes or "",
-        ])
+        ]
+
+        if has_barcode:
+            row.insert(3, getattr(d, "barcode", "") or "")
+
+        rows.append(row)
+
     return rows
 
 
@@ -450,9 +670,7 @@ def _export_devices_csv(devices):
     return Response(
         csv_data,
         mimetype="text/csv",
-        headers={
-            "Content-Disposition": "attachment; filename=devices.csv"
-        }
+        headers={"Content-Disposition": "attachment; filename=devices.csv"}
     )
 
 
@@ -478,8 +696,6 @@ def _export_devices_excel(devices):
 
 def _export_devices_pdf(devices):
     buffer = BytesIO()
-
-    # Documento básico
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
@@ -492,38 +708,29 @@ def _export_devices_pdf(devices):
     styles = getSampleStyleSheet()
     elements = []
 
-    # Título
     title = Paragraph("Devices report", styles["Heading1"])
     elements.append(title)
     elements.append(Spacer(1, 12))
 
-    # Datos de la tabla
     data = _device_rows(devices)
+    table = Table(data, repeatRows=1)
 
-    # Tabla
-    table = Table(data, repeatRows=1)  # repeatRows=1 -> cabecera en cada página
-
-    # Estilos de tabla
     table_style = TableStyle([
-        # Cabecera
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#00205d")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("ALIGN", (0, 0), (-1, 0), "CENTER"),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, 0), 10),
 
-        # Celdas
         ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
         ("FONTSIZE", (0, 1), (-1, -1), 9),
-        ("ALIGN", (0, 1), (0, -1), "RIGHT"),   # ID
-        ("ALIGN", (1, 1), (4, -1), "LEFT"),    # Name, UID, Type, Status
+        ("ALIGN", (0, 1), (0, -1), "RIGHT"),
+        ("ALIGN", (1, 1), (4, -1), "LEFT"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
 
-        # Bordes y rejilla
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
         ("BOX", (0, 0), (-1, -1), 0.5, colors.black),
 
-        # Espaciado
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
@@ -531,10 +738,8 @@ def _export_devices_pdf(devices):
     ])
 
     table.setStyle(table_style)
-
     elements.append(table)
 
-    # Generar PDF
     doc.build(elements)
     buffer.seek(0)
 
@@ -543,12 +748,4 @@ def _export_devices_pdf(devices):
         mimetype="application/pdf",
         as_attachment=True,
         download_name="devices.pdf",
-    )
-
-
-    return send_file(
-        buffer,
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name="devices.pdf"
     )

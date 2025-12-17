@@ -4,23 +4,14 @@
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h2 class="mb-0">Devices</h2>
   <div class="d-flex align-items-center gap-2">
-    <!--<form class="d-flex" method="get" action="{{ url_for('devices.index') }}">
-      <input name="q"
-             value="{{ q or '' }}"
-             class="form-control form-control-sm"
-             placeholder="Search device...">
-      <button class="btn btn-sm btn-outline-primary ms-2">🔎</button>
-    </form>-->
     <a class="btn btn-sm btn-primary" href="{{ url_for('devices.new_device') }}">New device</a>
   </div>
 </div>
 
 <p class="text-muted">Total devices: {{ "{:,}".format(total or 0) }}</p>
 
-
 <div class="table-responsive">
   <form method="get" action="{{ url_for('devices.index') }}">
-    {# mantener búsqueda global y resetear a página 1 al filtrar #}
     <input type="hidden" name="q" value="{{ q or '' }}">
     <input type="hidden" name="page" value="1">
     <input type="hidden" name="per_page" value="{{ per_page }}">
@@ -30,18 +21,20 @@
         <tr>
           <th style="width:70px;">ID</th>
           <th>Name</th>
-          <th>UID</th>
-          <th>Type</th>
+
+          <th class="col-uid">UID</th>
+          <th class="col-barcode">Barcode</th>
+
+          <th style="min-width:160px;">Root type</th>
+          <th style="min-width:180px;">Subtype</th>
           <th>Status</th>
           <th>Notes</th>
           <th class="text-end" style="width:150px;">Actions</th>
         </tr>
 
-        {# Fila de filtros por columna #}
+        {# Fila filtros #}
         <tr>
-          <th>
-            {# si quisieras filtrar por ID, puedes añadir un input aquí #}
-          </th>
+          <th></th>
 
           <th>
             <input
@@ -53,7 +46,7 @@
             >
           </th>
 
-          <th>
+          <th class="col-uid">
             <input
               type="text"
               class="form-control form-control-sm"
@@ -63,29 +56,44 @@
             >
           </th>
 
-          <th>
-            <select
-              name="type"
-              class="form-select form-select-sm"
+          <th class="col-barcode">
+            <input
+              type="text"
+              class="form-control form-control-sm"
+              name="barcode"
+              placeholder="Barcode"
+              value="{{ filter_barcode or '' }}"
             >
+          </th>
+
+          {# Root type filter #}
+          <th>
+            <select id="root_type_id" name="root_type_id" class="form-select form-select-sm">
               <option value="">All</option>
-              <option value="vending"   {% if filter_type == 'vending' %}selected{% endif %}>vending</option>
-              <option value="canteen"   {% if filter_type == 'canteen' %}selected{% endif %}>canteen</option>
-              <option value="instructor" {% if filter_type == 'instructor' %}selected{% endif %}>instructor</option>
-              <option value="guest"     {% if filter_type == 'guest' %}selected{% endif %}>guest</option>
+              {% for r in roots %}
+                <option value="{{ r.id }}" {{ 'selected' if (filter_root_type_id|string) == (r.id|string) else '' }}>
+                  {{ r.name }}
+                </option>
+              {% endfor %}
+            </select>
+          </th>
+
+          {# Subtype filter (depends on root) #}
+          <th>
+            <select id="asset_type_id" name="asset_type_id" class="form-select form-select-sm">
+              <option value="">All</option>
+              {# options loaded by JS #}
             </select>
           </th>
 
           <th>
-            <select
-              name="status"
-              class="form-select form-select-sm"
-            >
+            <select name="status" class="form-select form-select-sm">
               <option value="">All</option>
-              <option value="assigned" {% if filter_status == 'assigned' %}selected{% endif %}>assigned</option>
-              <option value="available" {% if filter_status == 'available' %}selected{% endif %}>available</option>
-              <option value="lost" {% if filter_status == 'lost' %}selected{% endif %}>lost</option>
-              <option value="annulled" {% if filter_status == 'annulled' %}selected{% endif %}>annulled</option>
+              {% for s in DEVICE_STATUSES %}
+                <option value="{{ s }}" {{ 'selected' if filter_status == s else '' }}>
+                  {{ s }}
+                </option>
+              {% endfor %}
             </select>
           </th>
 
@@ -108,15 +116,59 @@
 
       <tbody>
         {% for d in devices %}
+        {% set root_name = (d.asset_type.parent.name if d.asset_type and d.asset_type.parent else None) %}
+        {% set sub_name  = (d.asset_type.name if d.asset_type else None) %}
+        {% set req_rfid = (d.asset_type.requires_rfid if d.asset_type else False) %}
+        {% set req_bar  = (d.asset_type.requires_barcode if d.asset_type else False) %}
+
         <tr>
           <td class="text-muted">{{ d.id }}</td>
-          <td>{{ d.name }}</td>
-          <td><code>{{ d.uid }}</code></td>
+          <td>{{ d.name or '—' }}</td>
+
+          <td class="col-uid">
+            {% if req_rfid %}
+              {% if d.uid %}
+                <code>{{ d.uid }}</code>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+
+          <td class="col-barcode">
+            {% if req_bar %}
+              {% if d.barcode is defined and d.barcode %}
+                <code>{{ d.barcode }}</code>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
 
           <td>
-            {% set tkey = (d.type or '')|lower|trim %}
-            {% set tcolor = {'vending':'primary','canteen':'success','instructor':'warning','guest':'secondary'}.get(tkey, 'light') %}
-            <span class="badge bg-{{ tcolor }}">{{ d.type or '—' }}</span>
+            {% if root_name %}
+              <span class="badge bg-info text-dark">{{ root_name }}</span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if sub_name %}
+              <span class="badge bg-light text-dark border">{{ sub_name }}</span>
+
+              {# mini “capabilities” para que se entienda el porqué de UID/Barcode #}
+              <span class="ms-2 small text-muted">
+                {% if req_rfid %}<span class="badge bg-secondary">RFID</span>{% endif %}
+                {% if req_bar %}<span class="badge bg-secondary">BARCODE</span>{% endif %}
+              </span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
           </td>
 
           <td>
@@ -147,7 +199,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="7" class="text-center text-muted py-4">No devices.</td>
+          <td colspan="9" class="text-center text-muted py-4">No devices.</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -155,6 +207,7 @@
   </form>
 </div>
 
+{# Pagination (mantiene filtros) #}
 <nav aria-label="Pagination">
   <ul class="pagination">
     <li class="page-item {% if not has_prev %}disabled{% endif %}">
@@ -165,7 +218,9 @@
                           per_page=per_page,
                           name=filter_name,
                           uid=filter_uid,
-                          type=filter_type,
+                          barcode=filter_barcode,
+                          root_type_id=filter_root_type_id,
+                          asset_type_id=filter_asset_type_id,
                           status=filter_status,
                           notes=filter_notes) }}">«</a>
     </li>
@@ -180,14 +235,16 @@
                           per_page=per_page,
                           name=filter_name,
                           uid=filter_uid,
-                          type=filter_type,
+                          barcode=filter_barcode,
+                          root_type_id=filter_root_type_id,
+                          asset_type_id=filter_asset_type_id,
                           status=filter_status,
                           notes=filter_notes) }}">»</a>
     </li>
   </ul>
 </nav>
 
-
+{# Export links (mantiene filtros + paginación) #}
 <div class="d-flex justify-content-between align-items-center">
   <h3 class="mb-0 fs-5"></h3>
 
@@ -201,47 +258,168 @@
                          q=q,
                          name=filter_name,
                          uid=filter_uid,
-                         type=filter_type,
+                         barcode=filter_barcode,
+                         root_type_id=filter_root_type_id,
+                         asset_type_id=filter_asset_type_id,
                          status=filter_status,
                          notes=filter_notes,
                          page=page,
                          per_page=per_page) }}"
         class="btn btn-outline-secondary"
-      >
-        CSV
-      </a>
+      >CSV</a>
+
       <a
         href="{{ url_for('devices.export_devices',
                          format='xlsx',
                          q=q,
                          name=filter_name,
                          uid=filter_uid,
-                         type=filter_type,
+                         barcode=filter_barcode,
+                         root_type_id=filter_root_type_id,
+                         asset_type_id=filter_asset_type_id,
                          status=filter_status,
                          notes=filter_notes,
                          page=page,
                          per_page=per_page) }}"
         class="btn btn-outline-secondary"
-      >
-        Excel
-      </a>
+      >Excel</a>
+
       <a
         href="{{ url_for('devices.export_devices',
                          format='pdf',
                          q=q,
                          name=filter_name,
                          uid=filter_uid,
-                         type=filter_type,
+                         barcode=filter_barcode,
+                         root_type_id=filter_root_type_id,
+                         asset_type_id=filter_asset_type_id,
                          status=filter_status,
                          notes=filter_notes,
                          page=page,
                          per_page=per_page) }}"
         class="btn btn-outline-secondary"
-      >
-        PDF
-      </a>
+      >PDF</a>
     </div>
-
   </div>
 </div>
+
+{# JS: subtypes + ocultar columnas UID/Barcode según flags del subtipo/root #}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const childrenMap = {{ children_map|tojson }};
+  const rootSelect = document.getElementById("root_type_id");
+  const childSelect = document.getElementById("asset_type_id");
+
+  const selectedSubtype = {{ (filter_asset_type_id if filter_asset_type_id else '')|tojson }};
+  const selectedRoot = {{ (filter_root_type_id if filter_root_type_id else '')|tojson }};
+
+  function allChildrenFlat() {
+    const all = [];
+    for (const [rootId, arr] of Object.entries(childrenMap || {})) {
+      for (const c of (arr || [])) all.push({ rootId, ...c });
+    }
+    return all;
+  }
+
+  function deduceRootFromSubtype(subtypeId) {
+    if (!subtypeId) return "";
+    const all = allChildrenFlat();
+    const found = all.find(x => String(x.id) === String(subtypeId));
+    return found ? String(found.rootId) : "";
+  }
+
+  function refillSubtypeOptions(rootId) {
+    childSelect.innerHTML = '<option value="">All</option>';
+
+    if (!rootId) {
+      const all = allChildrenFlat();
+      for (const c of all) {
+        const opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = c.name;
+        if (selectedSubtype && String(opt.value) === String(selectedSubtype)) opt.selected = true;
+        childSelect.appendChild(opt);
+      }
+      return;
+    }
+
+    const list = childrenMap[String(rootId)] || [];
+    for (const c of list) {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.name;
+      if (selectedSubtype && String(opt.value) === String(selectedSubtype)) opt.selected = true;
+      childSelect.appendChild(opt);
+    }
+  }
+
+  function setColumnsVisibility(showUid, showBarcode) {
+    const uidEls = document.querySelectorAll(".col-uid");
+    const barEls = document.querySelectorAll(".col-barcode");
+    uidEls.forEach(el => el.style.display = showUid ? "" : "none");
+    barEls.forEach(el => el.style.display = showBarcode ? "" : "none");
+  }
+
+  function flagsForRoot(rootId) {
+    const list = childrenMap[String(rootId)] || [];
+    return {
+      requires_rfid: list.some(x => !!x.requires_rfid),
+      requires_barcode: list.some(x => !!x.requires_barcode),
+    };
+  }
+
+  function flagsForSubtype(subtypeId) {
+    const all = allChildrenFlat();
+    const found = all.find(x => String(x.id) === String(subtypeId));
+    return found ? {
+      requires_rfid: !!found.requires_rfid,
+      requires_barcode: !!found.requires_barcode,
+    } : null;
+  }
+
+  function applyColumnsBySelection() {
+    const subtypeId = String(childSelect.value || "");
+    const rootId = String(rootSelect.value || "");
+
+    // 1) Si hay subtype, manda el subtype
+    if (subtypeId) {
+      const f = flagsForSubtype(subtypeId);
+      if (f) return setColumnsVisibility(f.requires_rfid, f.requires_barcode);
+    }
+
+    // 2) Si hay root, manda “si algún subtype lo requiere”
+    if (rootId) {
+      const f = flagsForRoot(rootId);
+      return setColumnsVisibility(f.requires_rfid, f.requires_barcode);
+    }
+
+    // 3) Sin filtros: mostramos ambas (no hagamos magia “creativa”)
+    setColumnsVisibility(true, true);
+  }
+
+  if (!rootSelect || !childSelect) return;
+
+  // Si viene subtype pero root vacío, deducimos root
+  if ((!selectedRoot || String(selectedRoot) === "") && selectedSubtype) {
+    const guessed = deduceRootFromSubtype(selectedSubtype);
+    if (guessed) rootSelect.value = guessed;
+  }
+
+  rootSelect.addEventListener("change", function () {
+    // Reset subtype cuando cambias root
+    childSelect.value = "";
+    refillSubtypeOptions(rootSelect.value || "");
+    applyColumnsBySelection();
+  });
+
+  childSelect.addEventListener("change", function () {
+    applyColumnsBySelection();
+  });
+
+  // init
+  refillSubtypeOptions(rootSelect.value || "");
+  applyColumnsBySelection();
+});
+</script>
+
 {% endblock %}

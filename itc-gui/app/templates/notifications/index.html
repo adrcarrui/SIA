@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h2 class="mb-0">Notifications</h2>
+  <div class="text-muted small">
+    Unread: <span class="badge bg-danger">{{ unread_count or 0 }}</span>
+  </div>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-3">
+  <div class="col-md-3">
+    <label class="form-label">Status</label>
+    <select name="status" class="form-select form-select-sm">
+      <option value="" {% if not filter_status %}selected{% endif %}>All</option>
+      <option value="open" {% if filter_status == 'open' %}selected{% endif %}>open</option>
+      <option value="in_progress" {% if filter_status == 'in_progress' %}selected{% endif %}>in_progress</option>
+      <option value="done" {% if filter_status == 'done' %}selected{% endif %}>done</option>
+      <option value="dismissed" {% if filter_status == 'dismissed' %}selected{% endif %}>dismissed</option>
+    </select>
+  </div>
+
+  <div class="col-md-3">
+    <label class="form-label">Unread</label>
+    <select name="unread" class="form-select form-select-sm">
+      <option value="" {% if not filter_unread %}selected{% endif %}>All</option>
+      <option value="1" {% if filter_unread == '1' %}selected{% endif %}>Only unread</option>
+    </select>
+  </div>
+
+  <div class="col-md-6 d-flex gap-2">
+    <button class="btn btn-primary btn-sm mt-4" type="submit">Filter</button>
+    <a class="btn btn-secondary btn-sm mt-4" href="{{ url_for('notifications.index') }}">Clear</a>
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-sm align-middle">
+    <thead class="table-light">
+      <tr>
+        <th style="width:110px;">When</th>
+        <th style="width:90px;">Severity</th>
+        <th>Title</th>
+        <th style="width:130px;">Status</th>
+        <th style="width:140px;">Actions</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for n in notifications %}
+      <tr class="{% if not n.read_at %}table-warning{% endif %}">
+        <td class="text-muted small">{{ n.created_at }}</td>
+
+        <td>
+          {% set sev = (n.severity or 'notice')|lower %}
+          {% set scolor = {'notice':'primary','warning':'warning','critical':'danger'}.get(sev, 'secondary') %}
+          <span class="badge bg-{{ scolor }}">{{ sev }}</span>
+        </td>
+
+        <td>
+          <div class="fw-semibold">{{ n.title }}</div>
+          {% if n.message %}
+            <div class="text-muted small">{{ n.message }}</div>
+          {% endif %}
+          {% if n.course_id %}
+            <div class="small">
+              Course: <span class="badge bg-light text-dark">#{{ n.course_id }}</span>
+            </div>
+          {% endif %}
+        </td>
+
+        <td>
+          {% set st = (n.status or 'open')|lower %}
+          {% set tcolor = {'open':'secondary','in_progress':'primary','done':'success','dismissed':'dark'}.get(st, 'secondary') %}
+          <span class="badge bg-{{ tcolor }}">{{ st }}</span>
+        </td>
+
+        <td class="text-end">
+          <div class="d-flex justify-content-end gap-2">
+            {% if not n.read_at %}
+            <form method="post" action="{{ url_for('notifications.mark_read', notif_id=n.id) }}">
+              <button class="btn btn-outline-success btn-sm" type="submit">Mark read</button>
+            </form>
+            {% endif %}
+
+            <form method="post" action="{{ url_for('notifications.change_status', notif_id=n.id) }}">
+              <select name="status" class="form-select form-select-sm d-inline-block" style="width:140px;">
+                <option value="open" {% if st == 'open' %}selected{% endif %}>open</option>
+                <option value="in_progress" {% if st == 'in_progress' %}selected{% endif %}>in_progress</option>
+                <option value="done" {% if st == 'done' %}selected{% endif %}>done</option>
+                <option value="dismissed" {% if st == 'dismissed' %}selected{% endif %}>dismissed</option>
+              </select>
+              <button class="btn btn-primary btn-sm ms-1" type="submit">Save</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" class="text-center text-muted py-4">No notifications.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

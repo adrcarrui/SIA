@@ -3,7 +3,7 @@ from flask import Flask, redirect, url_for
 from .extensions import db as sqla_db, login_manager, bcrypt   # ← instancia de Flask-SQLAlchemy
 from .db import DATABASE_URL                                   # ← tu URL de SQLAlchemy puro
 from flask_login import current_user
-from app.scripts.get_overdue_assignments import get_overdue_assignments
+from app.scripts.get_overdue_assignments import get_cards_vs_trainees_alerts,get_overdue_course_alerts
 from app.db import SessionLocal
 from app.nfc.acr122 import init_buzzer_off
 def create_app():
@@ -16,7 +16,7 @@ def create_app():
     def inject_overdue_counter():
         db = SessionLocal()
         try:
-            overdue = get_overdue_assignments(db)
+            overdue = get_overdue_course_alerts(db)
             total_overdue_1 = sum(1 for o in overdue if o["overdue_level"] == "overdue_1")
             total_overdue_2 = sum(1 for o in overdue if o["overdue_level"] == "overdue_2")
             return {
@@ -49,6 +49,7 @@ def create_app():
     from .courses import bp as courses_bp
     from .movements import bp as movements_bp
     from .assignments import bp as assignments_bp
+    from .asset_types import bp as asset_types_bp
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(main_bp)
@@ -57,6 +58,7 @@ def create_app():
     app.register_blueprint(devices_bp, url_prefix="/devices")
     app.register_blueprint(movements_bp, url_prefix="/movements")
     app.register_blueprint(assignments_bp, url_prefix="/assignments")
+    app.register_blueprint(asset_types_bp, url_prefix="/asset_types")
 
     with app.app_context():
         print("\n== URL MAP ==")

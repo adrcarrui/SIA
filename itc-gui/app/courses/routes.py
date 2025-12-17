@@ -17,7 +17,7 @@ from flask_login import login_required, current_user
 from sqlalchemy.orm import joinedload
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from . import bp
 from app.db import SessionLocal
@@ -56,6 +56,28 @@ COURSE_ITC_STATUSES = [
 
 # Lista combinada para filtros en el index
 COURSE_STATUSES = sorted(set(COURSE_TCO_STATUSES + COURSE_ITC_STATUSES))
+
+
+def create_notification_for_itc(db, course, created_by_user, notif_type, title, message, severity="notice"):
+    """
+    Crea una notificación persistente para ITC support.
+    Requiere que exista models.Notification y la tabla notifications.
+    """
+    n = models.Notification(
+        created_by_user_id=getattr(created_by_user, "id", None),
+        department_target="ITC support",
+        type=notif_type,       # "course_created" / "course_updated" / "pickup_request"
+        severity=severity,     # notice|warning|critical
+        status="open",
+        title=title,
+        message=message,
+        course_id=getattr(course, "id", None),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        active=True,
+    )
+    db.add(n)
+    return n
 
 
 def normalize_field(value: str):
@@ -318,6 +340,22 @@ def new_course():
             db.add(new_course)
             db.flush()
 
+            # ✅ NOTIFICATION: curso creado -> ITC
+            cname = (new_course.course or new_course.name or f"Course #{new_course.id}").strip()
+            create_notification_for_itc(
+                db=db,
+                course=new_course,
+                created_by_user=current_user,
+                notif_type="course_created",
+                title=f"New course created: {cname}",
+                message=(
+                    f"Course created by {getattr(current_user, 'name', '')} "
+                    f"{getattr(current_user, 'surname', '')}".strip()
+                    + ". Please review ITC assets / logistics."
+                ),
+                severity="notice",
+            )
+
             log_movement(
                 db,
                 user_id=getattr(current_user, "id", None),
@@ -346,6 +384,7 @@ def new_course():
                 success=True,
                 user_agent=request.user_agent.string,
             )
+
             try:
                 db.commit()
             except IntegrityError:
@@ -425,6 +464,18 @@ def edit_course(course_id):
                 "notes": c.notes,
                 "responsible_id": c.responsible_id,
                 "client": c.client,
+            }
+
+            # ✅ snapshot relevante para notificaciones (anti-spam)
+            before_relevant = {
+                "course": c.course,
+                "name": c.name,
+                "client": c.client,
+                "start_date": c.start_date,
+                "end_date": c.end_date,
+                "trainees": c.trainees,
+                "status_tco": c.status_tco,
+                "status_itc": c.status_itc,
             }
 
             course_code = normalize_field((request.form.get("course") or ""))
@@ -525,6 +576,31 @@ def edit_course(course_id):
                         )
 
             db.flush()
+
+            # ✅ NOTIFICATION: curso actualizado -> ITC (solo si cambia lo relevante)
+            after_relevant = {
+                "course": c.course,
+                "name": c.name,
+                "client": c.client,
+                "start_date": c.start_date,
+                "end_date": c.end_date,
+                "trainees": c.trainees,
+                "status_tco": c.status_tco,
+                "status_itc": c.status_itc,
+            }
+
+            relevant_changed = any(before_relevant[k] != after_relevant[k] for k in before_relevant.keys())
+            if relevant_changed:
+                cname = (c.course or c.name or f"Course #{c.id}").strip()
+                create_notification_for_itc(
+                    db=db,
+                    course=c,
+                    created_by_user=current_user,
+                    notif_type="course_updated",
+                    title=f"Course updated: {cname}",
+                    message="Course updated by TCO. Please review ITC assets / logistics.",
+                    severity="notice",
+                )
 
             after_data = {
                 "id": c.id,
