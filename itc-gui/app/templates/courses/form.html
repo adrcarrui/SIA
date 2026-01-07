@@ -9,6 +9,11 @@
 {% set actor_dept = (current_user.department or '') %}
 {% set show_itc = (actor_role == 'admin') or (actor_dept == 'ITC support') %}
 
+{# Requirements: TCO y Admin pueden editar. ITC solo ver. #}
+{% set can_edit_req = (actor_role == 'admin') or (actor_dept == 'TCO') %}
+{% set req_map = req_map|default({}) %}
+{% set itc_asset_types = itc_asset_types|default([]) %}
+
 <h2 class="mb-3">
   {{ page_title or (c and 'Edit course' or 'New course') }}
 </h2>
@@ -113,69 +118,115 @@
         </div>
       </div>
 
-{# --------- FILA 4: Status TCO / Status ITC --------- #}
+      {# --------- FILA 4: Asset Requirements (ITC) --------- #}
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+              <strong>Asset requirements (ITC)</strong>
+              <div class="text-muted small">
+                Only relevant ITC assets (e.g., Laptops / USB). Use 0 if not required.
+              </div>
+            </div>
 
-{% set dept = (current_user.department | default('') | trim) %}
+            {% if not can_edit_req %}
+              <span class="badge text-bg-secondary">Read-only</span>
+            {% endif %}
+          </div>
 
-{% if dept == 'TCO' or dept == '' %}
-  {# Usuario TCO o sin departamento:
-     - NO ve ningún estado
-     - Pero seguimos mandando los valores actuales para no romper nada #}
-  <input type="hidden" name="status_tco" value="{{ current_tco }}">
-  <input type="hidden" name="status_itc" value="{{ current_itc }}">
+          <div class="card-body">
+            {% if itc_asset_types|length == 0 %}
+              <div class="text-muted">
+                No ITC asset types configured (or roots codes not matching). Nothing to set here.
+              </div>
+            {% else %}
 
-{% else %}
-  {# Resto de usuarios (ITC, admin, otros) #}
+              {# GRID RESPONSIVE: 1 col (xs) / 2 (md) / 3 (lg) / 4 (xl) #}
+              <div class="row g-2">
+                {% for at in itc_asset_types %}
+                  {% set saved_qty = (req_map.get(at.id) if req_map is mapping else None) %}
+                  {% if saved_qty is none %}
+                    {% set saved_qty = 0 %}
+                  {% endif %}
 
-  <div class="col-md-6">
-    <label class="form-label">TCO status</label>
-    <select
-      name="status_tco"
-      class="form-select"
-    >
-      {% for s in COURSE_TCO_STATUSES %}
-        <option value="{{ s }}"
-          {% if current_tco == s %}selected{% endif %}
-        >
-          {{ s }}
-        </option>
-      {% endfor %}
-    </select>
-    <div class="form-text">
-      Business status of the course (TCO).
-    </div>
-  </div>
+                  <div class="col-12 col-md-6 col-lg-4 col-xl-3">
+                    <div class="border rounded p-2 h-100">
+                      <div class="d-flex justify-content-between align-items-start">
+                        <div class="me-2">
+                          <div class="fw-medium">{{ at.name }}</div>
+                          <div class="text-muted small">{{ at.code }}</div>
+                        </div>
 
-  <div class="col-md-6">
-    {% if show_itc %}
-      <label class="form-label">ITC status</label>
-      <select
-        name="status_itc"
-        class="form-select"
-      >
-        {% for s in COURSE_ITC_STATUSES %}
-          <option value="{{ s }}"
-            {% if current_itc == s %}selected{% endif %}
-          >
-            {{ s }}
-          </option>
-        {% endfor %}
-      </select>
-      <div class="form-text">
-        ITC support status of the course.
+                        <div style="width: 110px;">
+                          {# IMPORTANTE: pares alineados por índice #}
+                          <input type="hidden" name="req_asset_type_id" value="{{ at.id }}">
+
+                          {% if can_edit_req %}
+                            <input
+                              type="number"
+                              name="req_qty"
+                              class="form-control form-control-sm"
+                              min="0"
+                              step="1"
+                              value="{{ saved_qty }}"
+                            >
+                          {% else %}
+                            <input
+                              type="number"
+                              class="form-control form-control-sm"
+                              value="{{ saved_qty }}"
+                              disabled
+                            >
+                            {# Para no perder los valores si el form se postea en modo read-only #}
+                            <input type="hidden" name="req_qty" value="{{ saved_qty }}">
+                          {% endif %}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                {% endfor %}
+              </div>
+
+            {% endif %}
+          </div>
+        </div>
       </div>
-    {% else %}
-      {# No lo ve, pero no queremos que machaque el valor actual #}
-      <input
-        type="hidden"
-        name="status_itc"
-        value="{{ current_itc }}"
-      >
-    {% endif %}
-  </div>
 
-{% endif %}
+      {# --------- FILA 5: Status TCO / Status ITC --------- #}
+      {% set dept = (current_user.department | default('') | trim) %}
 
+      {% if dept == 'TCO' or dept == '' %}
+        {# Usuario TCO o sin departamento:
+           - NO ve ningún estado
+           - Pero seguimos mandando los valores actuales #}
+        <input type="hidden" name="status_tco" value="{{ current_tco }}">
+        <input type="hidden" name="status_itc" value="{{ current_itc }}">
+      {% else %}
+        <div class="col-md-6">
+          <label class="form-label">TCO status</label>
+          <select name="status_tco" class="form-select">
+            {% for s in COURSE_TCO_STATUSES %}
+              <option value="{{ s }}" {% if current_tco == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Business status of the course (TCO).</div>
+        </div>
+
+        <div class="col-md-6">
+          {% if show_itc %}
+            <label class="form-label">ITC status</label>
+            <select name="status_itc" class="form-select">
+              {% for s in COURSE_ITC_STATUSES %}
+                <option value="{{ s }}" {% if current_itc == s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">ITC support status of the course.</div>
+          {% else %}
+            <input type="hidden" name="status_itc" value="{{ current_itc }}">
+          {% endif %}
+        </div>
+      {% endif %}
 
       {# --------- Notas --------- #}
       <div class="col-12">
@@ -186,14 +237,14 @@
           class="form-control"
         >{% if c and c.notes not in [None, 'None', ''] %}{{ c.notes }}{% endif %}</textarea>
       </div>
+
     </div>
 
     <div class="mt-4 d-flex justify-content-end gap-2">
-      <button class="btn btn-primary" type="submit">
-        Save
-      </button>
+      <button class="btn btn-primary" type="submit">Save</button>
       <a href="{{ url_for('courses.index') }}" class="btn btn-secondary">Cancel</a>
     </div>
+
   </form>
 </div>
 
@@ -212,12 +263,8 @@
         if (nameInput) nameInput.setCustomValidity('');
       }
 
-      if (courseInput) {
-        courseInput.addEventListener('input', clearValidity);
-      }
-      if (nameInput) {
-        nameInput.addEventListener('input', clearValidity);
-      }
+      if (courseInput) courseInput.addEventListener('input', clearValidity);
+      if (nameInput) nameInput.addEventListener('input', clearValidity);
 
       form.addEventListener('submit', function (e) {
         const courseVal = courseInput ? courseInput.value.trim() : '';
@@ -225,17 +272,12 @@
 
         if (!courseVal && !nameVal) {
           e.preventDefault();
-
           const msg = 'Please fill either "Course" or "Name".';
-
           if (courseInput) courseInput.setCustomValidity(msg);
           if (nameInput) nameInput.setCustomValidity(msg);
 
-          if (courseInput) {
-            courseInput.reportValidity();
-          } else if (nameInput) {
-            nameInput.reportValidity();
-          }
+          if (courseInput) courseInput.reportValidity();
+          else if (nameInput) nameInput.reportValidity();
         }
       });
     });

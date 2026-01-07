@@ -1,6 +1,6 @@
 from flask import render_template, request, redirect, url_for, flash, abort
 from flask_login import login_required, current_user
-from sqlalchemy import desc
+from sqlalchemy import desc, case
 from datetime import datetime, timezone
 from app.db import SessionLocal
 import app.models as models
@@ -28,14 +28,12 @@ def _dept_scope():
 
 @bp.before_request
 def _guard():
-    # Solo usuarios autenticados y con dept válido (o admin)
     if not current_user.is_authenticated:
         abort(403)
 
     scope = _dept_scope()
     if scope is None and not _is_admin():
         abort(403)
-
 
 @bp.route("/")
 @login_required
@@ -45,33 +43,47 @@ def index():
         scope = _dept_scope()
 
         status = (request.args.get("status") or "").strip()
-        unread = (request.args.get("unread") or "").strip()  # "1" para solo no leídas
+        unread = (request.args.get("unread") or "").strip()  # "1" => solo no leídas
 
-        q = db.query(models.Notification).filter(models.Notification.active.is_(True))
+        base = db.query(models.Notification).filter(models.Notification.active.is_(True))
 
         if scope:
-            q = q.filter(models.Notification.department_target == scope)
+            base = base.filter(models.Notification.department_target == scope)
+
+        q = base
 
         if status:
             q = q.filter(models.Notification.status == status)
 
         if unread == "1":
-            q = q.filter(models.Notification.read_at.is_(None))
+            # Unread = no leída y no cerrada
+            q = q.filter(
+                models.Notification.read_at.is_(None),
+                models.Notification.status.notin_(["done", "dismissed"]),
+            )
 
-        notifications = q.order_by(desc(models.Notification.created_at)).limit(200).all()
-
-        unread_count = (
-            db.query(models.Notification.id)
-              .filter(models.Notification.active.is_(True))
-              .filter(models.Notification.department_target == (scope or models.Notification.department_target))
-              .filter(models.Notification.read_at.is_(None))
+        # Orden por severidad (critical > warning > notice) y luego por fecha
+        severity_rank = case(
+            (models.Notification.severity == "critical", 3),
+            (models.Notification.severity == "warning", 2),
+            else_=1,
         )
 
-        # Si scope es None (admin), no filtros por dept; si scope existe, filtramos
-        if scope:
-            unread_count = unread_count.filter(models.Notification.department_target == scope)
+        notifications = (
+            q.order_by(
+                severity_rank.desc(),
+                desc(models.Notification.created_at),
+            )
+            .limit(200)
+            .all()
+        )
 
-        unread_count = unread_count.count()
+        # Unread_count real: no leídas Y no cerradas
+        unread_q = base.filter(
+            models.Notification.read_at.is_(None),
+            models.Notification.status.notin_(["done", "dismissed"]),
+        )
+        unread_count = unread_q.count()
 
         return render_template(
             "notifications/index.html",
@@ -83,7 +95,6 @@ def index():
         )
     finally:
         db.close()
-
 
 @bp.route("/<int:notif_id>/read", methods=["POST"])
 @login_required
@@ -133,10 +144,21 @@ def change_status(notif_id):
         n.status = new_status
         n.updated_at = datetime.now(timezone.utc)
 
-        # si lo marcas done/dismissed, lo damos por leído automáticamente
-        if new_status in ("done", "dismissed") and n.read_at is None:
+        # ✅ si vuelve a OPEN, lo consideramos "no leído" otra vez
+        if new_status == "open":
+            n.read_at = None
+            n.read_by_user_id = None
+
+        # ✅ si pasa a in_progress, lo marcamos leído
+        elif new_status == "in_progress" and n.read_at is None:
             n.read_at = datetime.now(timezone.utc)
             n.read_by_user_id = getattr(current_user, "id", None)
+
+        # ✅ si lo cierras, lo marcamos leído automáticamente
+        elif new_status in ("done", "dismissed") and n.read_at is None:
+            n.read_at = datetime.now(timezone.utc)
+            n.read_by_user_id = getattr(current_user, "id", None)
+
 
         db.commit()
         return redirect(url_for("notifications.index", **request.args))

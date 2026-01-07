@@ -50,6 +50,7 @@ def create_app():
     from .movements import bp as movements_bp
     from .assignments import bp as assignments_bp
     from .asset_types import bp as asset_types_bp
+    from .notifications import bp as notifications_bp
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(main_bp)
@@ -59,6 +60,7 @@ def create_app():
     app.register_blueprint(movements_bp, url_prefix="/movements")
     app.register_blueprint(assignments_bp, url_prefix="/assignments")
     app.register_blueprint(asset_types_bp, url_prefix="/asset_types")
+    app.register_blueprint(notifications_bp, url_prefix="/notifications")
 
     with app.app_context():
         print("\n== URL MAP ==")

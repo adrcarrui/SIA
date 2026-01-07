@@ -51,11 +51,13 @@
       <tr class="{% if not n.read_at %}table-warning{% endif %}">
         <td class="text-muted small">{{ n.created_at }}</td>
 
-        <td>
-          {% set sev = (n.severity or 'notice')|lower %}
-          {% set scolor = {'notice':'primary','warning':'warning','critical':'danger'}.get(sev, 'secondary') %}
-          <span class="badge bg-{{ scolor }}">{{ sev }}</span>
-        </td>
+      <td>
+        {% set sev = (n.severity or 'notice')|lower|trim %}
+        {% set notif_label = {'notice':'Normal','warning':'Important','critical':'Urgent'}.get(sev, sev) %}
+        {% set scolor = {'notice':'secondary','warning':'warning','critical':'danger'}.get(sev, 'secondary') %}
+
+        <span class="badge bg-{{ scolor }}">{{ notif_label }}</span>
+      </td>
 
         <td>
           <div class="fw-semibold">{{ n.title }}</div>

@@ -1,3 +1,5 @@
+# courses/routes.py
+
 from math import ceil
 from io import StringIO, BytesIO
 import csv
@@ -17,13 +19,22 @@ from flask_login import login_required, current_user
 from sqlalchemy.orm import joinedload
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 
 from . import bp
 from app.db import SessionLocal
 import app.models as models
 from app.scripts import log_movement
-from app.models import Assignment, Course, Device, User
+
+from app.models import (
+    Assignment,
+    Course,
+    Device,
+    User,
+    CourseAssetRequirement,
+    AssetType,
+)
+
 from app.scripts.get_overdue_assignments import (
     get_cards_vs_trainees_alerts,
     get_overdue_course_alerts,
@@ -35,7 +46,12 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
-PER_PAGE = 20  # ajusta a tu gusto
+from app.scripts.notification_severity import NOTIFICATION_SEVERITY_MAP
+from app.scripts.notifications_rules import course_has_itc_assets
+from app.scripts.notifications_rules import build_changes, format_changes, format_requirements_map
+
+
+PER_PAGE = 20
 
 # Estados TCO (negocio)
 COURSE_TCO_STATUSES = ["planned", "active", "finished", "cancelled"]
@@ -58,16 +74,424 @@ COURSE_ITC_STATUSES = [
 COURSE_STATUSES = sorted(set(COURSE_TCO_STATUSES + COURSE_ITC_STATUSES))
 
 
-def create_notification_for_itc(db, course, created_by_user, notif_type, title, message, severity="notice"):
+# ============================================================
+#   HELPERS: ITC asset types + requirements + render form
+# ============================================================
+
+def _get_itc_asset_types(db):
+    roots = (
+        db.query(models.AssetType)
+        .filter(
+            models.AssetType.parent_id.is_(None),
+            models.AssetType.active.is_(True),
+            models.AssetType.code.in_(["COMPUTER", "USB"]),
+        )
+        .order_by(models.AssetType.sort_order.asc(), models.AssetType.name.asc())
+        .all()
+    )
+    if not roots:
+        return []
+
+    root_ids = [r.id for r in roots]
+
+    children = (
+        db.query(models.AssetType)
+        .filter(
+            models.AssetType.parent_id.in_(root_ids),
+            models.AssetType.active.is_(True),
+        )
+        .order_by(models.AssetType.sort_order.asc(), models.AssetType.name.asc())
+        .all()
+    )
+
+    # Qué roots tienen al menos un hijo
+    roots_with_children = {ch.parent_id for ch in children if ch.parent_id is not None}
+
+    # Roots sin hijos (ej: USB normalmente)
+    roots_without_children = [r for r in roots if r.id not in roots_with_children]
+
+    # Resultado final: hijos + roots "solitarios"
+    result = children + roots_without_children
+
+    # Orden final consistente
+    result.sort(key=lambda x: ((x.sort_order or 0), (x.name or "")))
+    return result
+
+
+def _parse_requirements_from_form(db):
     """
-    Crea una notificación persistente para ITC support.
-    Requiere que exista models.Notification y la tabla notifications.
+    Acepta:
+    - Subtipo (parent_id != None): OK
+    - Root (parent_id == None): OK SOLO si NO tiene hijos activos (ej: USB)
     """
+    ids = request.form.getlist("req_asset_type_id")
+    qtys = request.form.getlist("req_qty")
+
+    out = []
+    seen = set()
+
+    for i, raw_id in enumerate(ids):
+        raw_id = (raw_id or "").strip()
+        if not raw_id:
+            continue
+
+        try:
+            at_id = int(raw_id)
+        except ValueError:
+            continue
+
+        raw_qty = (qtys[i] if i < len(qtys) else "0")
+        try:
+            qty = int(raw_qty)
+        except ValueError:
+            qty = 0
+        if qty < 0:
+            qty = 0
+
+        at = (
+            db.query(AssetType)
+            .filter(AssetType.id == at_id, AssetType.active.is_(True))
+            .first()
+        )
+        if not at:
+            continue
+
+        # Root: permitir solo si NO tiene hijos
+        if at.parent_id is None:
+            has_children = (
+                db.query(AssetType.id)
+                  .filter(AssetType.parent_id == at.id, AssetType.active.is_(True))
+                  .count() > 0
+            )
+            if has_children:
+                continue
+
+        if at_id in seen:
+            continue
+        seen.add(at_id)
+
+        out.append((at_id, qty))
+
+    return out
+
+
+def _save_course_requirements(db, course, req_pairs):
+    """
+    Estrategia simple:
+    - borra lo anterior
+    - inserta lo nuevo (qty<=0 se omite)
+    """
+    db.query(CourseAssetRequirement).filter(
+        CourseAssetRequirement.course_id == course.id
+    ).delete(synchronize_session=False)
+
+    for at_id, qty in req_pairs:
+        if qty <= 0:
+            continue
+        db.add(
+            CourseAssetRequirement(
+                course_id=course.id,
+                asset_type_id=at_id,
+                quantity=qty,      # <-- confirma que tu modelo usa 'quantity'
+                active=True,
+            )
+        )
+
+
+def _load_req_map_for_course(db, course_id: int) -> dict:
+    """
+    {asset_type_id: qty} para pintar el form y para before/after.
+    """
+    rows = (
+        db.query(CourseAssetRequirement)
+        .filter(
+            CourseAssetRequirement.course_id == course_id,
+            CourseAssetRequirement.active.is_(True),
+        )
+        .all()
+    )
+    out = {}
+    for r in rows:
+        out[int(r.asset_type_id)] = int(getattr(r, "quantity", 0) or 0)
+    return out
+
+@bp.route("/<int:course_id>/edit", methods=["GET","POST"])
+@login_required
+def edit_course(course_id):
+    db = SessionLocal()
+    try:
+        c = db.query(models.Course).get(course_id)
+        if not c:
+            flash("Course not found.", "danger")
+            return redirect(url_for("courses.index"))
+
+        if request.method == "POST":
+            before_data = {
+                "id": c.id,
+                "course": c.course,
+                "name": c.name,
+                "client": c.client,
+                "start_date": c.start_date.isoformat() if c.start_date else None,
+                "end_date": c.end_date.isoformat() if c.end_date else None,
+                "trainees": c.trainees,
+                "status_tco": c.status_tco,
+                "status_itc": c.status_itc,
+                "notes": c.notes,
+                "responsible_id": c.responsible_id,
+            }
+
+            # BEFORE requirements
+            before_req_map = _load_req_map_for_course(db, c.id)
+
+            # Leer form
+            course_code = normalize_field((request.form.get("course") or ""))
+            name = normalize_field((request.form.get("name") or ""))
+            client = normalize_field((request.form.get("client") or ""))
+
+            start_str = (request.form.get("start_date") or "").strip()
+            end_str = (request.form.get("end_date") or "").strip()
+            trainees = (request.form.get("trainees") or "").strip()
+            notes = (request.form.get("notes") or "").strip()
+
+            status_tco = (request.form.get("status_tco") or "").strip() or c.status_tco or "planned"
+            status_itc = (request.form.get("status_itc") or "").strip() or c.status_itc or "start"
+
+            if status_tco not in COURSE_TCO_STATUSES:
+                flash("Invalid TCO status. 'planned' will be used.", "warning")
+                status_tco = "planned"
+
+            if status_itc not in COURSE_ITC_STATUSES:
+                flash("Invalid ITC status. 'start' will be used.", "warning")
+                status_itc = "start"
+
+            actor_role = (getattr(current_user, "role", "") or "").lower()
+            actor_dept = (getattr(current_user, "department", "") or "")
+            is_itc_only = (actor_dept == "ITC support" and actor_role != "admin")
+            if is_itc_only:
+                status_tco = c.status_tco or "planned"
+
+            def parse_date(s):
+                if not s:
+                    return None
+                try:
+                    return datetime.strptime(s, "%Y-%m-%d").date()
+                except ValueError:
+                    return None
+
+            start_date = parse_date(start_str)
+            end_date = parse_date(end_str)
+
+            try:
+                trainees_val = int(trainees) if trainees else None
+            except ValueError:
+                trainees_val = None
+
+            # ✅ Validación "Course o Name" (UNA sola vez)
+            if not course_code and not name:
+                flash("You must fill either 'Course' or 'Name'.", "warning")
+
+                # repoblar para no perder input del usuario
+                c.course = course_code
+                c.name = name
+                c.client = client
+                c.notes = notes or None
+                c.status_itc = status_itc
+                c.status_tco = status_tco
+                c.start_date = start_date
+                c.end_date = end_date
+                c.trainees = trainees_val
+
+                return _render_course_form(db, "Edit course", c)
+
+            # Apply cambios al objeto
+            c.course = course_code
+            c.name = name or None
+            c.client = client or None
+            c.start_date = start_date
+            c.end_date = end_date
+            c.trainees = trainees_val
+            c.status_tco = status_tco
+            c.status_itc = status_itc
+            c.notes = notes or None
+
+            # Responsible
+            resp_raw = (request.form.get("responsible_id") or "").strip()
+            if resp_raw:
+                try:
+                    candidate_id = int(resp_raw)
+                except ValueError:
+                    candidate_id = None
+
+                if candidate_id:
+                    resp_user = db.query(models.User).get(candidate_id)
+                    if (
+                        resp_user
+                        and resp_user.active
+                        and resp_user.department == "TCO"
+                        and resp_user.role in ("supervisor", "employee")
+                    ):
+                        c.responsible_id = resp_user.id
+                    else:
+                        flash("Selected responsible is not a valid TCO supervisor/employee.", "warning")
+
+            db.flush()
+
+            # Requirements: guardar y comparar
+            req_pairs = _parse_requirements_from_form(db)
+            print("DEBUG req_pairs:", req_pairs)
+            _save_course_requirements(db, c, req_pairs)
+            print("DEBUG after_req_map:", _load_req_map_for_course(db, c.id))
+            db.flush()
+
+            after_data = {
+                "id": c.id,
+                "course": c.course,
+                "name": c.name,
+                "client": c.client,
+                "start_date": c.start_date.isoformat() if c.start_date else None,
+                "end_date": c.end_date.isoformat() if c.end_date else None,
+                "trainees": c.trainees,
+                "status_tco": c.status_tco,
+                "status_itc": c.status_itc,
+                "notes": c.notes,
+                "responsible_id": c.responsible_id,
+            }
+
+            after_req_map = _load_req_map_for_course(db, c.id)
+            req_changed = before_req_map != after_req_map
+
+            itc_fields = {"course", "name", "client", "start_date", "end_date", "status_itc", "trainees", "notes"}
+            changes = build_changes(before_data, after_data, allow_fields=itc_fields)
+
+            # ✅ Notificación ITC: incluye BEFORE/AFTER legible
+            actor_dept = (getattr(current_user, "department", "") or "").strip()
+            actor_role = (getattr(current_user, "role", "") or "").strip().lower()
+            is_tco_actor = (actor_dept.upper() == "TCO") and ("admin" not in actor_role)
+
+            # ✅ Notificación ITC:
+            # - Si lo edita TCO: notificar (si hay cambios/req_changed y el curso tiene ITC assets)
+            # - Si lo edita ITC/Admin: mantener tu comportamiento actual (también notifica con cambios)
+            should_notify_itc = (changes or req_changed) and course_has_itc_assets(db, c.id) and (is_tco_actor or True)
+
+            if should_notify_itc:
+                cname = (c.course or c.name or f"Course #{c.id}").strip()
+
+                parts = []
+                if changes:
+                    parts.append("Changes:\n" + format_changes(changes))
+                if req_changed:
+                    parts.append("Requirements BEFORE:\n" + format_requirements_map(db, before_req_map))
+                    parts.append("Requirements AFTER:\n" + format_requirements_map(db, after_req_map))
+
+                who = f"{getattr(current_user, 'name', '')} {getattr(current_user, 'surname', '')}".strip() or "Unknown user"
+                dept = actor_dept or "Unknown department"
+
+                create_notification_for_itc(
+                    db=db,
+                    course=c,
+                    created_by_user=current_user,
+                    notif_type="course_updated_by_tco" if is_tco_actor else "course_updated",
+                    title=f"Course updated: {cname}",
+                    message=(f"Updated by: {who} ({dept})\n\n" + "\n\n".join(parts)),
+                )
+
+            log_movement(
+                db,
+                user_id=getattr(current_user, "id", None),
+                entity_type="course",
+                entity_id=c.id,
+                action="update",
+                before_data=before_data,
+                after_data=after_data,
+                description=f"Course '{c.course or c.name}' updated",
+                success=True,
+                user_agent=request.user_agent.string,
+            )
+
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                flash("Course could not be updated. Check unique constraints.", "danger")
+                return _render_course_form(db, "Edit course", c)
+
+            flash("Course updated.", "success")
+            return redirect(url_for("courses.index"))
+
+        return _render_course_form(db, "Edit course", c)
+
+    finally:
+        db.close()
+
+def _course_form_context(db, c):
+    responsibles = (
+        db.query(models.User)
+        .filter(
+            models.User.department == "TCO",
+            models.User.active.is_(True),
+            models.User.role.in_(["supervisor", "employee"]),
+        )
+        .order_by(models.User.name.asc(), models.User.surname.asc())
+        .all()
+    )
+
+    itc_asset_types = _get_itc_asset_types(db)
+
+    req_map = {}
+    if c and getattr(c, "id", None):
+        req_map = _load_req_map_for_course(db, c.id)
+
+    return {
+        "COURSE_TCO_STATUSES": COURSE_TCO_STATUSES,
+        "COURSE_ITC_STATUSES": COURSE_ITC_STATUSES,
+        "responsibles": responsibles,
+        "itc_asset_types": itc_asset_types,
+        "req_map": req_map,
+    }
+
+
+def _render_course_form(db, page_title, c):
+    responsibles = (
+        db.query(models.User)
+        .filter(
+            models.User.department == "TCO",
+            models.User.active.is_(True),
+            models.User.role.in_(["supervisor", "employee"]),
+        )
+        .order_by(models.User.name.asc(), models.User.surname.asc())
+        .all()
+    )
+
+    itc_asset_types = _get_itc_asset_types(db)
+
+    req_map = {}
+    if c and getattr(c, "id", None):
+        req_map = _load_req_map_for_course(db, c.id)
+
+    return render_template(
+        "courses/form.html",
+        page_title=page_title,
+        c=c,
+        COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
+        COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
+        responsibles=responsibles,
+        itc_asset_types=itc_asset_types,
+        req_map=req_map,
+    )
+
+
+# ============================================================
+#   NOTIFICATIONS / NORMALIZE
+# ============================================================
+
+def create_notification_for_itc(db, course, created_by_user, notif_type, title, message, severity=None):
+    sev = severity or NOTIFICATION_SEVERITY_MAP.get(notif_type, "notice")
+
     n = models.Notification(
         created_by_user_id=getattr(created_by_user, "id", None),
         department_target="ITC support",
-        type=notif_type,       # "course_created" / "course_updated" / "pickup_request"
-        severity=severity,     # notice|warning|critical
+        type=notif_type,
+        severity=sev,
         status="open",
         title=title,
         message=message,
@@ -89,13 +513,13 @@ def normalize_field(value: str):
     return v
 
 
+# ============================================================
+#   QUERIES
+# ============================================================
+
 def build_courses_query(db, args):
-    """
-    Construye la query de Course con los mismos filtros que el index().
-    """
     q = (args.get("q") or "").strip()
 
-    # Column filters
     course_code = (args.get("course") or "").strip()
     name = (args.get("name") or "").strip()
     client = (args.get("client") or "").strip()
@@ -107,7 +531,6 @@ def build_courses_query(db, args):
 
     qry = db.query(models.Course)
 
-    # Búsqueda global
     if q:
         like = f"%{q}%"
         qry = qry.filter(
@@ -118,13 +541,10 @@ def build_courses_query(db, args):
             )
         )
 
-    # Filtros por columna (AND)
     if course_code:
         qry = qry.filter(models.Course.course.ilike(f"%{course_code}%"))
-
     if name:
         qry = qry.filter(models.Course.name.ilike(f"%{name}%"))
-
     if client:
         qry = qry.filter(models.Course.client.ilike(f"%{client}%"))
 
@@ -163,6 +583,10 @@ def build_courses_query(db, args):
     return qry
 
 
+# ============================================================
+#   ROUTES
+# ============================================================
+
 @bp.route("/")
 @login_required
 def index():
@@ -170,24 +594,12 @@ def index():
     page = max(int(request.args.get("page", 1)), 1)
     per_page = int(request.args.get("per_page", PER_PAGE))
 
-    # Column filters
-    course_code = (request.args.get("course") or "").strip()
-    name = (request.args.get("name") or "").strip()
-    client = (request.args.get("client") or "").strip()
-    status = (request.args.get("status") or "").strip()
-    trainees_s = (request.args.get("trainees") or "").strip()
-    notes = (request.args.get("notes") or "").strip()
-    start_str = (request.args.get("start_date") or "").strip()
-    end_str = (request.args.get("end_date") or "").strip()
-
-    # 🔥 Nuevo filtro
-    my = request.args.get("my")  # "1" para filtrar solo mis cursos
+    my = request.args.get("my")  # "1" => solo mis cursos
 
     db = SessionLocal()
     try:
         qry = build_courses_query(db, request.args)
 
-        # 🔥 aplicar filtro My Courses
         if my == "1" and current_user.is_authenticated:
             qry = qry.filter(models.Course.responsible_id == current_user.id)
 
@@ -211,16 +623,15 @@ def index():
             per_page=per_page,
             has_prev=page > 1,
             has_next=page < pages,
-            filter_course=course_code,
-            filter_name=name,
-            filter_client=client,
-            filter_status=status,
-            filter_trainees=trainees_s,
-            filter_notes=notes,
-            filter_start_date=start_str,
-            filter_end_date=end_str,
+            filter_course=(request.args.get("course") or "").strip(),
+            filter_name=(request.args.get("name") or "").strip(),
+            filter_client=(request.args.get("client") or "").strip(),
+            filter_status=(request.args.get("status") or "").strip(),
+            filter_trainees=(request.args.get("trainees") or "").strip(),
+            filter_notes=(request.args.get("notes") or "").strip(),
+            filter_start_date=(request.args.get("start_date") or "").strip(),
+            filter_end_date=(request.args.get("end_date") or "").strip(),
             COURSE_STATUSES=COURSE_STATUSES,
-            # 🔥 Para marcar el botón activo si está seleccionado
             filter_my=my,
         )
     finally:
@@ -230,11 +641,11 @@ def index():
 @bp.route("/new", methods=["GET", "POST"])
 @login_required
 def new_course():
-    from datetime import date
+    from datetime import date as _date
 
     def to_date(s):
         s = (s or "").strip()
-        return date.fromisoformat(s) if s else None
+        return _date.fromisoformat(s) if s else None
 
     db = SessionLocal()
     try:
@@ -242,17 +653,14 @@ def new_course():
             course = (request.form.get("course") or "").strip()
             name = (request.form.get("name") or "").strip()
 
-            # estados separados
             status_tco = (request.form.get("status_tco") or "planned").strip() or "planned"
             status_itc = (request.form.get("status_itc") or "start").strip() or "start"
 
-            # saneo contra listas
             if status_tco not in COURSE_TCO_STATUSES:
                 status_tco = "planned"
             if status_itc not in COURSE_ITC_STATUSES:
                 status_itc = "start"
 
-            # ITC (no admin) no puede decidir el estado TCO
             actor_role = (getattr(current_user, "role", "") or "").lower()
             actor_dept = (getattr(current_user, "department", "") or "")
             is_itc_only = (actor_dept == "ITC support" and actor_role != "admin")
@@ -265,7 +673,6 @@ def new_course():
             start_dt = to_date(request.form.get("start_date"))
             end_dt = to_date(request.form.get("end_date"))
 
-            # responsable
             resp_raw = (request.form.get("responsible_id") or "").strip()
             responsible_id = None
 
@@ -285,10 +692,7 @@ def new_course():
                     ):
                         responsible_id = resp_user.id
                     else:
-                        flash(
-                            "Selected responsible is not a valid TCO supervisor/employee.",
-                            "warning",
-                        )
+                        flash("Selected responsible is not a valid TCO supervisor/employee.", "warning")
 
             if not responsible_id and current_user.is_authenticated:
                 responsible_id = current_user.id
@@ -301,31 +705,11 @@ def new_course():
             except ValueError:
                 trainees = 0
 
-            # Comprobación mínima: course o name
             if not course and not name:
                 flash("You must fill either 'Course' or 'Name'.", "warning")
+                return _render_course_form(db, "New course", None)
 
-                responsibles = (
-                    db.query(models.User)
-                    .filter(
-                        models.User.department == "TCO",
-                        models.User.active.is_(True),
-                        models.User.role.in_(["supervisor", "employee"]),
-                    )
-                    .order_by(models.User.name.asc(), models.User.surname.asc())
-                    .all()
-                )
-
-                return render_template(
-                    "courses/form.html",
-                    page_title="New course",
-                    c=None,
-                    COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
-                    COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
-                    responsibles=responsibles,
-                )
-
-            new_course = models.Course(
+            new_c = models.Course(
                 course=course or None,
                 name=name or None,
                 status_tco=status_tco,
@@ -337,50 +721,52 @@ def new_course():
                 responsible_id=responsible_id,
                 client=client or None,
             )
-            db.add(new_course)
+            db.add(new_c)
             db.flush()
 
-            # ✅ NOTIFICATION: curso creado -> ITC
-            cname = (new_course.course or new_course.name or f"Course #{new_course.id}").strip()
-            create_notification_for_itc(
-                db=db,
-                course=new_course,
-                created_by_user=current_user,
-                notif_type="course_created",
-                title=f"New course created: {cname}",
-                message=(
-                    f"Course created by {getattr(current_user, 'name', '')} "
-                    f"{getattr(current_user, 'surname', '')}".strip()
-                    + ". Please review ITC assets / logistics."
-                ),
-                severity="notice",
-            )
+            req_pairs = _parse_requirements_from_form(db)
+            _save_course_requirements(db, new_c, req_pairs)
+            db.flush()
+            cname = (new_c.course or new_c.name or f"Course #{new_c.id}").strip()
+
+            req_map = _load_req_map_for_course(db, new_c.id)
+
+            if course_has_itc_assets(db, new_c.id):
+                create_notification_for_itc(
+                    db=db,
+                    course=new_c,
+                    created_by_user=current_user,
+                    notif_type="course_created",
+                    title=f"New course created: {cname}",
+                    message=(
+                        f"Course created: {cname}\n"
+                        f"Client: {new_c.client or '-'} | Trainees: {new_c.trainees}\n"
+                        f"Dates: {new_c.start_date or '-'} → {new_c.end_date or '-'}\n\n"
+                        f"Requirements:\n{format_requirements_map(db, req_map)}"
+                    ),
+                )
 
             log_movement(
                 db,
                 user_id=getattr(current_user, "id", None),
                 entity_type="course",
-                entity_id=new_course.id,
+                entity_id=new_c.id,
                 action="create",
                 before_data=None,
                 after_data={
-                    "id": new_course.id,
-                    "course": new_course.course,
-                    "name": new_course.name,
-                    "start_date": new_course.start_date.isoformat()
-                    if new_course.start_date
-                    else None,
-                    "end_date": new_course.end_date.isoformat()
-                    if new_course.end_date
-                    else None,
-                    "trainees": new_course.trainees,
-                    "status_tco": new_course.status_tco,
-                    "status_itc": new_course.status_itc,
-                    "notes": new_course.notes,
-                    "responsible_id": new_course.responsible_id,
-                    "client": new_course.client,
+                    "id": new_c.id,
+                    "course": new_c.course,
+                    "name": new_c.name,
+                    "start_date": new_c.start_date.isoformat() if new_c.start_date else None,
+                    "end_date": new_c.end_date.isoformat() if new_c.end_date else None,
+                    "trainees": new_c.trainees,
+                    "status_tco": new_c.status_tco,
+                    "status_itc": new_c.status_itc,
+                    "notes": new_c.notes,
+                    "responsible_id": new_c.responsible_id,
+                    "client": new_c.client,
                 },
-                description=f"Course '{new_course.course or new_course.name}' created",
+                description=f"Course '{new_c.course or new_c.name}' created",
                 success=True,
                 user_agent=request.user_agent.string,
             )
@@ -389,297 +775,14 @@ def new_course():
                 db.commit()
             except IntegrityError:
                 db.rollback()
-                flash(
-                    "Course could not be created. Check unique constraints.",
-                    "danger",
-                )
-
-                responsibles = (
-                    db.query(models.User)
-                    .filter(
-                        models.User.department == "TCO",
-                        models.User.active.is_(True),
-                        models.User.role.in_(["supervisor", "employee"]),
-                    )
-                    .order_by(models.User.name.asc(), models.User.surname.asc())
-                    .all()
-                )
-
-                return render_template(
-                    "courses/form.html",
-                    page_title="New course",
-                    c=None,
-                    COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
-                    COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
-                    responsibles=responsibles,
-                )
+                flash("Course could not be created. Check unique constraints.", "danger")
+                return _render_course_form(db, "New course", None)
 
             flash("Course created.", "success")
             return redirect(url_for("courses.index"))
 
-        # GET
-        responsibles = (
-            db.query(models.User)
-            .filter(
-                models.User.department == "TCO",
-                models.User.active.is_(True),
-                models.User.role.in_(["supervisor", "employee"]),
-            )
-            .order_by(models.User.name.asc(), models.User.surname.asc())
-            .all()
-        )
+        return _render_course_form(db, "New course", None)
 
-        return render_template(
-            "courses/form.html",
-            page_title="New course",
-            c=None,
-            COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
-            COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
-            responsibles=responsibles,
-        )
-    finally:
-        db.close()
-
-
-@bp.route("/<int:course_id>/edit", methods=["GET", "POST"])
-@login_required
-def edit_course(course_id):
-    db = SessionLocal()
-    try:
-        c = db.query(models.Course).get(course_id)
-        if not c:
-            flash("Course not found.", "danger")
-            return redirect(url_for("courses.index"))
-
-        if request.method == "POST":
-            before_data = {
-                "id": c.id,
-                "course": c.course,
-                "name": c.name,
-                "start_date": c.start_date.isoformat() if c.start_date else None,
-                "end_date": c.end_date.isoformat() if c.end_date else None,
-                "trainees": c.trainees,
-                "status_tco": c.status_tco,
-                "status_itc": c.status_itc,
-                "notes": c.notes,
-                "responsible_id": c.responsible_id,
-                "client": c.client,
-            }
-
-            # ✅ snapshot relevante para notificaciones (anti-spam)
-            before_relevant = {
-                "course": c.course,
-                "name": c.name,
-                "client": c.client,
-                "start_date": c.start_date,
-                "end_date": c.end_date,
-                "trainees": c.trainees,
-                "status_tco": c.status_tco,
-                "status_itc": c.status_itc,
-            }
-
-            course_code = normalize_field((request.form.get("course") or ""))
-            name = normalize_field((request.form.get("name") or ""))
-            client = normalize_field((request.form.get("client") or ""))
-
-            start_str = (request.form.get("start_date") or "").strip()
-            end_str = (request.form.get("end_date") or "").strip()
-            trainees = (request.form.get("trainees") or "").strip()
-            notes = (request.form.get("notes") or "").strip()
-
-            status_tco = (request.form.get("status_tco") or "").strip() or c.status_tco or "planned"
-            status_itc = (request.form.get("status_itc") or "").strip() or c.status_itc or "start"
-
-            if status_tco not in COURSE_TCO_STATUSES:
-                flash("Invalid TCO status. 'planned' will be used.", "warning")
-                status_tco = "planned"
-
-            if status_itc not in COURSE_ITC_STATUSES:
-                flash("Invalid ITC status. 'start' will be used.", "warning")
-                status_itc = "start"
-
-            actor_role = (getattr(current_user, "role", "") or "").lower()
-            actor_dept = (getattr(current_user, "department", "") or "")
-            is_itc_only = (actor_dept == "ITC support" and actor_role != "admin")
-            if is_itc_only:
-                status_tco = c.status_tco or "planned"
-
-            if not course_code and not name:
-                flash("You must fill either 'Course' or 'Name'.", "warning")
-
-                responsibles = (
-                    db.query(models.User)
-                    .filter(
-                        models.User.department == "TCO",
-                        models.User.active.is_(True),
-                        models.User.role.in_(["supervisor", "employee"]),
-                    )
-                    .order_by(models.User.name.asc(), models.User.surname.asc())
-                    .all()
-                )
-
-                return render_template(
-                    "courses/form.html",
-                    page_title="Edit course",
-                    c=c,
-                    COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
-                    COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
-                    responsibles=responsibles,
-                )
-
-            def parse_date(s):
-                if not s:
-                    return None
-                try:
-                    return datetime.strptime(s, "%Y-%m-%d").date()
-                except ValueError:
-                    return None
-
-            start_date = parse_date(start_str)
-            end_date = parse_date(end_str)
-
-            try:
-                trainees_val = int(trainees) if trainees else None
-            except ValueError:
-                trainees_val = None
-
-            c.course = course_code
-            c.name = name or None
-            c.client = client or None
-            c.start_date = start_date
-            c.end_date = end_date
-            c.trainees = trainees_val
-            c.status_tco = status_tco
-            c.status_itc = status_itc
-            c.notes = notes or None
-
-            resp_raw = (request.form.get("responsible_id") or "").strip()
-            if resp_raw:
-                try:
-                    candidate_id = int(resp_raw)
-                except ValueError:
-                    candidate_id = None
-
-                if candidate_id:
-                    resp_user = db.query(models.User).get(candidate_id)
-                    if (
-                        resp_user
-                        and resp_user.active
-                        and resp_user.department == "TCO"
-                        and resp_user.role in ("supervisor", "employee")
-                    ):
-                        c.responsible_id = resp_user.id
-                    else:
-                        flash(
-                            "Selected responsible is not a valid TCO supervisor/employee.",
-                            "warning",
-                        )
-
-            db.flush()
-
-            # ✅ NOTIFICATION: curso actualizado -> ITC (solo si cambia lo relevante)
-            after_relevant = {
-                "course": c.course,
-                "name": c.name,
-                "client": c.client,
-                "start_date": c.start_date,
-                "end_date": c.end_date,
-                "trainees": c.trainees,
-                "status_tco": c.status_tco,
-                "status_itc": c.status_itc,
-            }
-
-            relevant_changed = any(before_relevant[k] != after_relevant[k] for k in before_relevant.keys())
-            if relevant_changed:
-                cname = (c.course or c.name or f"Course #{c.id}").strip()
-                create_notification_for_itc(
-                    db=db,
-                    course=c,
-                    created_by_user=current_user,
-                    notif_type="course_updated",
-                    title=f"Course updated: {cname}",
-                    message="Course updated by TCO. Please review ITC assets / logistics.",
-                    severity="notice",
-                )
-
-            after_data = {
-                "id": c.id,
-                "course": c.course,
-                "name": c.name,
-                "start_date": c.start_date.isoformat() if c.start_date else None,
-                "end_date": c.end_date.isoformat() if c.end_date else None,
-                "trainees": c.trainees,
-                "status_tco": c.status_tco,
-                "status_itc": c.status_itc,
-                "notes": c.notes,
-                "responsible_id": c.responsible_id,
-                "client": c.client,
-            }
-
-            log_movement(
-                db,
-                user_id=getattr(current_user, "id", None),
-                entity_type="course",
-                entity_id=c.id,
-                action="update",
-                before_data=before_data,
-                after_data=after_data,
-                description=f"Course '{c.course or c.name}' updated",
-                success=True,
-                user_agent=request.user_agent.string,
-            )
-
-            try:
-                db.commit()
-            except IntegrityError:
-                db.rollback()
-                flash(
-                    "Course could not be updated. Check unique constraints.",
-                    "danger",
-                )
-
-                responsibles = (
-                    db.query(models.User)
-                    .filter(
-                        models.User.department == "TCO",
-                        models.User.active.is_(True),
-                        models.User.role.in_(["supervisor", "employee"]),
-                    )
-                    .order_by(models.User.name.asc(), models.User.surname.asc())
-                    .all()
-                )
-
-                return render_template(
-                    "courses/form.html",
-                    page_title="Edit course",
-                    c=c,
-                    COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
-                    COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
-                    responsibles=responsibles,
-                )
-
-            flash("Course updated.", "success")
-            return redirect(url_for("courses.index"))
-
-        responsibles = (
-            db.query(models.User)
-            .filter(
-                models.User.department == "TCO",
-                models.User.active.is_(True),
-                models.User.role.in_(["supervisor", "employee"]),
-            )
-            .order_by(models.User.name.asc(), models.User.surname.asc())
-            .all()
-        )
-
-        return render_template(
-            "courses/form.html",
-            page_title="Edit course",
-            c=c,
-            COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
-            COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
-            responsibles=responsibles,
-        )
     finally:
         db.close()
 
@@ -694,6 +797,11 @@ def delete_course(course_id):
             flash("Course not found.", "danger")
             return redirect(url_for("courses.index"))
 
+        # Capturar info ANTES de borrar
+        cname = (c.course or c.name or f"Course #{c.id}").strip()
+        before_req_map = _load_req_map_for_course(db, c.id)
+        had_itc_assets = course_has_itc_assets(db, c.id)
+
         before_data = {
             "id": c.id,
             "course": c.course,
@@ -706,6 +814,23 @@ def delete_course(course_id):
             "notes": c.notes,
             "responsible_id": c.responsible_id,
         }
+
+        # ✅ Notificar a ITC si el curso tenía assets ITC
+        if had_itc_assets:
+            create_notification_for_itc(
+                db=db,
+                course=c,  # aún existe aquí
+                created_by_user=current_user,
+                notif_type="course_deleted",
+                title=f"Course deleted: {cname}",
+                message=(
+                    f"The course was deleted.\n"
+                    f"Course: {cname}\n"
+                    f"Dates: {c.start_date or '-'} → {c.end_date or '-'} | Trainees: {c.trainees}\n\n"
+                    f"Requirements BEFORE deletion:\n{format_requirements_map(db, before_req_map)}"
+                ),
+                severity="warning",
+            )
 
         db.delete(c)
         db.flush()
@@ -727,10 +852,7 @@ def delete_course(course_id):
             db.commit()
         except IntegrityError:
             db.rollback()
-            flash(
-                "The course could not be deleted. It may be referenced in other records.",
-                "danger",
-            )
+            flash("The course could not be deleted. It may be referenced in other records.", "danger")
             return redirect(url_for("courses.index"))
 
         flash("Course deleted.", "success")
@@ -742,10 +864,6 @@ def delete_course(course_id):
 
 @bp.route("/calendar-data")
 def calendar_data():
-    """
-    Devuelve los cursos cuyo rango [start_date, end_date] se solapa
-    con el rango visible del calendario (from, to).
-    """
     db = SessionLocal()
     try:
         start_str = request.args.get("from")
@@ -793,9 +911,7 @@ def detail(course_id):
     db = SessionLocal()
     course = (
         db.query(Course)
-        .options(
-            joinedload(Course.assignments).joinedload(Assignment.device),
-        )
+        .options(joinedload(Course.assignments).joinedload(Assignment.device))
         .get(course_id)
     )
     if not course:
@@ -804,10 +920,8 @@ def detail(course_id):
     update_assignment_overdue_status_for_course(db, course)
 
     active_assignments = [
-        a
-        for a in course.assignments
-        if a.status in ("active", "overdue_1", "overdue_2")
-        and a.device is not None
+        a for a in course.assignments
+        if a.status in ("active", "overdue_1", "overdue_2") and a.device is not None
     ]
 
     return render_template(
@@ -823,9 +937,7 @@ def detail_fragment(course_id):
     db = SessionLocal()
     course = (
         db.query(Course)
-        .options(
-            joinedload(Course.assignments).joinedload(Assignment.device),
-        )
+        .options(joinedload(Course.assignments).joinedload(Assignment.device))
         .get(course_id)
     )
     if not course:
@@ -834,10 +946,8 @@ def detail_fragment(course_id):
     update_assignment_overdue_status_for_course(db, course)
 
     active_assignments = [
-        a
-        for a in course.assignments
-        if a.status in ("active", "overdue_1", "overdue_2")
-        and a.device is not None
+        a for a in course.assignments
+        if a.status in ("active", "overdue_1", "overdue_2") and a.device is not None
     ]
 
     return render_template(
@@ -847,15 +957,10 @@ def detail_fragment(course_id):
     )
 
 
-# Umbral de días de retraso para overdue_1
-OVERDUE_1_DAYS = 7  # 1..7 días -> overdue_1
+OVERDUE_1_DAYS = 7
 
 
 def update_assignment_overdue_status_for_course(db, course):
-    """
-    Actualiza Assignment.status para las asignaciones 'vivas' de un curso
-    según la fecha de fin del curso y la fecha actual.
-    """
     today = date.today()
 
     if not course.end_date:
@@ -890,7 +995,6 @@ def update_assignment_overdue_status_for_course(db, course):
 def api_calendar_events():
     db = SessionLocal()
     try:
-        # 1) Calculamos severidad por curso usando tus helpers de alertas
         cards_alerts = get_cards_vs_trainees_alerts(db)
         overdue_alerts = get_overdue_course_alerts(db)
 
@@ -925,11 +1029,7 @@ def api_calendar_events():
             if not c.start_date and not c.end_date:
                 continue
 
-            title = (
-                (c.name or "").strip()
-                or (c.course or "").strip()
-                or f"Course #{c.id}"
-            )
+            title = ((c.name or "").strip() or (c.course or "").strip() or f"Course #{c.id}")
             detail_url = url_for("courses.detail_fragment", course_id=c.id)
 
             sev = severity_by_course.get(c.id)
@@ -948,32 +1048,24 @@ def api_calendar_events():
             }
 
             if c.start_date:
-                ev = {
+                events.append({
                     "id": f"{c.id}-start",
                     "title": title,
                     "start": c.start_date.isoformat(),
                     "allDay": True,
                     "classNames": ["fc-course-start"],
-                    "extendedProps": {
-                        **base_extended,
-                        "kind": "start",
-                    },
-                }
-                events.append(ev)
+                    "extendedProps": {**base_extended, "kind": "start"},
+                })
 
             if c.end_date and (not c.start_date or c.end_date != c.start_date):
-                ev = {
+                events.append({
                     "id": f"{c.id}-end",
                     "title": title,
                     "start": c.end_date.isoformat(),
                     "allDay": True,
                     "classNames": ["fc-course-end"],
-                    "extendedProps": {
-                        **base_extended,
-                        "kind": "end",
-                    },
-                }
-                events.append(ev)
+                    "extendedProps": {**base_extended, "kind": "end"},
+                })
 
         return jsonify(events)
     finally:
@@ -984,11 +1076,7 @@ def api_calendar_events():
 #   EXPORT: CSV / EXCEL / PDF
 # ===========================
 
-
 def _course_rows(courses):
-    """
-    Filas comunes para exportar cursos: cabecera + datos.
-    """
     rows = []
     rows.append([
         "ID",
@@ -1004,21 +1092,8 @@ def _course_rows(courses):
         start = c.start_date
         end = c.end_date
 
-        if start:
-            try:
-                start_str = start.strftime("%Y-%m-%d")
-            except AttributeError:
-                start_str = str(start)
-        else:
-            start_str = ""
-
-        if end:
-            try:
-                end_str = end.strftime("%Y-%m-%d")
-            except AttributeError:
-                end_str = str(end)
-        else:
-            end_str = ""
+        start_str = start.strftime("%Y-%m-%d") if start else ""
+        end_str = end.strftime("%Y-%m-%d") if end else ""
 
         rows.append([
             c.id,
@@ -1132,10 +1207,6 @@ def _export_courses_pdf(courses):
 @bp.route("/export", methods=["GET"])
 @login_required
 def export_courses():
-    """
-    Exporta EXACTAMENTE los cursos que el usuario está viendo:
-    mismos filtros + misma página.
-    """
     fmt = (request.args.get("format") or "pdf").lower()
 
     page = max(int(request.args.get("page", 1)), 1)

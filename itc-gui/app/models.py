@@ -158,6 +158,12 @@ class Course(db.Model):
         backref="courses_responsible_for",
     )
 
+    asset_requirements = relationship(
+    "CourseAssetRequirement",
+    back_populates="course",
+    cascade="all, delete-orphan",
+    lazy="joined",
+    )
     def __repr__(self):
         return f"<Course id={self.id} course={self.course!r} name={self.name!r}>"
 
@@ -291,6 +297,7 @@ class AssetType(db.Model):
     # Jerarquía
     parent = relationship("AssetType", remote_side=[id], backref="children")
     devices = relationship("Device", back_populates="asset_type")
+    course_requirements = relationship("CourseAssetRequirement", backref="asset_type_ref")
 
     def __repr__(self):
         return f"<AssetType code={self.code} name={self.name} parent_id={self.parent_id}>"  
@@ -329,3 +336,34 @@ class Notification(db.Model):
 
     def __repr__(self):
         return f"<Notification id={self.id} type={self.type} target={self.department_target} status={self.status}>"
+    
+class CourseAssetRequirement(db.Model):
+    __tablename__ = "course_asset_requirements"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    course_id = db.Column(
+        db.Integer,
+        db.ForeignKey("courses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    asset_type_id = db.Column(
+        db.Integer,
+        db.ForeignKey("asset_types.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+
+    quantity = db.Column(db.Integer, nullable=False, default=1)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    course = db.relationship("Course", back_populates="asset_requirements")
+    asset_type = db.relationship("AssetType", lazy="joined")
+
+    def __repr__(self):
+        return f"<CourseAssetRequirement course_id={self.course_id} asset_type_id={self.asset_type_id} qty={self.quantity}>"

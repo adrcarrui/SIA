@@ -23,6 +23,54 @@ DEVICE_TYPES = ["vending", "canteen", "instructor", "guest"]
 DEVICE_STATUSES = ["assigned", "available", "lost", "annulled"]
 
 
+def _notif_dept_scope():
+    role = (getattr(current_user, "role", "") or "").strip().lower()
+    dept = (getattr(current_user, "department", "") or "").strip()
+
+    # Admin ve todo
+    if "admin" in role:
+        return None
+
+    if dept.lower() == "itc support":
+        return "ITC support"
+    if dept.upper() == "TCO":
+        return "TCO"
+
+    # Si no tiene dept válido, no enseñamos nada (evita leaks)
+    return "__none__"
+
+
+@bp.app_context_processor
+def inject_notifications_unread_count():
+    """
+    Disponible en TODOS los templates:
+    notifications_unread_count
+    """
+    if not current_user.is_authenticated:
+        return dict(notifications_unread_count=0)
+
+    scope = _notif_dept_scope()
+    if scope == "__none__":
+        return dict(notifications_unread_count=0)
+
+    db = SessionLocal()
+    try:
+        q = db.query(models.Notification.id).filter(models.Notification.active.is_(True))
+
+        if scope is not None:
+            q = q.filter(models.Notification.department_target == scope)
+
+        # Unread = no leída y no cerrada
+        q = q.filter(
+            models.Notification.read_at.is_(None),
+            models.Notification.status.notin_(["done", "dismissed"]),
+        )
+
+        return dict(notifications_unread_count=q.count())
+    finally:
+        db.close()
+
+
 def get_asset_roots_and_children_map(db):
     roots = (
         db.query(models.AssetType)
@@ -110,10 +158,17 @@ def build_devices_query(db, args):
     if barcode:
         query = query.filter(models.Device.barcode.ilike(f"%{barcode}%"))
 
+    # ✅ Root filter: incluye devices cuyo asset_type ES el root (USB sin hijos)
+    # y también devices cuyo asset_type es hijo de ese root.
     if root_id:
         try:
             root_id_int = int(root_id)
-            query = query.filter(Parent.id == root_id_int)
+            query = query.filter(
+                or_(
+                    Parent.id == root_id_int,              # subtypes del root
+                    models.AssetType.id == root_id_int     # el propio root
+                )
+            )
         except ValueError:
             pass
 
@@ -132,10 +187,16 @@ def build_devices_query(db, args):
     return query
 
 
-def _load_subtype_or_error(db, asset_type_id_raw):
+def _load_asset_type_for_device_or_error(db, asset_type_id_raw):
     """
     Devuelve (asset_type, error_msg)
-    - asset_type debe existir, estar activo y ser subtipo (parent_id != None)
+
+    Permite:
+    - Subtipo (parent_id != None): OK
+    - Root (parent_id == None): OK SOLO si NO tiene hijos activos
+      (caso típico: USB root sin subtipos)
+
+    Si el root tiene hijos activos, obliga a seleccionar uno de ellos.
     """
     asset_type_id = int(asset_type_id_raw) if (asset_type_id_raw or "").isdigit() else None
     if not asset_type_id:
@@ -148,8 +209,20 @@ def _load_subtype_or_error(db, asset_type_id_raw):
     )
     if not at:
         return None, "Subtype inválido."
-    if at.parent_id is None:
-        return None, "Debes seleccionar un subtipo, no un tipo raíz."
+
+    # Si es subtipo, perfecto
+    if at.parent_id is not None:
+        return at, None
+
+    # Si es root, solo lo permitimos si no tiene hijos activos
+    children_count = (
+        db.query(models.AssetType.id)
+          .filter(models.AssetType.parent_id == at.id, models.AssetType.active.is_(True))
+          .count()
+    )
+    if children_count > 0:
+        return None, "Debes seleccionar un subtipo (este tipo raíz tiene subtipos)."
+
     return at, None
 
 
@@ -162,7 +235,7 @@ def index():
 
     name          = (request.args.get("name") or "").strip()
     uid           = (request.args.get("uid") or "").strip()
-    barcode = (request.args.get("barcode") or "").strip()
+    barcode       = (request.args.get("barcode") or "").strip()
     root_type_id  = (request.args.get("root_type_id") or "").strip()
     asset_type_id = (request.args.get("asset_type_id") or "").strip()
     status        = (request.args.get("status") or "").strip()
@@ -235,8 +308,8 @@ def new_device():
                 flash("Estado inválido. Se usará 'available'.", "warning")
                 status = "available"
 
-            # ✅ Validar subtipo
-            at, err = _load_subtype_or_error(db, asset_type_id_raw)
+            # ✅ Validar asset type (subtipo o root sin hijos)
+            at, err = _load_asset_type_for_device_or_error(db, asset_type_id_raw)
             if err:
                 flash(err, "danger")
                 return render_template(
@@ -250,10 +323,12 @@ def new_device():
                     selected_child_id=None,
                 )
 
-            selected_root_id = at.parent_id
-            selected_child_id = at.id
+            # Si es subtipo -> root = parent_id, child = at.id
+            # Si es root sin hijos -> root = at.id, child = None
+            selected_root_id = at.parent_id if at.parent_id else at.id
+            selected_child_id = at.id if at.parent_id else None
 
-            # ✅ Reglas por flags
+            # ✅ Reglas por flags (si no existen en root, da igual, queda False)
             if getattr(at, "requires_rfid", False) and not uid:
                 flash("UID es obligatorio para este tipo de asset.", "danger")
                 return render_template(
@@ -285,6 +360,14 @@ def new_device():
                 uid = None
             if not getattr(at, "requires_barcode", False):
                 barcode = None
+
+            # Fallback: si no hay uid pero hay barcode -> uid = barcode
+            if not uid and barcode:
+                uid = barcode
+
+            if not uid:
+                flash("Debes indicar UID o Barcode.", "danger")
+                return redirect(url_for("devices.new_device"))
 
             dtype = legacy_type_from_asset_code(at.code)
 
@@ -376,8 +459,8 @@ def edit_device(device_id):
         selected_root_id = None
         if selected_child_id:
             child = db.query(models.AssetType).filter(models.AssetType.id == selected_child_id).first()
-            if child and child.parent_id:
-                selected_root_id = child.parent_id
+            if child:
+                selected_root_id = child.parent_id if child.parent_id else child.id
 
         if request.method == "POST":
             page_title = "Edit device"
@@ -407,8 +490,8 @@ def edit_device(device_id):
                 flash("Estado inválido. Se usará 'available'.", "warning")
                 status = "available"
 
-            # ✅ Validar subtipo
-            at, err = _load_subtype_or_error(db, asset_type_id_raw)
+            # ✅ Validar asset type (subtipo o root sin hijos)
+            at, err = _load_asset_type_for_device_or_error(db, asset_type_id_raw)
             if err:
                 flash(err, "danger")
                 return render_template(
@@ -422,8 +505,8 @@ def edit_device(device_id):
                     selected_child_id=selected_child_id,
                 )
 
-            selected_root_id = at.parent_id
-            selected_child_id = at.id
+            selected_root_id = at.parent_id if at.parent_id else at.id
+            selected_child_id = at.id if at.parent_id else None
 
             if getattr(at, "requires_rfid", False) and not uid:
                 flash("UID es obligatorio para este tipo de asset.", "danger")
@@ -455,6 +538,22 @@ def edit_device(device_id):
                 uid = None
             if not getattr(at, "requires_barcode", False):
                 barcode = None
+
+            if not uid and barcode:
+                uid = barcode
+
+            if not uid:
+                flash("Debes indicar UID o Barcode.", "danger")
+                return render_template(
+                    "devices/form.html",
+                    page_title=page_title,
+                    device=d,
+                    DEVICE_STATUSES=DEVICE_STATUSES,
+                    roots=roots,
+                    children_map=children_map,
+                    selected_root_id=selected_root_id,
+                    selected_child_id=selected_child_id,
+                )
 
             dtype = legacy_type_from_asset_code(at.code)
 
@@ -616,7 +715,7 @@ def export_devices():
 def _device_rows(devices):
     """
     Exporta el listado mostrando:
-    - Root type = asset_type.parent.name
+    - Root type = asset_type.parent.name (si existe)
     - Subtype = asset_type.name
     - UID y Barcode según aplique
     """

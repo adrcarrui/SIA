@@ -8,7 +8,55 @@ from app.scripts.get_overdue_assignments import (
 )
 from app.models import User, Device, Course, Assignment, Movements
 from sqlalchemy import func, case
+import app.models as models
 
+
+def _notif_scope_for_user():
+    role = (getattr(current_user, "role", "") or "").strip().lower()
+    dept = (getattr(current_user, "department", "") or "").strip()
+
+    # Admin ve todo
+    if "admin" in role:
+        return None
+
+    # Dept scope
+    if dept.lower() == "itc support":
+        return "ITC support"
+    if dept.upper() == "TCO":
+        return "TCO"
+
+    # Si no tiene dept válido: no enseñes nada
+    return "__NONE__"
+
+
+@bp.app_context_processor
+def inject_notifications_badge():
+    """
+    Inyecta notifications_unread_count en TODOS los templates.
+    Unread = status NO cerrado (no done/dismissed) y read_at IS NULL.
+    """
+    if not current_user.is_authenticated:
+        return dict(notifications_unread_count=0)
+
+    db = SessionLocal()
+    try:
+        scope = _notif_scope_for_user()
+        if scope == "__NONE__":
+            return dict(notifications_unread_count=0)
+
+        q = db.query(func.count(models.Notification.id)).filter(
+            models.Notification.active.is_(True),
+            models.Notification.read_at.is_(None),
+            models.Notification.status.notin_(["done", "dismissed"]),
+        )
+
+        if scope is not None:
+            q = q.filter(models.Notification.department_target == scope)
+
+        count = q.scalar() or 0
+        return dict(notifications_unread_count=count)
+    finally:
+        db.close()
 
 def _alerts_scope_for_user():
     dept = (getattr(current_user, "department", "") or "").strip()
@@ -278,5 +326,33 @@ def alerts_index():
             alerts_summary=alerts_summary,
             filter_my=my,
         )
+    finally:
+        db.close()
+
+@bp.app_context_processor
+def inject_notifications_summary():
+    db = SessionLocal()
+    try:
+        if not current_user.is_authenticated:
+            return dict(notifications_summary={"unread": 0})
+
+        role = (getattr(current_user, "role", "") or "").strip().lower()
+        dept = (getattr(current_user, "department", "") or "").strip()
+
+        q = (
+            db.query(models.Notification.id)
+              .filter(models.Notification.active.is_(True))
+              .filter(models.Notification.read_at.is_(None))
+              .filter(models.Notification.status == "open")
+        )
+
+        # admin ve todo, el resto solo su dept
+        if "admin" not in role:
+            if not dept:
+                return dict(notifications_summary={"unread": 0})
+            q = q.filter(models.Notification.department_target == dept)
+
+        unread = q.count()
+        return dict(notifications_summary={"unread": unread})
     finally:
         db.close()

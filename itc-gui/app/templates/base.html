@@ -127,15 +127,32 @@
               <span class="label">Alerts</span>
             </a>
           </li>
-          <!--Assets-->
-          {% set role = (current_user.role or '') %}
+          <!-- Assets -->
+          {% set role = (current_user.role or '')|lower %}
           {% if 'admin' in role or 'supervisor' in role %}
             <li class="nav-item">
               <a href="{{ url_for('asset_types.index') }}"
-                class="nav-link d-flex align-items-center gap-2"
-                title="Asset types">
+                 class="nav-link d-flex align-items-center gap-2 {{ 'active' if (request.endpoint and request.endpoint.startswith('asset_types.')) else '' }}"
+                 title="Asset types">
                 <span class="icon" aria-hidden="true">🧩</span>
                 <span class="label">Asset types</span>
+              </a>
+            </li>
+
+            <!-- Notifications (solo admin/supervisor) -->
+            <li class="nav-item">
+              <a href="{{ url_for('notifications.index') }}"
+                 class="nav-link d-flex align-items-center gap-2 position-relative {{ 'active' if (request.endpoint and request.endpoint.startswith('notifications.')) else '' }}"
+                 title="Notifications">
+                <span class="icon" aria-hidden="true">🔔</span>
+                <span class="label">Notifications</span>
+
+                {% if notifications_unread_count is defined and notifications_unread_count|int > 0 %}
+                  <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                    {{ '99+' if notifications_unread_count|int > 99 else notifications_unread_count }}
+                    <span class="visually-hidden">unread notifications</span>
+                  </span>
+                {% endif %}
               </a>
             </li>
           {% endif %}
