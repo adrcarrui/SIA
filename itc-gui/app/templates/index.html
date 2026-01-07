@@ -139,7 +139,7 @@
 </div>
 
 {# Alerts resumen #}
-<div class="col-8">
+<div class="col-8 mb-3">
   <div class="accordion" id="alertsAccordion">
     <div class="accordion-item">
 
@@ -200,9 +200,75 @@
       </div>
 
     </div>
+    
   </div>
+  
 </div>
+
+{# ITC pickup (TCO only) #}
+{% set actor_dept = (current_user.department or '')|trim %}
+{% if actor_dept == 'TCO' %}
+  <div class="col-8 mb-3">
+    <div class="accordion" id="pickupAccordion">
+      <div class="accordion-item">
+
+        <h2 class="accordion-header d-flex align-items-center" id="pickupHeading">
+          <button
+            class="accordion-button flex-grow-1 bg-alerts"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#pickupCollapse"
+            aria-expanded="true"
+            aria-controls="pickupCollapse"
+          >
+            <span class="fw-semibold">ITC pickup</span>
+            <span class="ms-auto badge rounded-pill text-bg-primary">
+              TCO
+            </span>
+          </button>
+        </h2>
+
+        <div
+          id="pickupCollapse"
+          class="accordion-collapse collapse show"
+          aria-labelledby="pickupHeading"
+          data-bs-parent="#pickupAccordion"
+        >
+          <div class="accordion-body">
+
+            <form method="post" action="{{ url_for('courses.notify_itc_pickup') }}">
+              <label class="form-label mb-1">
+                Note <span class="text-muted">(optional)</span>
+              </label>
+
+              <input
+                type="text"
+                class="form-control form-control-sm"
+                name="pickup_note"
+                placeholder="e.g: Equipment ready for pickup at reception."
+              >
+
+              <div class="d-grid mt-3">
+                <button class="btn btn-sm btn-primary" type="submit">
+                  Notify ITC: pickup needed
+                </button>
+              </div>
+            </form>
+
+            <div class="form-text mt-2">
+              Sends a global notification to ITC support.
+            </div>
+
+          </div>
         </div>
+
+      </div>
+    </div>
+  </div>
+{% endif %}
+        </div>
+
+        
 
       </div> {# /row g-0 #}
     </div> {# /col-lg-4 #}

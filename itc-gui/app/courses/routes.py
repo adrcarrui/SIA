@@ -1233,3 +1233,87 @@ def export_courses():
         return _export_courses_excel(courses)
     else:
         return Response("Unsupported format", status=400)
+
+@bp.route("/notify-itc-pickup", methods=["POST"])
+@login_required
+def notify_itc_pickup():
+    db = SessionLocal()
+    try:
+        role = (getattr(current_user, "role", "") or "").strip().lower()
+        dept = (getattr(current_user, "department", "") or "").strip()
+
+        # Solo TCO o admin
+        if ("admin" not in role) and (dept.upper() != "TCO"):
+            abort(403)
+
+        note = (request.form.get("pickup_note") or "").strip()
+
+        who = f"{getattr(current_user, 'name', '')} {getattr(current_user, 'surname', '')}".strip() or "Unknown user"
+        now = datetime.now(timezone.utc)
+
+        title = "Pickup needed (ITC)"
+        message = (
+            f"TCO requests ITC pickup.\n"
+            f"Requested by: {who} (TCO)\n"
+            f"When: {now.isoformat()}\n"
+        )
+        if note:
+            message += f"\nNote:\n{note}"
+
+        # Buscar notificación global abierta existente
+        existing = (
+            db.query(models.Notification)
+              .filter(
+                  models.Notification.active.is_(True),
+                  models.Notification.department_target == "ITC support",
+                  models.Notification.type == "pickup_needed",
+                  models.Notification.status.notin_(["done", "dismissed"]),
+              )
+              .order_by(models.Notification.id.desc())
+              .first()
+        )
+
+        if existing:
+            # Actualiza y “reanuda”
+            existing.title = title
+            existing.message = message
+            existing.severity = "notice"
+            existing.status = "open"
+            existing.updated_at = now
+            existing.read_at = None  # para que vuelva a contar como unread (si usas unread_count)
+        else:
+            n = models.Notification(
+                created_by_user_id=getattr(current_user, "id", None),
+                department_target="ITC support",
+                type="pickup_needed",
+                severity="notice",
+                status="open",
+                title=title,
+                message=message,
+                course_id=None,  # ✅ global
+                created_at=now,
+                updated_at=now,
+                active=True,
+            )
+            db.add(n)
+
+        db.flush()
+
+        log_movement(
+            db,
+            user_id=getattr(current_user, "id", None),
+            entity_type="notification",
+            entity_id=getattr(existing, "id", None),
+            action="pickup_notify",
+            before_data=None,
+            after_data={"note": note},
+            description="TCO notified ITC about pickup needed",
+            success=True,
+            user_agent=request.user_agent.string,
+        )
+
+        db.commit()
+        flash("ITC notified for pickup.", "success")
+        return redirect(url_for("main.index"))
+    finally:
+        db.close()
