@@ -45,7 +45,14 @@
          class="btn btn-sm btn-primary">
         Associate
       </a>
-
+      {% set actor_role = (current_user.role or '')|lower %}
+      {% set actor_dept = (current_user.department or '')|trim %}
+      {% if actor_role == 'admin' or actor_dept == 'ITC Support' %}
+        <a class="btn btn-sm btn-primary"
+          href="{{ url_for('courses.assign_pcs', course_id=course.id) }}">
+          Assign PCs
+        </a>
+      {% endif %}
       <a href="{{ url_for('assignments.bulk_returns')}}"
          class="btn btn-sm btn-warning">
         Return

@@ -16,7 +16,7 @@ from flask import (
     Response,
 )
 from flask_login import login_required, current_user
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, aliased
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timezone
@@ -1315,5 +1315,343 @@ def notify_itc_pickup():
         db.commit()
         flash("ITC notified for pickup.", "success")
         return redirect(url_for("main.index"))
+    finally:
+        db.close()
+
+def _is_itc_or_admin():
+    role = (getattr(current_user, "role", "") or "").strip().lower()
+    dept = (getattr(current_user, "department", "") or "").strip()
+    return ("admin" in role) or (dept.lower() == "itc support")
+
+
+@bp.route("/<int:course_id>/assign-pcs", methods=["GET", "POST"])
+@login_required
+def assign_pcs(course_id):
+    if not _is_itc_or_admin():
+        abort(403)
+
+    db = SessionLocal()
+    try:
+        c = db.query(models.Course).get(course_id)
+        if not c:
+            flash("Course not found.", "danger")
+            return redirect(url_for("courses.index"))
+
+        if request.method == "POST":
+            device_ids = request.form.getlist("device_ids[]")
+            device_ids = [int(x) for x in device_ids if (x or "").isdigit()]
+
+            if not device_ids:
+                flash("Select at least one PC.", "warning")
+                return redirect(url_for("courses.assign_pcs", course_id=course_id))
+
+            now = datetime.now(timezone.utc)
+
+            # Solo asignamos devices available
+            devices = (
+                db.query(models.Device)
+                .filter(
+                    models.Device.id.in_(device_ids),
+                    #models.Device.active.is_(True),
+                    models.Device.status == "available",
+                )
+                .all()
+            )
+
+            if not devices:
+                flash("No available PCs found in selection.", "danger")
+                return redirect(url_for("courses.assign_pcs", course_id=course_id))
+
+            for d in devices:
+                # evitar duplicados (si ya tiene assignment activo)
+                existing = (
+                    db.query(models.Assignment.id)
+                    .filter(
+                        models.Assignment.device_id == d.id,
+                        models.Assignment.status.in_(["active", "overdue_1", "overdue_2"]),
+                    )
+                    .first()
+                )
+                if existing:
+                    continue
+
+                db.add(models.Assignment(
+                    device_id=d.id,
+                    course_id=c.id,
+                    status="active",
+                    assigned_at=now,
+                    created_at=now,
+                    updated_at=now,
+                    created_by=getattr(current_user, "id", None),
+                ))
+
+                d.status = "assigned"
+                d.updated_at = now
+
+            db.flush()
+
+            log_movement(
+                db,
+                user_id=getattr(current_user, "id", None),
+                entity_type="course",
+                entity_id=c.id,
+                action="assign_pcs",
+                before_data=None,
+                after_data={"device_ids": [d.id for d in devices]},
+                description=f"Assigned PCs to course '{c.course or c.name}'",
+                success=True,
+                user_agent=request.user_agent.string,
+            )
+
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                flash("Could not assign PCs. Check constraints.", "danger")
+                return redirect(url_for("courses.assign_pcs", course_id=course_id))
+
+            flash("PC(s) assigned.", "success")
+            return redirect(url_for("courses.detail", course_id=c.id))
+
+        return render_template(
+            "courses/assign_pcs.html",
+            page_title="Assign PCs",
+            course=c,
+        )
+
+    finally:
+        db.close()
+
+@bp.route("/api/pc-by-barcode", methods=["POST"])
+@login_required
+def api_pc_by_barcode():
+    if not _is_itc_or_admin():
+        return jsonify({"success": False, "error": "Forbidden"}), 403
+
+    data = request.get_json(silent=True) or {}
+    barcode = (data.get("barcode") or "").strip()
+
+    print("\n=== api_pc_by_barcode DEBUG ===")
+    print("payload:", data)
+    print("barcode:", repr(barcode))
+
+    if not barcode:
+        print("ERROR: Missing barcode in payload")
+        return jsonify({"success": False, "error": "Missing barcode"}), 400
+
+    db = SessionLocal()
+    try:
+        # 1) Comprobar device raw (SIN FILTROS de COMPUTER)
+        raw = (
+            db.query(models.Device)
+            .options(joinedload(models.Device.asset_type).joinedload(models.AssetType.parent))
+            .filter(models.Device.barcode == barcode)
+            .first()
+        )
+
+        if not raw:
+            print("RAW: No device found for barcode at all")
+        else:
+            print("RAW: device found")
+            print("  raw.id:", raw.id)
+            print("  raw.name:", raw.name)
+            print("  raw.uid:", raw.uid)
+            print("  raw.barcode:", raw.barcode)
+            print("  raw.active:", getattr(raw, "active", None))
+            print("  raw.asset_type_id:", getattr(raw, "asset_type_id", None))
+            print("  raw.status:", getattr(raw, "status", None))
+
+            if raw.asset_type:
+                print("  asset_type.id:", raw.asset_type.id)
+                print("  asset_type.code:", raw.asset_type.code)
+                print("  asset_type.name:", raw.asset_type.name)
+                print("  asset_type.active:", getattr(raw.asset_type, "active", None))
+                if raw.asset_type.parent:
+                    print("  parent.id:", raw.asset_type.parent.id)
+                    print("  parent.code:", raw.asset_type.parent.code)
+                    print("  parent.name:", raw.asset_type.parent.name)
+                    print("  parent.active:", getattr(raw.asset_type.parent, "active", None))
+                else:
+                    print("  parent: None")
+            else:
+                print("  asset_type: None (asset_type_id might be NULL or FK mismatch)")
+
+        # 2) Query final: COMPUTER root o hijo de COMPUTER (robusto)
+        Parent = aliased(models.AssetType)
+
+        d = (
+            db.query(models.Device)
+            .join(models.AssetType, models.Device.asset_type_id == models.AssetType.id)
+            .outerjoin(Parent, models.AssetType.parent_id == Parent.id)
+            .options(joinedload(models.Device.asset_type).joinedload(models.AssetType.parent))
+            .filter(
+                models.Device.barcode == barcode,
+                models.AssetType.active.is_(True),
+                or_(
+                    models.AssetType.code == "COMPUTER",
+                    Parent.code == "COMPUTER",
+                ),
+            )
+            .first()
+        )
+
+        if not d:
+            print("FINAL: Not found with COMPUTER filters.")
+            # check: device exists and active?
+            active_only = (
+                db.query(models.Device.id, models.Device.asset_type_id)
+                .filter(models.Device.barcode == barcode)
+                .first()
+            )
+            print("CHECK device by barcode (id, active, asset_type_id):", active_only)
+
+            # check: asset type active?
+            if raw and raw.asset_type:
+                at_row = (
+                    db.query(models.AssetType.id, models.AssetType.code, models.AssetType.active, models.AssetType.parent_id)
+                    .filter(models.AssetType.id == raw.asset_type.id)
+                    .first()
+                )
+                print("CHECK asset_type row:", at_row)
+
+            return jsonify({
+                "success": False,
+                "reason": "not_found",
+                "error": "PC not found for this barcode (see server logs DEBUG)."
+            }), 404
+
+        print("FINAL: Found device under COMPUTER filters.")
+        print("  d.id:", d.id, "d.uid:", d.uid, "d.barcode:", d.barcode)
+
+        # 3) Assignment activo más reciente
+        a = (
+            db.query(models.Assignment)
+            .options(joinedload(models.Assignment.course))
+            .filter(
+                models.Assignment.device_id == d.id,
+                models.Assignment.status.in_(["active", "overdue_1", "overdue_2"]),
+            )
+            .order_by(models.Assignment.assigned_at.desc())
+            .first()
+        )
+
+        assigned_course = None
+        if a and a.course:
+            assigned_course = {
+                "id": a.course.id,
+                "label": (a.course.course or a.course.name or f"Course #{a.course.id}"),
+            }
+
+        return jsonify({
+            "success": True,
+            "device": {
+                "id": d.id,
+                "name": d.name,
+                "barcode": d.barcode,
+                "uid": d.uid,
+                "status": d.status,
+                "asset_type_code": d.asset_type.code if d.asset_type else None,
+                "asset_parent_code": d.asset_type.parent.code if d.asset_type and d.asset_type.parent else None,
+            },
+            "assigned_course": assigned_course,
+        })
+    finally:
+        db.close()
+
+@bp.route("/pcs/return", methods=["GET", "POST"])
+@login_required
+def return_pcs():
+    if not _is_itc_or_admin():
+        flash("Forbidden", "danger")
+        return redirect(url_for("main.index"))
+
+    db = SessionLocal()
+    try:
+        if request.method == "POST":
+            device_ids = request.form.getlist("device_ids[]")
+            # También aceptamos barcodes[] por si quieres auditar (opcional)
+            barcodes = request.form.getlist("barcodes[]")
+
+            if not device_ids:
+                flash("No PCs selected.", "warning")
+                return redirect(url_for("courses.return_pcs"))
+
+            now = datetime.now(timezone.utc)
+
+            returned = 0
+            skipped = 0
+
+            for raw_id in device_ids:
+                try:
+                    did = int(raw_id)
+                except ValueError:
+                    skipped += 1
+                    continue
+
+                d = (
+                    db.query(models.Device)
+                    .options(joinedload(models.Device.asset_type).joinedload(models.AssetType.parent))
+                    .filter(models.Device.id == did)
+                    .first()
+                )
+                if not d:
+                    skipped += 1
+                    continue
+
+                # Siempre dejamos el PC como available (esté o no asignado)
+                d.status = "available"
+                d.updated_at = now
+
+                # Encontrar assignment "vivo" para ese device
+                # (tu tabla assignments = estado actual)
+                a = (
+                    db.query(models.Assignment)
+                    .filter(
+                        models.Assignment.device_id == d.id,
+                        models.Assignment.status.in_(["active", "overdue_1", "overdue_2"]),
+                    )
+                    .order_by(models.Assignment.assigned_at.desc())
+                    .first()
+                )
+
+                if not a:
+                    skipped += 1
+                    continue
+
+                # BORRAR la asignación (tabla viva)
+                db.delete(a)
+                returned += 1
+
+            db.flush()
+
+            # Log (si lo usas)
+            log_movement(
+                db,
+                user_id=getattr(current_user, "id", None),
+                entity_type="pc_return",
+                entity_id=None,
+                action="bulk_return",
+                before_data=None,
+                after_data={
+                    "returned_count": returned,
+                    "skipped_count": skipped,
+                    "device_ids": device_ids,
+                    "barcodes": barcodes,
+                },
+                description=f"ITC returned PCs (returned={returned}, skipped={skipped})",
+                success=True,
+                user_agent=request.user_agent.string,
+            )
+
+            db.commit()
+            flash(f"Returned PCs: {returned}. Skipped: {skipped}.", "success")
+            return redirect(url_for("main.index"))
+
+        # GET
+        return render_template("courses/return_pcs.html", page_title="Return PCs")
+
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()

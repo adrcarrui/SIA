@@ -297,7 +297,7 @@ class AssetType(db.Model):
     # Jerarquía
     parent = relationship("AssetType", remote_side=[id], backref="children")
     devices = relationship("Device", back_populates="asset_type")
-    course_requirements = relationship("CourseAssetRequirement", backref="asset_type_ref")
+    course_requirements = relationship("CourseAssetRequirement",back_populates="asset_type",cascade="all, delete-orphan",)
 
     def __repr__(self):
         return f"<AssetType code={self.code} name={self.name} parent_id={self.parent_id}>"  
@@ -363,7 +363,7 @@ class CourseAssetRequirement(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     course = db.relationship("Course", back_populates="asset_requirements")
-    asset_type = db.relationship("AssetType", lazy="joined")
+    asset_type = db.relationship("AssetType", back_populates="course_requirements", lazy="joined",)
 
     def __repr__(self):
         return f"<CourseAssetRequirement course_id={self.course_id} asset_type_id={self.asset_type_id} qty={self.quantity}>"
