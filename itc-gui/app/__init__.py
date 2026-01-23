@@ -14,11 +14,20 @@ def create_app():
         print(f"[WARN] Could not init NFC buzzer off: {e}")
     @app.context_processor
     def inject_overdue_counter():
+        role = (getattr(current_user, "role", "") or "").strip().lower()
+        dept = (getattr(current_user, "department", "") or "").strip().lower()
+        is_admin = (role == "admin")
+        is_tco = (dept == "tco")
+
+        if not (is_admin or is_tco):
+            return {"overdue_total": 0, "overdue_1_count": 0, "overdue_2_count": 0}
+
         db = SessionLocal()
         try:
             overdue = get_overdue_course_alerts(db)
-            total_overdue_1 = sum(1 for o in overdue if o["overdue_level"] == "overdue_1")
-            total_overdue_2 = sum(1 for o in overdue if o["overdue_level"] == "overdue_2")
+            total_overdue_1 = sum(1 for o in overdue if o.get("type") == "overdue_1")
+            total_overdue_2 = sum(1 for o in overdue if o.get("type") == "overdue_2")
+
             return {
                 "overdue_total": len(overdue),
                 "overdue_1_count": total_overdue_1,

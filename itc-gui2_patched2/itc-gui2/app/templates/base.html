@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="es" data-bs-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ "TAMS" }}</title>
+
+  <!-- CSS Bootstrap -->
+  <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
+
+  <!-- CSS app -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fullcalendar/main.min.css') }}">
+
+    <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet">
+
+  <style>
+    .bg-content {
+      background-color: #ffffff;
+      min-height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('itcSidebarCollapsed') === "1") {
+          document.body.classList.add('sidebar-collapsed');
+        }
+      } catch (e) {}
+    })();
+  </script>
+
+<div class="d-flex"><!-- contenedor principal: sidebar + contenido -->
+
+  {# Normalizamos role y department para usarlos en el menú #}
+  {% if current_user.is_authenticated %}
+    {% set role = (current_user.role or 'user')|lower %}
+    {% set department = current_user.department or '' %}
+  {% else %}
+    {% set role = 'user' %}
+    {% set department = '' %}
+  {% endif %}
+
+  {% if not hide_sidebar %}
+  <!-- Sidebar (menú) -->
+  <nav id="sidebar" class="sidebar bg-body-tertiary border-end">
+    <div class="p-3">
+      <ul class="nav nav-pills flex-column mb-2">
+        <!-- Botón para plegar/desplegar -->
+        <li class="nav-item mb-2">
+          <button id="btn-toggle-sidebar"
+                  type="button"
+                  class="nav-link d-flex align-items-center gap-2"
+                  aria-controls="sidebar"
+                  aria-expanded="true"
+                  aria-label="Mostrar/ocultar menú">
+            <span class="icon" aria-hidden="true">☰</span>
+          </button>
+        </li>
+
+        <!-- Dashboard: SIEMPRE visible -->
+        <li class="nav-item">
+          <a href="{{ url_for('main.index') }}"
+             class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint == 'main.index' else '' }}"
+             title="Dashboard">
+            <span class="icon" aria-hidden="true">🧭</span>
+            <span class="label">Dashboard</span>
+          </a>
+        </li>
+
+        {# Resto de opciones solo si el rol NO es 'user' #}
+        {% if role != 'user' %}
+          <!-- Users -->
+          <li class="nav-item">
+            <a href="{{ url_for('users.index') }}"
+               class="nav-link d-flex align-items-center gap-2 {{ 'active' if (request.endpoint and request.endpoint.startswith('users.')) else '' }}"
+               title="Users">
+              <span class="icon" aria-hidden="true">👥</span>
+              <span class="label">Users</span>
+            </a>
+          </li>
+
+          <!-- Devices -->
+          <li class="nav-item">
+            <a href="{{ url_for('devices.index') }}"
+               class="nav-link d-flex align-items-center gap-2 {{ 'active' if (request.endpoint and request.endpoint.startswith('devices.')) else '' }}"
+               title="Devices">
+              <span class="icon" aria-hidden="true">🖥️</span>
+              <span class="label">Devices</span>
+            </a>
+          </li>
+
+          <!-- Courses -->
+          <li class="nav-item">
+            <a href="{{ url_for('courses.index') }}"
+               class="nav-link d-flex align-items-center gap-2 {{ 'active' if (request.endpoint and request.endpoint.startswith('courses.')) else '' }}"
+               title="Courses">
+              <span class="icon" aria-hidden="true">🎓</span>
+              <span class="label">Courses</span>
+            </a>
+          </li>
+
+          <!-- Alerts -->
+          <li class="nav-item">
+            <a href="{{ url_for('alerts.alerts_index') }}"
+                 class="nav-link d-flex align-items-center gap-2 {{ 'active' if (request.endpoint and request.endpoint.startswith('alerts.')) else '' }}"
+               title="Alerts">
+
+              <span class="position-relative d-inline-flex">
+                <span class="icon" aria-hidden="true">🚨</span>
+
+                {% if alerts_summary is defined %}
+                  {% set total_alerts = (alerts_summary.notice or 0)
+                                        + (alerts_summary.warning or 0)
+                                        + (alerts_summary.critical or 0) %}
+                  {% if total_alerts > 0 %}
+                    <span
+                      class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger alerts-sidebar-badge">
+                      {{ '99+' if total_alerts > 99 else total_alerts }}
+                      <span class="visually-hidden">active alerts</span>
+                    </span>
+                  {% endif %}
+                {% endif %}
+              </span>
+
+              <span class="label">Alerts</span>
+            </a>
+          </li>
+          <!-- Assets -->
+          {% set role = (current_user.role or '')|lower %}
+          {% if 'admin' in role or 'supervisor' in role %}
+            <li class="nav-item">
+              <a href="{{ url_for('asset_types.index') }}"
+                 class="nav-link d-flex align-items-center gap-2 {{ 'active' if (request.endpoint and request.endpoint.startswith('asset_types.')) else '' }}"
+                 title="Asset types">
+                <span class="icon" aria-hidden="true">🧩</span>
+                <span class="label">Asset types</span>
+              </a>
+            </li>
+
+            <!-- Notifications (solo admin/supervisor) -->
+            <li class="nav-item">
+              <a href="{{ url_for('notifications.index') }}"
+                 class="nav-link d-flex align-items-center gap-2 position-relative {{ 'active' if (request.endpoint and request.endpoint.startswith('notifications.')) else '' }}"
+                 title="Notifications">
+                <span class="icon" aria-hidden="true">🔔</span>
+                <span class="label">Notifications</span>
+
+                {% if notifications_unread_count is defined and notifications_unread_count|int > 0 %}
+                  <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                    {{ '99+' if notifications_unread_count|int > 99 else notifications_unread_count }}
+                    <span class="visually-hidden">unread notifications</span>
+                  </span>
+                {% endif %}
+              </a>
+            </li>
+          {% endif %}
+          <!-- Movements -->
+          <li class="nav-item">
+            <a href="{{ url_for('movements.index') }}"
+               class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint and request.endpoint.startswith('movements.') else '' }}"
+               title="Movements">
+              <span class="icon" aria-hidden="true">📈</span>
+              <span class="label">Movements</span>
+            </a>
+          </li>
+
+          {# Assignments solo si el departamento NO es TCO #}
+          {% if department != 'TCO' %}
+          <li class="nav-item">
+            <a href="{{ url_for('assignments.index') }}"
+               class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint and request.endpoint.startswith('assignments.') else '' }}"
+               title="Assignments">
+              <span class="icon" aria-hidden="true">🔗</span>
+              <span class="label">Assignments</span>
+            </a>
+          </li>
+          {% endif %}
+        {% endif %}
+
+      </ul>
+    </div>
+  </nav>
+  {% endif %}
+
+    <!-- Contenido principal -->
+    <main class="flex-grow-1 bg-content">
+      {% if not hide_topbar %}
+      <header id="topbar" class="navbar navbar-expand bg-body border-bottom sticky-top">
+        <div class="container-fluid">
+          <!-- Izquierda: título --><img src="{{ url_for('static', filename='img/tams-logo-wordmark.png') }}"
+       alt="TAMS - Training Assets Management System"
+       class="d-inline-block align-text-top"
+       style="max-height: 40px;">
+          <h1 class="navbar-brand fs-6 mb-0">Training Assets Management System</h1>
+
+          <!-- Derecha: reloj + usuario + logout -->
+          <div class="d-flex align-items-center gap-3 ms-auto">
+            <span id="clock" class="text-secondary small" aria-label="Hora actual"></span>
+
+            <div class="d-flex align-items-center text-truncate">
+              <span class="me-2" aria-hidden="true">👤</span>
+              <span class="fw-medium text-truncate" style="max-width:14rem;">
+                {{ (current_user.name or current_user.username or current_user.email) if current_user.is_authenticated else 'Invitado' }}
+              </span>
+            </div>
+
+            <!-- Logout -->
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-light" title="Logout">➡️</a>
+          </div>
+        </div>
+      </header>
+      {% endif %}
+
+      <section class="p-4">
+        {% block content %}
+        {% endblock %}
+      </section>
+    </main>
+  </div><!-- /d-flex -->
+
+  {% if reset_sidebar %}
+  <script>
+    try { localStorage.setItem('itcSidebarCollapsed','0'); } catch(e){}
+  </script>
+  {% endif %}
+
+  <!-- Modal detalle de curso (solo una vez) -->
+  <div class="modal fade" id="courseDetailModal" tabindex="-1" aria-labelledby="courseDetailLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="courseDetailLabel">Course detail</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body" id="courseDetailBody">
+          <div class="text-center text-muted py-3">
+            Loading...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ============================
+     MODAL CONFIRMACIÓN BORRADO
+     ============================ #}
+  <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title">Confirm user deletion</h5>
+          <button type="button"
+                  class="btn-close btn-close-white"
+                  data-bs-dismiss="modal"
+                  aria-label="Close"></button>
+        </div>
+        <form id="confirm-delete-form" method="post">
+          <div class="modal-body">
+            {# El CSRF se clonará desde el formulario original vía JS si existe #}
+            <p class="mb-2">
+              Are you sure you want to delete user
+              <strong id="confirm-delete-username"></strong>?
+            </p>
+            <p class="small text-muted mb-0">
+              This action cannot be undone.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button"
+                    class="btn btn-secondary btn-sm"
+                    data-bs-dismiss="modal">
+              Cancel
+            </button>
+            <button type="submit"
+                    class="btn btn-danger btn-sm">
+              Yes, delete
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {# =========================================
+     MODAL GLOBAL PARA MENSAJES FLASH
+     ========================================= #}
+  {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+      <div class="modal fade" id="flashModal" tabindex="-1" aria-hidden="true" data-has-messages="1">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header
+                        {% if 'success' in messages|map(attribute=0)|list %}
+                          bg-success text-white
+                        {% elif 'danger' in messages|map(attribute=0)|list %}
+                          bg-danger text-white
+                        {% else %}
+                          bg-primary text-white
+                        {% endif %}">
+              <h5 class="modal-title">
+                {% if 'success' in messages|map(attribute=0)|list %}
+                  Operation completed
+                {% elif 'danger' in messages|map(attribute=0)|list %}
+                  Something went wrong
+                {% else %}
+                  Information
+                {% endif %}
+              </h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <ul class="mb-0">
+                {% for category, msg in messages %}
+                  <li class="small">
+                    {{ msg }}
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div id="flashModal" data-has-messages="0" hidden></div>
+    {% endif %}
+  {% endwith %}
+
+{% block scripts %}
+  <!-- JS Bootstrap -->
+  <script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
+
+  <!-- JS FullCalendar -->
+  <script src="{{ url_for('static', filename='vendor/fullcalendar/index.global.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='vendor/fullcalendar/locales-all.global.min.js') }}"></script>
+
+  <!-- Script: reloj -->
+  <script>
+    (function(){
+      const el = document.getElementById('clock');
+      if (!el) return;
+      function tick(){
+        try {
+          const now = new Date();
+          el.textContent = now.toLocaleString('es-ES', {
+            hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+          });
+        } catch(e){}
+      }
+      tick();
+      setInterval(tick, 1000);
+    })();
+  </script>
+
+  <!-- Script: sidebar -->
+  <script>
+    (function () {
+      const BODY = document.body;
+      const SIDEBAR = document.getElementById('sidebar');
+      const KEY  = "itcSidebarCollapsed";
+      const btn  = document.getElementById('btn-toggle-sidebar');
+
+      const collapsed = localStorage.getItem(KEY) === "1";
+      if (collapsed) BODY.classList.add('sidebar-collapsed');
+      if (SIDEBAR) SIDEBAR.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
+      if (btn) btn.setAttribute('aria-expanded', (!collapsed).toString());
+
+      function toggleSidebar() {
+        BODY.classList.toggle('sidebar-collapsed');
+        const isCollapsed = BODY.classList.contains('sidebar-collapsed');
+        localStorage.setItem(KEY, isCollapsed ? "1" : "0");
+        if (SIDEBAR) SIDEBAR.setAttribute('aria-hidden', isCollapsed ? 'true' : 'false');
+        if (btn) btn.setAttribute('aria-expanded', (!isCollapsed).toString());
+      }
+      if (btn) btn.addEventListener('click', toggleSidebar);
+    })();
+  </script>
+
+  <!-- Script: confirmación de borrado de usuario -->
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const deleteButtons = document.querySelectorAll(".btn-user-delete");
+      if (!deleteButtons.length) {
+        return;
+      }
+
+      const modalEl = document.getElementById("confirmDeleteModal");
+      const nameEl  = document.getElementById("confirm-delete-username");
+      const formEl  = document.getElementById("confirm-delete-form");
+
+      if (!modalEl || !nameEl || !formEl) {
+        console.warn("Confirm delete modal elements not found.");
+        return;
+      }
+
+      deleteButtons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          const username = this.dataset.username || "this user";
+          const url      = this.dataset.url;
+
+          // Texto del usuario en el modal
+          nameEl.textContent = username;
+
+          // Action del formulario del modal
+          formEl.action = url;
+
+          // Copiar CSRF desde el form original si existe
+          const srcForm = this.closest("form");
+          if (srcForm) {
+            const srcCsrf = srcForm.querySelector("input[name='csrf_token']");
+            if (srcCsrf) {
+              let dstCsrf = formEl.querySelector("input[name='csrf_token']");
+              if (!dstCsrf) {
+                dstCsrf = srcCsrf.cloneNode();
+                formEl.appendChild(dstCsrf);
+              }
+              dstCsrf.value = srcCsrf.value;
+            }
+          }
+
+          if (typeof bootstrap !== "undefined" && bootstrap.Modal) {
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+          } else {
+            console.warn("Bootstrap Modal not available.");
+          }
+        });
+      });
+    });
+  </script>
+
+  <!-- Script: mostrar modal de flashes -->
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const modalEl = document.getElementById("flashModal");
+      if (!modalEl) return;
+
+      const hasMessages = modalEl.getAttribute("data-has-messages") === "1";
+      if (!hasMessages) return;
+
+      if (typeof bootstrap === "undefined" || !bootstrap.Modal) {
+        console.warn("Bootstrap Modal not available, cannot show flash modal.");
+        return;
+      }
+
+      const modal = new bootstrap.Modal(modalEl);
+      modal.show();
+    });
+  </script>
+{% endblock %}
+
+</body>
+</html>

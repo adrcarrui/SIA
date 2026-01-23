@@ -1,0 +1,79 @@
+{# Reusable pagination block
+   Inputs expected in context:
+   - endpoint: string, e.g. 'alerts.alerts_index'
+   - page: int
+   - total_pages: int
+   - total: int (optional)
+   - per_page: int (optional)
+   - args: dict of query params to preserve (filters etc.)
+#}
+
+{% set p = page|int %}
+{% set tp = total_pages|int %}
+
+{% if tp > 1 %}
+  <div class="d-flex align-items-center justify-content-between mt-3">
+    <div class="small text-muted">
+      {% if total is defined %}
+        Showing page {{ p }} of {{ tp }} · Total: {{ total }}
+      {% else %}
+        Page {{ p }} of {{ tp }}
+      {% endif %}
+    </div>
+
+    <nav aria-label="Pagination">
+      <ul class="pagination pagination-sm mb-0">
+        {# Prev #}
+        <li class="page-item {% if p <= 1 %}disabled{% endif %}">
+          <a class="page-link"
+             href="{{ url_for(endpoint, **args, page=(p-1)) }}"
+             tabindex="-1"
+             aria-disabled="{{ 'true' if p <= 1 else 'false' }}">
+            Prev
+          </a>
+        </li>
+
+        {# Numbered pages (compact with ellipsis) #}
+        {% set window = 2 %}
+        {% set start = (p - window) if (p - window) > 1 else 1 %}
+        {% set end = (p + window) if (p + window) < tp else tp %}
+
+        {# First page + ellipsis if needed #}
+        {% if start > 1 %}
+          <li class="page-item">
+            <a class="page-link" href="{{ url_for(endpoint, **args, page=1) }}">1</a>
+          </li>
+          {% if start > 2 %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% endif %}
+        {% endif %}
+
+        {# Main window #}
+        {% for i in range(start, end + 1) %}
+          <li class="page-item {% if i == p %}active{% endif %}">
+            <a class="page-link" href="{{ url_for(endpoint, **args, page=i) }}">{{ i }}</a>
+          </li>
+        {% endfor %}
+
+        {# Ellipsis + last page if needed #}
+        {% if end < tp %}
+          {% if end < tp - 1 %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% endif %}
+          <li class="page-item">
+            <a class="page-link" href="{{ url_for(endpoint, **args, page=tp) }}">{{ tp }}</a>
+          </li>
+        {% endif %}
+
+        {# Next #}
+        <li class="page-item {% if p >= tp %}disabled{% endif %}">
+          <a class="page-link"
+             href="{{ url_for(endpoint, **args, page=(p+1)) }}"
+             aria-disabled="{{ 'true' if p >= tp else 'false' }}">
+            Next
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </div>
+{% endif %}

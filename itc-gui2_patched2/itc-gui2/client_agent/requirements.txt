@@ -1,0 +1,2 @@
+Flask>=2.3
+pyscard>=2.0

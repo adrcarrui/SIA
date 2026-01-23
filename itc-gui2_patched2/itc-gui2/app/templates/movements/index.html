@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+
+{% block title %}Movements history{% endblock %}
+
+{% block content %}
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h2 class="mb-0">Movements history</h2>
+    <div class="d-flex align-items-center">
+      {# Global search removed on purpose #}
+    </div>
+  </div>
+
+  <p class="text-muted">
+    Total movements: {{ total }}
+  </p>
+
+  <div class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <form method="get" action="{{ url_for('movements.index') }}">
+          {# keep global search & reset page when filtering #}
+          <input type="hidden" name="q" value="{{ q or '' }}">
+          <input type="hidden" name="page" value="1">
+          <input type="hidden" name="per_page" value="{{ per_page }}">
+
+          <table class="table table-sm table-striped align-middle mb-0 text-center">
+            <thead>
+              <tr>
+                <th scope="col">Date</th>
+                <th scope="col">User</th>
+                <th scope="col">Action</th>
+                <th scope="col">Description</th>
+              </tr>
+
+              {# filters row #}
+              <tr>
+                <th>
+                  <div class="d-flex align-items-center justify-content-center gap-1">
+                    <small class="text-muted">From</small>
+                    <input
+                      type="date"
+                      name="date_from"
+                      class="form-control form-control-sm"
+                      style="max-width: 140px;"
+                      value="{{ filter_date_from or '' }}"
+                      aria-label="From date"
+                    >
+                    <span class="small text-muted">→</span>
+                    <small class="text-muted">To</small>
+                    <input
+                      type="date"
+                      name="date_to"
+                      class="form-control form-control-sm"
+                      style="max-width: 140px;"
+                      value="{{ filter_date_to or '' }}"
+                      aria-label="To date"
+                    >
+                  </div>
+                </th>
+
+                <th>
+                  <input
+                    type="text"
+                    name="user"
+                    class="form-control form-control-sm text-center"
+                    placeholder="Username"
+                    value="{{ filter_user or '' }}"
+                  >
+                </th>
+
+                <th>
+                  <select
+                    name="action"
+                    class="form-select form-select-sm text-center"
+                  >
+                    <option value="">All</option>
+                    <option value="create" {% if filter_action == 'create' %}selected{% endif %}>create</option>
+                    <option value="update" {% if filter_action == 'update' %}selected{% endif %}>update</option>
+                    <option value="delete" {% if filter_action == 'delete' %}selected{% endif %}>delete</option>
+                  </select>
+                </th>
+
+                <th class="text-start">
+                  <div class="d-flex gap-1">
+                    <input
+                      type="text"
+                      name="description"
+                      class="form-control form-control-sm"
+                      placeholder="Description"
+                      value="{{ filter_description or '' }}"
+                    >
+                    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+                    <a href="{{ url_for('movements.index') }}" class="btn btn-secondary btn-sm">Clear</a>
+                  </div>
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+            {% if movements %}
+              {% for m in movements %}
+              <tr>
+                <!-- Date / time -->
+                <td>
+                  {% if m.created_at %}
+                    {{ m.created_at.strftime("%Y-%m-%d %H:%M:%S") }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+
+                <!-- User -->
+                <td>
+                  {% if m.user %}
+                    {{ m.user.username or ("User #" ~ m.user_id) }}
+                  {% else %}
+                    User #{{ m.user_username or m.user_id }}
+                  {% endif %}
+                </td>
+
+                <!-- Action -->
+                <td>
+                  {% if m.action == "create" %}
+                    <span class="badge bg-success">create</span>
+                  {% elif m.action == "update" %}
+                    <span class="badge bg-warning text-dark">update</span>
+                  {% elif m.action == "delete" %}
+                    <span class="badge bg-danger">delete</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ m.action }}</span>
+                  {% endif %}
+                </td>
+
+                <!-- Description -->
+                <td>
+                  {% if m.description %}
+                    {{ m.description }}
+                  {% else %}
+                    <span class="text-muted">No description</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="4" class="text-center text-muted">
+                  No movements registered.
+                </td>
+              </tr>
+            {% endif %}
+            </tbody>
+          </table>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pagination -->
+  <nav class="mt-3" aria-label="Audit history pagination">
+    <ul class="pagination">
+      <li class="page-item {% if not has_prev %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('movements.index',
+                            q=q,
+                            page=(page-1 if page > 1 else 1),
+                            per_page=per_page,
+                            user=filter_user,
+                            action=filter_action,
+                            description=filter_description,
+                            date_from=filter_date_from,
+                            date_to=filter_date_to) }}"
+           tabindex="-1">
+          «
+        </a>
+      </li>
+
+      <li class="page-item active">
+        <span class="page-link">
+          {{ page }}
+        </span>
+      </li>
+
+      <li class="page-item {% if not has_next %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('movements.index',
+                            q=q,
+                            page=(page+1 if has_next else page),
+                            per_page=per_page,
+                            user=filter_user,
+                            action=filter_action,
+                            description=filter_description,
+                            date_from=filter_date_from,
+                            date_to=filter_date_to) }}">
+          »
+        </a>
+      </li>
+    </ul>
+  </nav>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0"></h2>
+
+  <div class="d-flex align-items-center gap-2">
+    <span class="small fw-bold me-1">Download as:</span>
+
+
+<div class="btn-group btn-group-sm" role="group">
+  <a
+    class="btn btn-outline-secondary"
+    href="{{ url_for('movements.export_movements',
+                     format='csv',
+                     q=q,
+                     user=filter_user,
+                     action=filter_action,
+                     entity_type=filter_entity_type,
+                     description=filter_description,
+                     success=filter_success,
+                     date_from=filter_date_from,
+                     date_to=filter_date_to,
+                     page=page,
+                     per_page=per_page) }}"
+  >
+    CSV
+  </a>
+
+  <a
+    class="btn btn-outline-secondary"
+    href="{{ url_for('movements.export_movements',
+                     format='xlsx',
+                     q=q,
+                     user=filter_user,
+                     action=filter_action,
+                     entity_type=filter_entity_type,
+                     description=filter_description,
+                     success=filter_success,
+                     date_from=filter_date_from,
+                     date_to=filter_date_to,
+                     page=page,
+                     per_page=per_page) }}"
+  >
+    Excel
+  </a>
+
+  <a
+    class="btn btn-outline-secondary"
+    href="{{ url_for('movements.export_movements',
+                     format='pdf',
+                     q=q,
+                     user=filter_user,
+                     action=filter_action,
+                     entity_type=filter_entity_type,
+                     description=filter_description,
+                     success=filter_success,
+                     date_from=filter_date_from,
+                     date_to=filter_date_to,
+                     page=page,
+                     per_page=per_page) }}"
+  >
+    PDF
+  </a>
+</div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 class="mb-3">{{ page_title or (user and 'Edit user' or 'New user') }}</h2>
+
+<div class="user-form">
+  <form method="post" action="">
+
+    <div class="row g-3">
+
+      {# FILA 1: Name, Surname, Email #}
+      <div class="col-md-4">
+        <label class="form-label">Name</label>
+        <input type="text" name="name" class="form-control"
+               required
+               value="{{ user.name if user else '' }}"
+               oninvalid="this.setCustomValidity('This field is required')"
+               oninput="this.setCustomValidity('')">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Surname</label>
+        <input type="text" name="surname" class="form-control"
+               value="{{ user.surname if user else '' }}"
+               oninvalid="this.setCustomValidity('This field is required')"
+               oninput="this.setCustomValidity('')">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Email</label>
+        <input
+          type="email"
+          name="email"
+          class="form-control"
+          value="{{ user.email or '' }}"
+        >
+      </div>
+
+      {# FILA 2: Username, Password, UID #}
+      <div class="col-md-4">
+        <label class="form-label">Username</label>
+        <input type="text" name="username" class="form-control"
+               required
+               value="{{ user.username if user else '' }}"
+               oninvalid="this.setCustomValidity('This field is required')"
+               oninput="this.setCustomValidity('')">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">
+          Password{% if not user %} *{% endif %}
+        </label>
+        <input type="password" name="password" class="form-control"
+               {% if not user %}required{% endif %}
+               oninvalid="this.setCustomValidity('This field is required')"
+               oninput="this.setCustomValidity('')">
+        {% if user %}
+          <div class="form-text">Leave blank to keep the current password.</div>
+        {% endif %}
+      </div>
+
+      {# UID con lector NFC #}
+      <div class="col-md-4">
+        <label class="form-label">
+          UID <span class="text-danger">*</span>
+        </label>
+        <div class="input-group">
+          <input
+            type="text"
+            id="uid-input"
+            name="uid"
+            class="form-control"
+            maxlength="64"
+            value="{{ user.uid if user and user.uid else '' }}"
+            placeholder="P.ej. 04AABBCCDD"
+            autocomplete="off"
+          >
+          <button class="btn btn-outline-primary" type="button" id="btn-read-uid">
+            <span id="btn-read-icon">📡</span> Read card
+          </button>
+        </div>
+        <div id="uid-status" class="form-text mt-1 text-muted">
+          Bring the device close and press <strong>Read card</strong>.
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <label for="role" class="form-label">Role</label>
+
+        {% set current_role = (user.role if user and user.role else 'employee') %}
+
+        {% if assignable_roles %}
+          <select name="role" id="role" class="form-select" required>
+            {% for r in assignable_roles %}
+              <option value="{{ r }}"
+                      {{ 'selected' if current_role == r else '' }}>
+                {{ r.capitalize() }}
+              </option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <input type="text"
+                 class="form-control"
+                 value="{{ current_role|capitalize }}"
+                 readonly>
+          <input type="hidden" name="role" value="{{ current_role }}">
+        {% endif %}
+      </div>
+
+{# Department: TCO / ITC support / vacío #}
+<div class="col-md-4">
+  <label class="form-label">Department</label>
+
+  {# actor #}
+  {% set actor_role = (current_user.role or 'user') %}
+  {% set actor_dept = (current_user.department or '') %}
+
+  {# department efectivo del usuario editado o, si no hay, del actor #}
+  {% set current_department = (
+        user.department if user and user.department
+        else (actor_dept if actor_dept else '')
+     )
+  %}
+
+  {% set departments_all = ['TCO', 'ITC support', ''] %}
+
+  {# ADMIN: puede elegir cualquier departamento (incluido vacío) #}
+  {% if actor_role|lower == 'admin' %}
+    <select name="department" class="form-select">
+      {% for dep in departments_all %}
+        <option value="{{ dep }}"
+                {{ 'selected' if current_department == dep else '' }}>
+          {{ ' ' if dep == '' else dep }}
+        </option>
+      {% endfor %}
+    </select>
+
+  {# SUPERVISOR / EMPLOYEE CREANDO NUEVO USUARIO:
+     puede elegir su propio dept o vacío #}
+  {% elif not user and ('supervisor' in actor_role|lower or 'employee' in actor_role|lower) %}
+    {% set allowed_deps = [actor_dept, ''] %}
+
+    <select name="department" class="form-select">
+      {% for dep in allowed_deps %}
+        <option value="{{ dep }}"
+                {{ 'selected' if current_department == dep else '' }}>
+          {{ ' ' if dep == '' else dep }}
+        </option>
+      {% endfor %}
+    </select>
+
+  {# Resto de casos: solo ve (y no cambia) el dept actual del usuario #}
+  {% else %}
+    <input type="text"
+           class="form-control"
+           value="{{ current_department or ' ' }}"
+           readonly>
+    <input type="hidden" name="department" value="{{ current_department }}">
+  {% endif %}
+</div>
+
+      <div class="col-md-4 d-flex align-items-center">
+        <div class="form-check mt-4">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            id="active"
+            name="active"
+            value="1"
+            {% if not user or user.active %}checked{% endif %}
+          >
+          <label class="form-check-label" for="active">
+            Active user
+          </label>
+        </div>
+      </div>
+
+    </div> {# /row #}
+
+    <div class="mt-4 d-flex justify-content-end gap-2">
+      <button class="btn btn-primary" type="submit">
+        Save
+      </button>
+      <a href="{{ url_for('users.index') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  console.log("users/form NFC JS cargado");
+
+  const btn    = document.getElementById("btn-read-uid");
+  const status = document.getElementById("uid-status");
+  const input  = document.getElementById("uid-input");
+  const icon   = document.getElementById("btn-read-icon");
+
+  // Local agent endpoint (runs on each client PC)
+  const AGENT_UID_URL = "http://127.0.0.1:8765/uid";
+
+  if (!btn || !status || !input || !icon) {
+    console.warn("Elementos UID NFC (users) no encontrados en el DOM");
+    return;
+  }
+
+  async function readOnce() {
+    btn.disabled = true;
+    icon.textContent = "⌛";
+    status.classList.remove("text-danger", "text-success");
+    status.classList.add("text-muted");
+    status.textContent = "Intentando leer tarjeta…";
+
+    try {
+      // 1) Read UID from local agent
+      const aResp = await fetch(AGENT_UID_URL, { method: "GET", cache: "no-store" });
+      const aData = await aResp.json().catch(() => ({}));
+
+      if (!aData || aData.success !== true || !aData.uid) {
+        status.classList.remove("text-muted", "text-success");
+        status.classList.add("text-danger");
+        if (aData && aData.reason === "no_card") {
+          status.textContent = "No se detectó tarjeta. Acerca la tarjeta e inténtalo de nuevo.";
+        } else {
+          status.textContent = (aData && aData.error) ? aData.error : "NFC agent not running on this PC (localhost:8765).";
+        }
+        return;
+      }
+
+      // 2) Let server normalize/resolve UID (keeps existing backend response shape)
+      const resp = await fetch("{{ url_for('users.read_uid_once') }}", {
+        method: "POST",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ uid: aData.uid })
+      });
+
+      const data = await resp.json().catch(() => ({}));
+      console.log("Respuesta NFC users:", data);
+
+      if (data.success) {
+        input.value = data.uid;
+        status.classList.remove("text-muted", "text-danger");
+        status.classList.add("text-success");
+        status.textContent = "UID leído: " + data.uid + ". Ahora guarda el formulario.";
+      } else {
+        status.classList.remove("text-muted", "text-success");
+        status.classList.add("text-danger");
+
+        status.textContent = data.error || "Could not read the card.";
+      }
+    } catch (e) {
+      console.error("Error fetch NFC (users):", e);
+      status.classList.remove("text-muted", "text-success");
+      status.classList.add("text-danger");
+      status.textContent = "Communication error with the server.";
+    } finally {
+      btn.disabled = false;
+      icon.textContent = "📡";
+    }
+  }
+
+  btn.addEventListener("click", readOnce);
+});
+</script>
+{% endblock %}

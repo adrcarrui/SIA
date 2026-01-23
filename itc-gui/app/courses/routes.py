@@ -14,10 +14,12 @@ from flask import (
     abort,
     send_file,
     Response,
+    url_for,
+    current_app
 )
 from flask_login import login_required, current_user
 from sqlalchemy.orm import joinedload, aliased
-from sqlalchemy import or_
+from sqlalchemy import or_,func
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timezone
 
@@ -25,6 +27,8 @@ from . import bp
 from app.db import SessionLocal
 import app.models as models
 from app.scripts import log_movement
+from app.scripts.itc_rules import get_itc_requirements_by_course
+from app.scripts.alerts_service import get_alerts_for_user
 
 from app.models import (
     Assignment,
@@ -995,35 +999,116 @@ def update_assignment_overdue_status_for_course(db, course):
 def api_calendar_events():
     db = SessionLocal()
     try:
-        cards_alerts = get_cards_vs_trainees_alerts(db)
-        overdue_alerts = get_overdue_course_alerts(db)
+        # FullCalendar manda start/end (ISO con timezone)
+        start_str = request.args.get("start")
+        end_str = request.args.get("end")
+
+        # Parse seguro a Date (solo nos interesa YYYY-MM-DD)
+        start_date = None
+        end_date = None
+        try:
+            if start_str:
+                start_date = start_str[:10]  # "YYYY-MM-DD"
+            if end_str:
+                end_date = end_str[:10]
+        except Exception:
+            start_date = None
+            end_date = None
+
+        role = (getattr(current_user, "role", "") or "").strip().lower()
+        dept = (getattr(current_user, "department", "") or "").strip().lower()
+        current_app.logger.warning(
+        "DEBUG TCO: user=%s role=%r dept=%r is_tco=%s is_itc=%s is_admin=%s",
+        getattr(current_user, "email", None),
+        getattr(current_user, "role", None),
+        getattr(current_user, "department", None),
+        (dept == "tco"),
+        (dept == "itc support"),
+        (role == "admin" or "admin" in role),
+)
+        is_admin = (role == "admin") or ("admin" in role)
+        is_tco = (dept == "tco")
+        is_itc = (dept == "itc support")
+
+        # ------------------------------------------------------
+        # 1) Fuente única de alertas (scoped por usuario)
+        # ------------------------------------------------------
+        alerts = get_alerts_for_user(db, current_user)
+        current_app.logger.warning(
+        "DEBUG ALERTS: user=%s is_tco=%s alerts_count=%s sample=%r",
+        getattr(current_user, "email", None),
+        is_tco,
+        len(alerts) if alerts else 0,
+        alerts[:2] if alerts else None,
+    )
 
         severity_order = {"notice": 1, "warning": 2, "critical": 3}
         severity_by_course = {}
 
-        def bump_severity(course_id, sev):
-            if sev not in severity_order:
+        def bump(course_id, sev):
+            if not course_id or sev not in severity_order:
                 return
-            current = severity_by_course.get(course_id)
-            if current is None or severity_order[sev] > severity_order[current]:
+            cur = severity_by_course.get(course_id)
+            if cur is None or severity_order[sev] > severity_order[cur]:
                 severity_by_course[course_id] = sev
 
-        for a in cards_alerts:
-            c = a["course"]
-            if c and c.id:
-                bump_severity(c.id, "notice")
+        for a in alerts:
+            c = a.get("course")
+            cid = getattr(c, "id", None) if c else None
+            sev = (a.get("severity") or "").strip().lower()
+            if cid and sev:
+                bump(cid, sev)
 
-        for o in overdue_alerts:
-            c = o["course"]
-            if not c or not c.id:
-                continue
-            if o["type"] == "overdue_1":
-                bump_severity(c.id, "warning")
-            elif o["type"] == "overdue_2":
-                bump_severity(c.id, "critical")
+        # ------------------------------------------------------
+        # 2) Cursos (filtrados por rango)
+        # ------------------------------------------------------
+        q = db.query(Course)
 
-        courses = db.query(Course).all()
+        # Si hay rango, traemos cursos que solapen [start,end]
+        if start_date and end_date:
+            # start_date/end_date son strings "YYYY-MM-DD" y Course.start_date es Date
+            # SQLAlchemy compara bien si convertimos a date
+            from datetime import date as _date
+            try:
+                sd = _date.fromisoformat(start_date)
+                ed = _date.fromisoformat(end_date)
+                q = q.filter(
+                    Course.start_date.isnot(None),
+                    Course.start_date <= ed,
+                    func.coalesce(Course.end_date, Course.start_date) >= sd,
+                )
+            except Exception:
+                pass
 
+        courses = q.all()
+        course_ids = [c.id for c in courses]
+
+        # ------------------------------------------------------
+        # 3) itc_total -> itc_skip (solo ITC/admin)
+        # ------------------------------------------------------
+        itc_total_by_course = {}
+        if (is_admin or is_itc) and course_ids:
+            rows = (
+                db.query(
+                    CourseAssetRequirement.course_id.label("course_id"),
+                    func.coalesce(func.sum(CourseAssetRequirement.quantity), 0).label("qty"),
+                )
+                .join(AssetType, AssetType.id == CourseAssetRequirement.asset_type_id)
+                .filter(
+                    CourseAssetRequirement.course_id.in_(course_ids),
+                    CourseAssetRequirement.active.is_(True),
+                    AssetType.active.is_(True),
+                    func.lower(AssetType.managed_by_department) == "itc support",
+                    AssetType.code.in_(["LAPTOP", "PENDRIVE"]),
+                )
+                .group_by(CourseAssetRequirement.course_id)
+                .all()
+            )
+            itc_total_by_course = {int(cid): int(qty or 0) for (cid, qty) in rows}
+
+        # ------------------------------------------------------
+        # 4) Eventos
+        # ------------------------------------------------------
         events = []
         for c in courses:
             if not c.start_date and not c.end_date:
@@ -1037,15 +1122,21 @@ def api_calendar_events():
             base_extended = {
                 "course_id": c.id,
                 "status": getattr(c, "auto_status", None),
-                "status_tco": c.status_tco,
+                "status_tco": getattr(c, "status_tco", None),
                 "status_itc": getattr(c, "status_itc", None),
-                "trainees": c.trainees,
-                "client": c.client,
-                "course_code": c.course,
+                "trainees": getattr(c, "trainees", None),
+                "client": getattr(c, "client", None),
+                "course_code": getattr(c, "course", None),
                 "course_url": f"/courses/{c.id}",
                 "detail_url": detail_url,
                 "severity": sev,
+                "cards_enabled_for_user": (is_admin or is_tco),
             }
+
+            if is_admin or is_itc:
+                itc_total = itc_total_by_course.get(c.id, 0)
+                base_extended["itc_total"] = itc_total
+                base_extended["itc_skip"] = (itc_total == 0)
 
             if c.start_date:
                 events.append({
@@ -1068,10 +1159,14 @@ def api_calendar_events():
                 })
 
         return jsonify(events)
+
+    except Exception as e:
+        # Para que FullCalendar no se quede “muerto” sin info
+        current_app.logger.exception("api_calendar_events failed")
+        return jsonify([]), 200
+
     finally:
         db.close()
-
-
 # ===========================
 #   EXPORT: CSV / EXCEL / PDF
 # ===========================
@@ -1320,8 +1415,8 @@ def notify_itc_pickup():
 
 def _is_itc_or_admin():
     role = (getattr(current_user, "role", "") or "").strip().lower()
-    dept = (getattr(current_user, "department", "") or "").strip()
-    return ("admin" in role) or (dept.lower() == "itc support")
+    dept = (getattr(current_user, "department", "") or "").strip().lower()
+    return ("admin" in role) or (dept == "itc support") or role.startswith("itc")
 
 
 @bp.route("/<int:course_id>/assign-pcs", methods=["GET", "POST"])

@@ -106,9 +106,19 @@
             {% endif %}
           </td>
 
-          {# TYPE BONITO #}
           <td>
-            {% if alert.type == 'cards_missing' %}
+            {# ALERTA AGREGADA: mostrar tipos internos #}
+            {% if alert.type == 'course_agg' %}
+              {% if alert.types %}
+                <span class="small text-muted">
+                  {{ alert.types | join(", ") }}
+                </span>
+              {% else %}
+                <span class="small text-muted">Summary</span>
+              {% endif %}
+
+            {# ALERTAS “LEGACY” (por si alguna no viene agregada) #}
+            {% elif alert.type == 'cards_missing' %}
               Cards &lt; trainees
             {% elif alert.type == 'cards_extra' %}
               Cards &gt; trainees
@@ -121,7 +131,7 @@
             {% endif %}
           </td>
 
-          <td>{{ alert.message }}</td>
+          <td class="alert-message">{{ alert.message }}</td>
 
           <td>
             {% if alert.course %}

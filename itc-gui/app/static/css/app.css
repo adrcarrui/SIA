@@ -410,3 +410,42 @@ button[data-bs-toggle="dropdown"]::before {
   border-color: #fd7e14;
   color: #ffffff;
 }
+
+.fc-event.itc-skip {
+  position: relative;
+}
+
+.fc-event.itc-skip::after {
+  content: "✕";
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #ff00b7; /* fucsia putón */
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 0, 183, 0.35);
+  border-radius: 6px;
+  padding: 0 4px;
+  line-height: 1.1;
+}
+
+.alert-message {
+  white-space: pre-line;
+}
+
+.fc-event-notice{
+  background-color: rgba(13,202,240,0.15);
+  border-color: rgba(13,202,240,0.6);
+  border: 3px solid rgba(13,202,240,0.6)
+}
+.fc-event-warning{
+  background-color: rgba(255,193,7,0.2);
+  border-color: rgba(255,193,7,0.8);
+  border: 3px solid rgba(255,193,7,0.8)
+}
+.fc-event-critical{
+  background-color: rgba(220,53,69,0.25);
+  border-color: rgba(220,53,69,0.9);
+  border: 3px solid rgba(220,53,69,0.9)
+}

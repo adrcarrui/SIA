@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-3">
+  <h4 class="mb-3">Return PCs</h4>
+
+  <form method="post" id="return-pcs-form">
+
+    <div class="mb-3">
+      <label class="form-label">Scan PC barcode</label>
+      <input
+        type="text"
+        id="barcode-input"
+        class="form-control"
+        placeholder="Scan or type barcode…"
+        autocomplete="off"
+      >
+      <div class="form-text">
+        PCs will be added automatically when a valid barcode is detected.
+      </div>
+    </div>
+
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Device</th>
+            <th>Barcode</th>
+            <th>Status</th>
+            <th>Assigned course</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="pcs-table-body">
+          <tr id="empty-row">
+            <td colspan="6" class="text-center text-muted">
+              No PCs scanned yet.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-flex justify-content-between">
+      <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
+        Cancel
+      </a>
+      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>
+        Return selected PCs
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const input  = document.getElementById("barcode-input");
+  const tbody  = document.getElementById("pcs-table-body");
+  const submit = document.getElementById("submit-btn");
+
+  const added = new Set();
+  let pollTimer = null;
+
+  function refreshSubmit() {
+    submit.disabled = !tbody.querySelector("input.row-selector:checked");
+  }
+
+  function addRow(data) {
+    const d = data.device;
+    if (!d || added.has(d.id)) return;
+
+    added.add(d.id);
+    document.getElementById("empty-row")?.remove();
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${tbody.children.length + 1}</td>
+      <td>${d.name || "-"}</td>
+      <td>${d.barcode || "-"}</td>
+      <td>${d.status}</td>
+      <td>${data.assigned_course ? data.assigned_course.label : "-"}</td>
+      <td class="text-end">
+        <input type="checkbox" class="form-check-input row-selector me-2" checked>
+        <button type="button" class="btn btn-sm btn-outline-danger remove-btn">
+          Remove
+        </button>
+        <input type="hidden" name="device_ids[]" value="${d.id}">
+        <input type="hidden" name="barcodes[]" value="${d.barcode}">
+      </td>
+    `;
+    tbody.appendChild(tr);
+    refreshSubmit();
+  }
+
+  async function pollBarcode() {
+    const barcode = input.value.trim();
+    if (!barcode) return;
+
+    try {
+      const resp = await fetch("{{ url_for('courses.api_pc_by_barcode') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ barcode })
+      });
+
+      if (!resp.ok) return;
+
+      const data = await resp.json();
+      if (data.success) {
+        addRow(data);
+        input.value = "";
+      }
+    } catch (e) {
+      console.error("Barcode poll error", e);
+    }
+  }
+
+  input.addEventListener("input", function () {
+    clearTimeout(pollTimer);
+    pollTimer = setTimeout(pollBarcode, 600);
+  });
+
+  tbody.addEventListener("click", function (e) {
+    if (e.target.classList.contains("remove-btn")) {
+      const tr = e.target.closest("tr");
+      const id = tr.querySelector('input[name="device_ids[]"]').value;
+      added.delete(Number(id));
+      tr.remove();
+
+      if (!tbody.children.length) {
+        tbody.innerHTML = `
+          <tr id="empty-row">
+            <td colspan="6" class="text-center text-muted">
+              No PCs scanned yet.
+            </td>
+          </tr>
+        `;
+      }
+      refreshSubmit();
+    }
+  });
+
+  tbody.addEventListener("change", refreshSubmit);
+});
+</script>
+{% endblock %}

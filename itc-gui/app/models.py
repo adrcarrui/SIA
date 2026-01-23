@@ -367,3 +367,58 @@ class CourseAssetRequirement(db.Model):
 
     def __repr__(self):
         return f"<CourseAssetRequirement course_id={self.course_id} asset_type_id={self.asset_type_id} qty={self.quantity}>"
+
+class AlertState(db.Model):
+    __tablename__ = "alert_states"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # "tco" | "itc" | "admin" (o lo que decidas)
+    scope = db.Column(db.String(16), nullable=False, index=True)
+
+    # a qué curso pertenece (siempre)
+    course_id = db.Column(
+        db.Integer,
+        db.ForeignKey("courses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # clave estable del tipo de alerta dentro del scope/curso
+    # ej: "tco_start_soon_no_cards", "tco_cards_mismatch", ...
+    alert_key = db.Column(db.String(128), nullable=False)
+
+    # open | ack | snoozed | ignored | resolved
+    status = db.Column(db.String(16), nullable=False, default="open", index=True)
+
+    # si status == snoozed, no mostrar hasta esta fecha
+    snooze_until = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+
+    # tracking
+    first_seen_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
+    last_seen_at  = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
+    occurrences   = db.Column(db.Integer, nullable=False, default=1)
+
+    # auditoría (quién tocó el estado)
+    updated_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    note = db.Column(db.Text, nullable=True)
+
+    # Relaciones opcionales
+    course = db.relationship("Course", foreign_keys=[course_id], lazy="joined")
+    updated_by = db.relationship("User", foreign_keys=[updated_by_user_id], lazy="joined")
+
+    __table_args__ = (
+        db.UniqueConstraint("scope", "course_id", "alert_key", name="uq_alert_states_scope_course_key"),
+    )
+
+    def __repr__(self):
+        return (
+            f"<AlertState id={self.id} scope={self.scope} course_id={self.course_id} "
+            f"alert_key={self.alert_key!r} status={self.status} snooze_until={self.snooze_until}>"
+        )

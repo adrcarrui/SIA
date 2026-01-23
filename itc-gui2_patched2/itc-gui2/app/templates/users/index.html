@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block content %}
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h2 class="mb-0">Users</h2>
+    <div class="d-flex align-items-center">
+      <!--{# Global search (q) #}
+      <form class="d-inline-flex p-2" method="get" action="{{ url_for('users.index') }}">
+        <input name="q"
+               value="{{ q }}"
+               class="form-control form-control-sm me-2"
+               placeholder="Search user...">
+        <button class="btn btn-sm btn-outline-primary ms-2">🔎</button>
+      </form>-->
+      <a href="{{ url_for('users.new_user') }}" class="btn btn-primary btn-sm ms-2">New user</a>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    {# Filtros por columna #}
+    <form method="get" action="{{ url_for('users.index') }}">
+      {# Mantener búsqueda global y paginación al filtrar #}
+      <input type="hidden" name="q" value="{{ q or '' }}">
+      <input type="hidden" name="page" value="1">
+      <input type="hidden" name="per_page" value="{{ per_page }}">
+
+      <table class="table table-hover align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Surname</th>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Active</th>
+            <th class="text-end" style="width:150px;">Actions</th>
+          </tr>
+
+          {# Row of column filters #}
+          <tr>
+            <th>
+              {# si quieres filtrar por ID, aquí; si no, lo dejas vacío #}
+            </th>
+
+            <th>
+              <input
+                type="text"
+                class="form-control form-control-sm"
+                name="name"
+                placeholder="Name"
+                value="{{ filter_name or '' }}"
+              >
+            </th>
+
+            <th>
+              <input
+                type="text"
+                class="form-control form-control-sm"
+                name="surname"
+                placeholder="Surname"
+                value="{{ filter_surname or '' }}"
+              >
+            </th>
+
+            <th>
+              <input
+                type="text"
+                class="form-control form-control-sm"
+                name="username"
+                placeholder="Username"
+                value="{{ filter_username or '' }}"
+              >
+            </th>
+
+            <th>
+              <input
+                type="text"
+                class="form-control form-control-sm"
+                name="email"
+                placeholder="Email"
+                value="{{ filter_email or '' }}"
+              >
+            </th>
+
+            <th>
+              <input
+                type="text"
+                class="form-control form-control-sm"
+                name="role"
+                placeholder="Role"
+                value="{{ filter_role or '' }}"
+              >
+            </th>
+
+            <th>
+              {# si quieres filtrar por active, puedes usar un select:
+                 necesitarás manejar request.args.get("active") en la vista #}
+              <select name="active" class="form-select form-select-sm">
+                <option value="">All</option>
+                <option value="1" {% if active == '1' %}selected{% endif %}>Yes</option>
+                <option value="0" {% if active == '0' %}selected{% endif %}>No</option>
+              </select>
+            </th>
+
+            <th class="text-end">
+              <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+              <a href="{{ url_for('users.index') }}" class="btn btn-secondary btn-sm">Clear</a>
+            </th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td>{{ u.id }}</td>
+            <td>{{ u.name }}</td>
+            <td>{{ u.surname or '—' }}</td>
+            <td>{{ u.username or '—' }}</td>
+            <td>{{ u.email or '—' }}</td>
+            <td>{{ u.role }}</td>
+            <td>
+              {% if u.active %}
+                <span class="badge text-bg-success">Yes</span>
+              {% else %}
+                <span class="badge text-bg-secondary">No</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="text-end">
+
+                {% if can_edit_user(current_user, u) %}
+                  <a class="btn btn-secondary btn-sm"
+                     href="{{ url_for('users.edit_user', user_id=u.id) }}">
+                    Edit
+                  </a>
+                {% endif %}
+
+                {% if can_delete_user(current_user, u) %}
+                  <form method="post"
+                        action="{{ url_for('users.delete_user', user_id=u.id) }}"
+                        class="d-inline delete-user-form">
+                    {% if csrf_token is defined %}
+                      {{ csrf_token() }}
+                    {% endif %}
+                    <button type="button"
+                            class="btn btn-sm btn-danger btn-user-delete"
+                            data-username="{{ u.username or u.email or ('User #' ~ u.id) }}"
+                            data-url="{{ url_for('users.delete_user', user_id=u.id) }}">
+                      Delete
+                    </button>
+                  </form>
+                {% endif %}
+
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+
+          {% if not users %}
+          <tr>
+            <td colspan="10" class="text-center text-body-secondary">
+              No results
+            </td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </form>
+  </div>
+
+  <nav aria-label="Pagination">
+    <ul class="pagination">
+      <li class="page-item {% if not has_prev %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('users.index',
+                            q=q,
+                            page=(page-1 if page>1 else 1),
+                            per_page=per_page,
+                            name=filter_name,
+                            surname=filter_surname,
+                            username=filter_username,
+                            email=filter_email,
+                            role=filter_role) }}">«</a>
+      </li>
+      <li class="page-item active">
+        <span class="page-link">{{ page }}</span>
+      </li>
+      <li class="page-item {% if not has_next %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('users.index',
+                            q=q,
+                            page=(page+1 if has_next else page),
+                            per_page=per_page,
+                            name=filter_name,
+                            surname=filter_surname,
+                            username=filter_username,
+                            email=filter_email,
+                            role=filter_role) }}">»</a>
+      </li>
+    </ul>
+  </nav>
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h2 class="mb-0"></h2>
+
+  <div class="d-flex align-items-center gap-3">
+    <div class="d-flex align-items-center gap-2">
+      <span class="small fw-bold me-1">Download as:</span>
+      <div class="btn-group btn-group-sm" role="group">
+        <a
+          class="btn btn-outline-secondary"
+          href="{{ url_for('users.export_users',
+                           format='csv',
+                           q=q,
+                           page=page,
+                           per_page=per_page,
+                           name=filter_name,
+                           surname=filter_surname,
+                           username=filter_username,
+                           uid=filter_uid,
+                           email=filter_email,
+                           role=filter_role) }}"
+        >CSV</a>
+
+        <a
+          class="btn btn-outline-secondary"
+          href="{{ url_for('users.export_users',
+                           format='xlsx',
+                           q=q,
+                           page=page,
+                           per_page=per_page,
+                           name=filter_name,
+                           surname=filter_surname,
+                           username=filter_username,
+                           uid=filter_uid,
+                           email=filter_email,
+                           role=filter_role) }}"
+        >Excel</a>
+
+        <a
+          class="btn btn-outline-secondary"
+          href="{{ url_for('users.export_users',
+                           format='pdf',
+                           q=q,
+                           page=page,
+                           per_page=per_page,
+                           name=filter_name,
+                           surname=filter_surname,
+                           username=filter_username,
+                           uid=filter_uid,
+                           email=filter_email,
+                           role=filter_role) }}"
+        >PDF</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

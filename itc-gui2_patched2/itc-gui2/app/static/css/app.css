@@ -1,0 +1,425 @@
+/* Anchos del sidebar */
+#sidebar {
+  width: 180px;               /* abierto */
+  transition: width 0.2s ease;
+  background-color: #00205d !important;
+}
+body.sidebar-collapsed #sidebar {
+  width: 70px;                /* colapsado */
+  background-color: #00205d;
+}
+
+/* Ocultar etiquetas (texto) cuando está colapsado */
+body.sidebar-collapsed #sidebar .nav-link .label,
+body.sidebar-collapsed #sidebar .navbar-brand { 
+  display: none;
+}
+
+/* Centrar los iconos cuando está colapsado */
+body.sidebar-collapsed #sidebar .nav-link {
+  justify-content: center;            /* icono centrado */
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+/* Tamaño/espaciado de iconos */
+#sidebar .nav-link .icon {
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+
+#sidebar .nav-link .label {
+  color: inherit;
+}
+
+/* Asegurar que el botón de toggle se vea bien en ambas vistas */
+#btn-toggle-sidebar {
+  line-height: 1;
+}
+
+/* Mantener altura completa del contenedor del sidebar */
+#sidebar > .d-flex.flex-column.h-100 {
+  min-height: calc(100vh - 56px); /* ajusta si tu header es distinto */
+}
+
+/* Accesibilidad: foco visible */
+#sidebar .nav-link:focus {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: 2px;
+}
+
+/* Fondo del sidebar */
+#sidebar {
+  background-color: #00205d !important;
+}
+
+/* Color de los enlaces del sidebar (texto + spans) */
+#sidebar .nav-link {
+  color: #ffffff !important;
+}
+
+/* Asegurar que icono y label sean blancos */
+#sidebar .nav-link .icon,
+#sidebar .nav-link .label {
+  color: #ffffff !important;
+}
+
+/* Hover y foco */
+#sidebar .nav-link:hover,
+#sidebar .nav-link:focus {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff !important;
+}
+
+/* Enlace activo */
+#sidebar .nav-link.active {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff !important;
+}
+
+/* Altura compacta y separación limpia */
+#topbar .navbar-brand { margin-right: .5rem; }
+#topbar { min-height: 50px; }
+
+/* Si tu layout tiene un contenedor de contenido principal, asegúrate de que no quede oculto */
+.content-wrapper { padding-top: .75rem; }
+
+/* Reloj en móviles: quepa a la derecha si se colapsa el centro */
+@media (max-width: 767.98px) {
+  #clock { font-variant-numeric: tabular-nums; }
+}
+
+/* Borra cualquier caret/pseudo-elemento, incluso si algún tema lo añade */
+#btn-options::after,
+#btn-options::before,
+.dropdown-toggle::after,
+.dropdown-toggle::before,
+button[data-bs-toggle="dropdown"]::after,
+button[data-bs-toggle="dropdown"]::before {
+  content: none !important;
+  display: none !important;
+  border: 0 !important;
+  background: none !important;
+}
+
+/* Por si algún tema usa background-image como caret */
+#btn-options {
+  background-image: none !important;
+}
+
+/* Quita el punto/halo que algunos temas muestran en :focus/:active */
+#btn-options:focus,
+#btn-options:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Contenedor principal del calendario */
+.cal2w {
+  width: 100%;              /* que ocupe todo el ancho disponible */
+  max-width: none;          /* sin límite artificial */
+  margin-bottom: 1.5rem;
+}
+
+/* Rejilla de días: 7 columnas que llenan el espacio */
+.cal2w-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr)); /* 7 días por fila, mismos anchos */
+  gap: 1rem;
+}
+
+/* Cada día del calendario */
+.cal2w .day:hover {
+  min-height: 260px;
+  height: auto;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-color: #0d6efd;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.1);
+  background-color: rgba(255,255,255,0.7);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Por si en algún sitio toqueteaste .day.today */
+.cal2w .day.today {
+  min-height: 260px;
+  height: auto;
+  border: 1px solid rgba(0,0,0,0.08);
+  background-color: rgba(255,255,255,0.7);
+}
+
+/* Cabecera de fecha dentro del día */
+.cal2w .day .date {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+/* Texto tipo “lunes”, “martes” */
+.cal2w .day .meta {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+/* Contenedor de cursos en el día */
+.cal2w .day .content {
+  margin-top: 0.35rem;
+  /* si quieres que NO se corte nunca nada: */
+  overflow: visible;
+  /* si prefieres scroll cuando haya 20 cursos:
+     max-height: 220px;
+     overflow-y: auto;
+  */
+}
+
+/* Badges de curso */
+.cal2w .day .badge {
+  font-size: 0.75rem;
+  margin-bottom: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root,
+[data-bs-theme="light"] {
+  --bs-heading-color: #222222;  /* el color que quieras */
+}
+
+/* Si también usas tema oscuro y quieres otro color ahí */
+[data-bs-theme="dark"] {
+  --bs-heading-color: #f5f5f5;  /* o el que te dé la gana */
+}
+
+.user-form .form-label,
+.user-form .form-check-label {
+  color: #000000 !important;
+}
+
+.course-form .form-label
+.course-form .form-check-label {
+  color: #000000 !important;
+}
+
+.device-form .form-label
+.device-form .form-check-label {
+  color: #000000 !important;
+}
+
+.stat-card {
+  /*min-height: 110px;*/
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+.stat-card-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  font-weight: 500;
+}
+
+.stat-card-icon {
+  position: absolute;
+  right: 12px;
+  top: 18px;
+  font-size: 2.5rem;
+  opacity: 0.2;
+}
+
+/* Colores aproximados a tu captura */
+.bg-users {
+  background-color: #0085ad;
+}
+
+.bg-devices {
+  background-color: #6399ae;
+}
+
+.bg-courses {
+  background-color: #ff9820;
+}
+.bg-alerts {
+  background-color: #f56476;
+}
+.bg-movements {
+  background-color: #791E94;
+}
+.bg-assignments {
+  background-color: #688E26;
+}
+.stat-movements {
+  position: relative;
+  min-height: 110px;
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+/* Marca de agua solo para este cuadrado */
+.stat-card-users::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  top: 18px;
+  width: 80px;
+  height: 80px;
+  /*background-image: url("/static/img/users-watermark.png");*/
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: 0.15;              /* nivel de “marca de agua” */
+  pointer-events: none;       /* para que no moleste al click */
+}
+.table-warning > td,
+.table-warning > th {
+  background-color: #ff9800 !important;  /* naranja fuerte */
+  color: #ffffff;                        /* texto oscuro legible */
+}
+
+.table-danger > td,
+.table-danger > th {
+  background-color: #d50000 !important;  /* rojo fuerte */
+  color: #ffffff;                        /* texto blanco para contraste */
+}
+
+.fc-course-planned {
+  background-color: #fff3cd !important;
+  border-color: #ffe69c !important;
+  color: #856404 !important;
+  font-weight: 700 !important;
+}
+
+.fc-course-active {
+  background-color: #d1e7dd !important;
+  border-color: #a3cfbb !important;
+  color: #0f5132 !important;
+  font-weight: 700 !important;
+}
+
+.fc-course-finished {
+  background-color: #e2e3e5 !important;
+  border-color: #c4c8cb !important;
+  color: #41464b !important;
+  font-weight: 700 !important;
+}
+
+.fc-course-cancelled {
+  background-color: #f8d7da !important;
+  border-color: #f5c2c7 !important;
+  color: #000000 !important;
+  text-decoration: line-through;
+  font-weight: 700 !important;
+}
+
+/* Inicio de curso: verde */
+.fc-course-start .fc-event-main {
+  background-color: #94fbab !important;  /* verde suave tipo "success" */
+  border-color: #0f5132 !important;
+  color: #000000 !important;
+  font-weight: 700 !important;           /* negrita */
+}
+
+/* Fin de curso: azul */
+.fc-course-end .fc-event-main {
+  background-color: #3f88c5 !important;  /* azul suave tipo "primary" */
+  border-color: #084298 !important;
+  color: #000000 !important;
+  font-weight: 700 !important;
+}
+
+/* Borde por severidad (solo si hay reasons OPEN o snooze vencido) */
+.fc-sev-notice .fc-event-main {
+  box-shadow: 0 0 0 3px #ffc107 inset;
+}
+
+.fc-sev-warning .fc-event-main {
+  box-shadow: 0 0 0 3px #fd7e14 inset;
+}
+
+.fc-sev-critical .fc-event-main {
+  box-shadow: 0 0 0 3px #dc3545 inset;
+}
+
+.fc-badge-alert {
+  font-size: 0.7rem;
+  vertical-align: middle;
+  margin-left: 0.25rem;
+  padding-inline: 0.35em;
+  padding-block: 0.15em;
+}
+
+
+.badge-lg {
+    font-size: 0.9rem;      /* más grande que la badge normal */
+    padding: 0.45em 0.8em;  /* más alta y más ancha */
+    border-radius: 999px;   /* más “pill” */
+}
+
+/* Día de hoy con solo avisos (notice) */
+.fc .fc-daygrid-day.fc-day-notice {
+  background-color: #ffc107;      /* azul suave */
+  box-shadow: 0 0 0 2px #ffc107 inset;
+  border-radius: 6px;
+}
+
+/* Día de hoy con al menos un warning y sin critical */
+.fc .fc-daygrid-day.fc-day-warning {
+  background-color: #fd7e14;      /* amarillo suave */
+  box-shadow: 0 0 0 2px #fd7e14 inset;
+  border-radius: 6px;
+}
+
+/* Día de hoy con al menos un critical */
+.fc .fc-daygrid-day.fc-day-critical {
+  background-color: #dc3545;      /* rojo suave */
+  box-shadow: 0 0 0 2px #dc3545 inset;
+  border-radius: 6px;
+}
+
+/* Botones de FullCalendar con el azul del sidebar */
+.fc .fc-button-primary {
+  background-color: #00205d;
+  border-color: #00205d;
+  color: #ffffff;
+}
+
+/* Hover / activo */
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active,
+.fc .fc-button-primary:not(:disabled):hover {
+  background-color: #001744;  /* un poco más oscuro */
+  border-color: #001744;
+  color: #ffffff;
+}
+
+.btn-tams-primary {
+  background-color: #00205d;
+  border-color: #00205d;
+  color: #ffffff;
+}
+
+.btn-tams-primary:hover,
+.btn-tams-primary:focus {
+  background-color: #001744; /* un poco más oscuro al pasar el ratón */
+  border-color: #001744;
+  color: #ffffff;
+}
+
+.btn-tams-primary:disabled,
+.btn-tams-primary.disabled {
+  background-color: #00205d;
+  border-color: #00205d;
+  opacity: 0.65;
+  color: #ffffff;
+}
+
+.btn-notice-primary{
+  background-color: #ffc107;
+  border-color: #ffc107;
+  color: #ffffff;
+}
+
+.btn-warning-primary{
+  background-color: #fd7e14;
+  border-color: #fd7e14;
+  color: #ffffff;
+}

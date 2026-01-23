@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h2 class="mb-0">Assignments</h2>
+    <p class="text-muted mb-0">Total: {{ total }}</p>
+  </div>
+
+  <div class="d-flex align-items-center">
+    <form class="d-inline-flex p-2" method="get" action="{{ url_for('assignments.index') }}">
+      <input name="q"
+             value="{{ q }}"
+             class="form-control form-control-sm me-2"
+             placeholder="Search assignment...">
+      <button class="btn btn-sm btn-outline-primary ms-2">🔎</button>
+    </form>
+
+    <a class="btn btn-primary btn-sm ms-2" href="{{ url_for('assignments.new') }}">
+      New assignment
+    </a>
+  </div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>ID</th>
+        <th>Device</th>
+        <th>Course</th>
+        <th>Status</th>
+        <th>Created by</th>
+        <th>Notes</th>
+        <th class="text-end" style="width: 160px;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in assigns %}
+      <tr>
+        <td>{{ a.id }}</td>
+        <td>{{ a.device.name if a.device else "Device #" ~ a.device_id }}</td>
+        <td>{{ a.course.name or a.course.course or ("Course #" ~ a.course_id)}}</td>
+        <td>
+          {% if a.status == "active" %}
+            <span class="badge text-bg-success">active</span>
+          {% elif a.status == "closed" %}
+            <span class="badge text-bg-secondary">closed</span>
+          {% elif a.status == "expired" %}
+            <span class="badge text-bg-warning text-dark">expired</span>
+          {% elif a.status == "forced_return" %}
+            <span class="badge text-bg-danger">forced_return</span>
+          {% else %}
+            <span class="badge text-bg-light text-dark">{{ a.status }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if a.creator %}
+            {{ a.creator.username }}
+          {% else %}
+            User #{{ a.created_by or "?" }}
+          {% endif %}
+        </td>
+        <td>{{ a.notes or "" }}</td>
+        <td class="text-end">
+          <div class="d-flex justify-content-end gap-2">
+            <a href="{{ url_for('assignments.edit', id=a.id) }}" class="btn btn-sm btn-warning">
+              Edit
+            </a>
+            <form action="{{ url_for('assignments.delete', id=a.id) }}"
+                  method="post"
+                  class="d-inline">
+              <button class="btn btn-sm btn-danger"
+                      onclick="return confirm('¿Seguro que quieres eliminar la asignación #{{ a.id }}?');">
+                Delete
+              </button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+
+      {% if not assigns %}
+      <tr>
+        <td colspan="7" class="text-center text-body-secondary">
+          No results
+        </td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<nav aria-label="Assignments pagination">
+  <ul class="pagination">
+    <li class="page-item {% if not has_prev %}disabled{% endif %}">
+      <a class="page-link"
+         href="{{ url_for('assignments.index',
+                          q=q,
+                          page=(page-1 if page > 1 else 1),
+                          per_page=per_page) }}">
+        «
+      </a>
+    </li>
+
+    <li class="page-item active">
+      <span class="page-link">
+        {{ page }}
+      </span>
+    </li>
+
+    <li class="page-item {% if not has_next %}disabled{% endif %}">
+      <a class="page-link"
+         href="{{ url_for('assignments.index',
+                          q=q,
+                          page=(page+1 if has_next else page),
+                          per_page=per_page) }}">
+        »
+      </a>
+    </li>
+  </ul>
+</nav>
+
+{% endblock %}

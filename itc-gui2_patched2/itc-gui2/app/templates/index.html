@@ -1,0 +1,446 @@
+{# templates/main/index.html #}
+{% extends "base.html" %}
+
+{% block content %}
+<h2 class="mb-3 d-flex justify-content-between align-items-center">
+  <span>Dashboard</span>
+</h2>
+{# FILA DE TARJETAS RÁPIDAS (Devices + Alerts resumen) #}
+<div class="row mb-4 g-3 row-cols-1 row-cols-md-2">
+  <!-- ahora mismo está vacía, por si en el futuro quieres meter más tarjetas -->
+</div>
+
+{# FILA PRINCIPAL: CALENDARIO + ALERTAS #}
+<div class="container-fluid py-3">
+  <div class="row">
+<!-- Columna calendario -->
+<div class="col-lg-8 mb-3">
+  <div class="card">
+
+    <!-- Header: título izquierda, botones derecha -->
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h3 class="mb-0">Course calendar</h3>
+
+      <div class="d-flex align-items-center gap-2">
+        <a href="{{ url_for('assignments.bulk_returns') }}"
+           class="btn btn-sm btn-tams-primary">
+          Return cards
+        </a>
+
+          {% set actor_role = (current_user.role or '')|lower|trim %}
+          {% set actor_dept = (current_user.department or '')|lower|trim %}
+
+          {% if actor_role == 'admin' or actor_dept == 'itc support' or actor_role.startswith('itc') %}
+          <a href="{{ url_for('courses.return_pcs') }}"
+             class="btn btn-sm btn-tams-primary">
+            Return PCs
+          </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card-body">
+      <div id="calendar" style="min-height: 500px;"></div>
+    </div>
+
+  </div>
+
+  <!-- Modal único para ver detalles de curso -->
+  <div class="modal fade" id="courseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Course details</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="courseModalBody">
+          <div class="text-center py-5">
+            <div class="spinner-border" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    <!-- Columna alertas -->
+    <div class="col-lg-4 mb-3" id="alerts-panel">
+
+{# Devices #}
+<div class="col-8 mb-3">
+  <div class="accordion" id="devicesAccordion">
+    <div class="accordion-item">
+
+      <h2 class="accordion-header d-flex align-items-center" id="devicesHeading">
+        {# Botón que abre/cierra el accordion #}
+        <button
+          class="accordion-button flex-grow-1 bg-devices"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#devicesCollapse"
+          aria-expanded="true"
+          aria-controls="devicesCollapse"
+        >
+          <span class="fw-semibold">Devices</span>
+        </button>
+
+        {# Botón Return cards al lado, no dentro del <button> #}
+
+      </h2>
+
+      <div
+        id="devicesCollapse"
+        class="accordion-collapse collapse show"
+        aria-labelledby="devicesHeading"
+        data-bs-parent="#devicesAccordion"
+      >
+        <div class="accordion-body">
+
+          {% if device_stats %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0 small">
+                <thead>
+                  <tr>
+                    <th class="fw-normal text-muted">Type</th>
+                    <th class="fw-normal text-center">Loan</th>
+                    <th class="fw-normal text-center">% Use</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in device_stats %}
+                    {% set tkey = row.type or "Unknown" %}
+                    {% set tcolor = {
+                      'vending': 'primary',
+                      'canteen': 'success',
+                      'instructor': 'warning',
+                      'guest': 'secondary'
+                    }.get(tkey, 'light') %}
+                    <tr>
+                      <td class="fs-6">
+                        <span class="badge text-bg-{{ tcolor }}">
+                          {{ tkey }}
+                        </span>
+                      </td>
+                      <td class="text-center text-muted">
+                        {{ row.assigned }}/{{ row.total }}
+                      </td>
+                      <td class="text-center fw-semibold text-muted">
+                        {{ row.ratio|round(0, 'floor') }}%
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-center mb-0 text-muted">
+              No devices registered.
+            </p>
+          {% endif %}
+
+          <div class="mt-3 text-center">
+            <a href="{{ url_for('devices.index') }}"
+               class="small text-decoration-none d-inline-flex align-items-center gap-1">
+              <span>View all</span>
+              <i class="bi bi-arrow-right-circle"></i>
+            </a>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Alerts resumen #}
+<div class="col-8 mb-3">
+  <div class="accordion" id="alertsAccordion">
+    <div class="accordion-item">
+
+      <h2 class="accordion-header d-flex align-items-center" id="alertsHeading">
+        {# Botón que abre/cierra el accordion #}
+        <button
+          class="accordion-button flex-grow-1 bg-alerts"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#alertsCollapse"
+          aria-expanded="true"
+          aria-controls="alertsCollapse"
+        >
+          <span class="fw-semibold">Alerts</span>
+
+          {# Total de alertas a la derecha dentro del botón #}
+          <span class="ms-auto badge rounded-pill bg-danger">
+            {{ alerts|length if alerts else 0 }}
+          </span>
+        </button>
+      </h2>
+
+      <div
+        id="alertsCollapse"
+        class="accordion-collapse collapse show"
+        aria-labelledby="alertsHeading"
+        data-bs-parent="#alertsAccordion"
+      >
+        <div class="accordion-body">
+
+          {% if alerts_summary %}
+            <div class="mt-2 small d-flex flex-wrap gap-2">
+              <span class="badge btn-notice-primary text-dark">
+                Notice: {{ alerts_summary.notice or 0 }}
+              </span>
+              <span class="badge btn-warning-primary text-dark">
+                Warning: {{ alerts_summary.warning or 0 }}
+              </span>
+              <span class="badge bg-danger text-dark">
+                Critical: {{ alerts_summary.critical or 0 }}
+              </span>
+            </div>
+          {% else %}
+            <p class="text-center mb-0 text-muted">
+              No alerts.
+            </p>
+          {% endif %}
+
+          <div class="mt-3 text-center">
+            <a href="{{ url_for('alerts.alerts_index') }}"
+               class="small text-decoration-none d-inline-flex align-items-center gap-1">
+              <span>View alerts</span>
+              <i class="bi bi-arrow-right-circle"></i>
+            </a>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+    
+  </div>
+  
+</div>
+
+{# ITC pickup (TCO only) #}
+{% set actor_dept = (current_user.department or '')|trim %}
+{% if actor_dept == 'TCO' %}
+  <div class="col-8 mb-3">
+    <div class="accordion" id="pickupAccordion">
+      <div class="accordion-item">
+
+        <h2 class="accordion-header d-flex align-items-center" id="pickupHeading">
+          <button
+            class="accordion-button flex-grow-1 bg-alerts"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#pickupCollapse"
+            aria-expanded="true"
+            aria-controls="pickupCollapse"
+          >
+            <span class="fw-semibold">ITC pickup</span>
+            <span class="ms-auto badge rounded-pill text-bg-primary">
+              TCO
+            </span>
+          </button>
+        </h2>
+
+        <div
+          id="pickupCollapse"
+          class="accordion-collapse collapse show"
+          aria-labelledby="pickupHeading"
+          data-bs-parent="#pickupAccordion"
+        >
+          <div class="accordion-body">
+
+            <form method="post" action="{{ url_for('courses.notify_itc_pickup') }}">
+              <label class="form-label mb-1">
+                Note <span class="text-muted">(optional)</span>
+              </label>
+
+              <input
+                type="text"
+                class="form-control form-control-sm"
+                name="pickup_note"
+                placeholder="e.g: Equipment ready for pickup at reception."
+              >
+
+              <div class="d-grid mt-3">
+                <button class="btn btn-sm btn-primary" type="submit">
+                  Notify ITC: pickup needed
+                </button>
+              </div>
+            </form>
+
+            <div class="form-text mt-2">
+              Sends a global notification to ITC support.
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+{% endif %}
+        </div>
+
+        
+
+      </div> {# /row g-0 #}
+    </div> {# /col-lg-4 #}
+  </div> {# /row #}
+</div> {# /container-fluid #}
+</div>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+<div id="alerts-data"
+     data-summary='{{ alerts_summary | default({"notice":0,"warning":0,"critical":0}) | tojson | e }}'>
+</div>
+<script>
+    // Lee el resumen de alertas desde el data-attribute (JS puro, sin Jinja dentro)
+    function getAlertsSummaryFromDOM() {
+      const el = document.getElementById('alerts-data');
+      let summary = { notice: 0, warning: 0, critical: 0 };
+
+      if (!el) {
+        return summary;
+      }
+
+      const raw = el.dataset.summary || '';
+      if (!raw) {
+        return summary;
+      }
+
+      try {
+        const parsed = JSON.parse(raw);
+        // Mezclamos con defaults por si falta alguna clave
+        return {
+          notice:   parsed.notice   ?? 0,
+          warning:  parsed.warning  ?? 0,
+          critical: parsed.critical ?? 0,
+        };
+      } catch (err) {
+        console.error("Error parsing alerts summary JSON:", err);
+        return summary;
+      }
+    }
+
+    function getTodaySeverityClass(alertsSummary) {
+      if (alertsSummary.critical > 0) {
+        return 'fc-day-critical';
+      } else if (alertsSummary.warning > 0) {
+        return 'fc-day-warning';
+      } else if (alertsSummary.notice > 0) {
+        return 'fc-day-notice';
+      }
+      return null;
+    }
+
+    function formatLocalDate(d) {
+      const y   = d.getFullYear();
+      const mon = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${mon}-${day}`;
+    }
+
+    // Modal de detalle de curso
+    function loadCourseDetail(url) {
+      const modalEl = document.getElementById('courseModal');
+      const modalBody = document.getElementById('courseModalBody');
+      if (!modalEl || !modalBody) {
+        console.error("Course modal not found");
+        return;
+      }
+
+      modalBody.innerHTML = `
+        <div class="text-center py-5">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      `;
+
+      fetch(url)
+        .then(resp => {
+          if (!resp.ok) {
+            throw new Error("HTTP " + resp.status);
+          }
+          return resp.text();
+        })
+        .then(html => {
+          modalBody.innerHTML = html;
+          const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+          modal.show();
+        })
+        .catch(err => {
+          console.error(err);
+          modalBody.innerHTML = `
+            <div class="alert alert-danger">
+              Error loading course details.
+            </div>
+          `;
+          const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+          modal.show();
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      const calendarEl = document.getElementById('calendar');
+      if (!calendarEl) {
+        console.error("Dashboard: #calendar not found");
+        return;
+      }
+
+      const alertsSummary = getAlertsSummaryFromDOM();
+      const todayStr = formatLocalDate(new Date());
+      const todaySeverityClass = getTodaySeverityClass(alertsSummary);
+
+      const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        locale: 'en',
+        firstDay: 1,
+        height: 'auto',
+        headerToolbar: {
+          left: 'prev,next today',
+          center: 'title',
+          right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+        },
+        dayMaxEvents: true,
+        events: "{{ url_for('courses.api_calendar_events') }}",
+
+        dayCellDidMount: function(info) {
+          const cellDateStr = formatLocalDate(info.date);
+          if (cellDateStr === todayStr && todaySeverityClass) {
+            info.el.classList.add(todaySeverityClass);
+          }
+        },
+
+        eventClick: function (info) {
+          const detailUrl = info.event.extendedProps.detail_url;
+          if (detailUrl) {
+            info.jsEvent.preventDefault();
+            loadCourseDetail(detailUrl);
+          } else if (info.event.extendedProps.course_url) {
+            window.location.href = info.event.extendedProps.course_url;
+          }
+        }
+      });
+
+      calendar.render();
+    });
+
+    // Botones "View" que abren el modal reutilizando la misma función
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-bs-target="#courseModal"][data-url]');
+      if (!btn) return;
+
+      e.preventDefault();
+      const url = btn.dataset.url;
+      if (url) {
+        loadCourseDetail(url);
+      }
+    });
+  </script>
+{% endblock %}
