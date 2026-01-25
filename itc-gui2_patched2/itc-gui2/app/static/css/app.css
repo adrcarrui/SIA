@@ -423,3 +423,25 @@ button[data-bs-toggle="dropdown"]::before {
   border-color: #fd7e14;
   color: #ffffff;
 }
+
+.device-badge{
+  display:inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+  min-width: 110px;
+  text-align: center;
+}
+
+.device-canteen{ background:#2ecc71; }
+.device-guest{ background:#3498db; }
+.device-instructor{ background:#9b59b6; }
+.device-vending{ background:#e67e22; }
+
+/* ITC */
+.device-laptop{ background:#1abc9c; } /* turquesa, distinto y limpio */
+
+.device-unknown{ background:#7f8c8d; }
+.device-badge{ min-width: 110px; text-align:center; }

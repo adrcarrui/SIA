@@ -110,17 +110,30 @@
                 </thead>
                 <tbody>
                   {% for row in device_stats %}
-                    {% set tkey = row.type or "Unknown" %}
+                    {% set raw = row.type or "unknown" %}
+
+                    {# Nombre legible #}
+                    {% set tlabel = {
+                      'card_canteen': 'Canteen',
+                      'card_guest': 'Guest',
+                      'card_instructor': 'Instructor',
+                      'card_vending': 'Vending',
+                      'laptop': 'Laptop'
+                    }.get(raw, raw|capitalize) %}
+
+                    {# Color del badge #}
                     {% set tcolor = {
-                      'vending': 'primary',
-                      'canteen': 'success',
-                      'instructor': 'warning',
-                      'guest': 'secondary'
-                    }.get(tkey, 'light') %}
+                      'card_canteen': 'success',
+                      'card_guest': 'secondary',
+                      'card_instructor': 'warning',
+                      'card_vending': 'primary',
+                      'laptop': 'info'
+                    }.get(raw, 'light') %}
+
                     <tr>
                       <td class="fs-6">
-                        <span class="badge text-bg-{{ tcolor }}">
-                          {{ tkey }}
+                        <span class="badge text-bg-{{ tcolor }} text-white">
+                          {{ tlabel }}
                         </span>
                       </td>
                       <td class="text-center text-muted">

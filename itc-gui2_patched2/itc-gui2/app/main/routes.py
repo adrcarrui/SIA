@@ -117,63 +117,215 @@ def inject_alerts_summary():
     finally:
         db.close()
 
-
 @bp.route("/")
 @login_required
 def index():
     db = SessionLocal()
     try:
+        # =====================================================
         # Métricas rápidas
+        # =====================================================
         total_users = db.query(func.count(User.id)).scalar() or 0
         total_devices = db.query(func.count(Device.id)).scalar() or 0
         total_courses = db.query(func.count(Course.id)).scalar() or 0
         total_assignments = db.query(func.count(Assignment.id)).scalar() or 0
         total_movements = db.query(func.count(Movements.id)).scalar() or 0
 
-        # Tarjetas activas (esto ahora mismo cuenta TODO; si quieres, luego lo filtramos por dept también)
         total_active_cards = (
             db.query(func.count(Assignment.id))
               .filter(Assignment.released_at.is_(None))
               .scalar()
         ) or 0
 
-        # Stats de devices (legacy por Device.type)
-        raw_stats = (
-            db.query(
-                Device.type.label("type"),
-                func.count(Device.id).label("total"),
-                func.sum(
-                    case(
-                        (Device.status == "assigned", 1),
-                        else_=0,
-                    )
-                ).label("assigned"),
+        # =====================================================
+        # Contexto usuario
+        # =====================================================
+        actor_role = (getattr(current_user, "role", "") or "").strip().lower()
+        actor_dept = (getattr(current_user, "department", "") or "").strip().lower()
+
+        is_admin = ("admin" in actor_role)
+        is_itc = (actor_dept == "itc support") or actor_role.startswith("itc")
+        is_tco = (actor_dept == "tco")
+
+        # =====================================================
+        # Devices stats (basados en AssetTypes)
+        # =====================================================
+        from app.models import AssetType
+
+        # Cargar todos los asset types activos
+        all_types = (
+            db.query(AssetType)
+              .filter(AssetType.active.is_(True))
+              .order_by(AssetType.sort_order.asc(), AssetType.code.asc())
+              .all()
+        )
+
+        by_id = {t.id: t for t in all_types}
+
+        # -----------------------------------------------------
+        # Utilidades de jerarquía
+        # -----------------------------------------------------
+        def descendants_ids(root: AssetType) -> set[int]:
+            if not root:
+                return set()
+            out = set()
+            queue = [root]
+            while queue:
+                cur = queue.pop(0)
+                if cur.id in out:
+                    continue
+                out.add(cur.id)
+                for ch in getattr(cur, "children", []) or []:
+                    if getattr(ch, "active", True):
+                        queue.append(ch)
+            return out
+
+        def has_ancestor_code(asset_type_id: int | None, code_upper: str) -> bool:
+            if not asset_type_id:
+                return False
+            seen = set()
+            cur = by_id.get(asset_type_id)
+            target = code_upper.upper()
+            while cur and cur.id not in seen:
+                seen.add(cur.id)
+                if (cur.code or "").upper() == target:
+                    return True
+                pid = cur.parent_id
+                cur = by_id.get(pid) if pid else None
+            return False
+
+        # -----------------------------------------------------
+        # Familia CARD
+        # -----------------------------------------------------
+        card_root = next(
+            (t for t in all_types if (t.code or "").upper() == "CARD"),
+            None
+        )
+        card_family_ids = descendants_ids(card_root)
+
+        # =====================================================
+        # Tipos visibles según perfil
+        # =====================================================
+        if is_admin:
+            # Admin: SOLO hijos (todos los árboles)
+            visible_types = [t for t in all_types if t.parent_id is not None]
+
+        elif is_tco:
+            # TCO: SOLO hijos de CARD
+            visible_types = [
+                t for t in all_types
+                if t.parent_id is not None and t.id in card_family_ids
+            ]
+
+        elif is_itc:
+            # ITC: SOLO hijos que NO sean de CARD
+            visible_types = [
+                t for t in all_types
+                if t.parent_id is not None and t.id not in card_family_ids
+            ]
+
+        else:
+            # Otros: solo hijos
+            visible_types = [t for t in all_types if t.parent_id is not None]
+
+        # -----------------------------------------------------
+        # Regla extra: excluir TODO lo que cuelgue de USB
+        # -----------------------------------------------------
+        visible_types = [
+            t for t in visible_types
+            if not has_ancestor_code(t.id, "USB")
+        ]
+
+        # =====================================================
+        # Conteo de devices por asset_type_id
+        # =====================================================
+        counts_by_asset_type_id = {
+            r.asset_type_id: {
+                "total": int(r.total or 0),
+                "assigned": int(r.assigned or 0),
+            }
+            for r in (
+                db.query(
+                    Device.asset_type_id.label("asset_type_id"),
+                    func.count(Device.id).label("total"),
+                    func.sum(case((Device.status == "assigned", 1), else_=0)).label("assigned"),
+                )
+                .filter(Device.active.is_(True))
+                .group_by(Device.asset_type_id)
+                .all()
             )
-            .group_by(Device.type)
+        }
+
+        # =====================================================
+        # Legacy devices (sin asset_type_id)
+        # =====================================================
+        legacy_to_asset_code = {
+            "vending": "CARD_VENDING",
+            "canteen": "CARD_CANTEEN",
+            "instructor": "CARD_INSTRUCTOR",
+            "guest": "CARD_GUEST",
+        }
+
+        asset_id_by_code = {
+            (t.code or "").upper(): t.id for t in all_types
+        }
+
+        legacy_counts = (
+            db.query(
+                func.lower(Device.type).label("legacy_type"),
+                func.count(Device.id).label("total"),
+                func.sum(case((Device.status == "assigned", 1), else_=0)).label("assigned"),
+            )
+            .filter(Device.active.is_(True))
+            .filter(Device.asset_type_id.is_(None))
+            .group_by(func.lower(Device.type))
             .all()
         )
 
-        device_stats = []
-        for row in raw_stats:
-            total = row.total or 0
-            assigned = row.assigned or 0
-            ratio = (assigned / total * 100) if total else 0
-            device_stats.append(
-                {
-                    "type": row.type or "Unknown",
-                    "total": total,
-                    "assigned": assigned,
-                    "ratio": ratio,
-                }
-            )
+        for row in legacy_counts:
+            legacy = (row.legacy_type or "").lower()
+            target_code = legacy_to_asset_code.get(legacy)
+            if not target_code:
+                continue
 
-        # Alertas (nuevo sistema con states)
+            target_id = asset_id_by_code.get(target_code.upper())
+            if not target_id:
+                continue
+
+            slot = counts_by_asset_type_id.setdefault(
+                target_id, {"total": 0, "assigned": 0}
+            )
+            slot["total"] += int(row.total or 0)
+            slot["assigned"] += int(row.assigned or 0)
+
+        # =====================================================
+        # Construir device_stats (lo que consume el template)
+        # =====================================================
+        device_stats = []
+        for at in visible_types:
+            code = (at.code or "").lower()
+            counts = counts_by_asset_type_id.get(at.id, {"total": 0, "assigned": 0})
+
+            total = counts["total"]
+            assigned = counts["assigned"]
+            ratio = (assigned / total * 100) if total else 0
+
+            device_stats.append({
+                "type": code,
+                "total": total,
+                "assigned": assigned,
+                "ratio": ratio,
+            })
+
+        # =====================================================
+        # Alertas
+        # =====================================================
         alerts = get_alerts_for_user(db, current_user, include_hidden=False) or []
 
-        # Summary para pintar "hoy" en el calendario
         now_utc = datetime.now(timezone.utc)
         alerts_all = get_alerts_for_user(db, current_user, include_hidden=True) or []
         alerts_summary = {"notice": 0, "warning": 0, "critical": 0}
+
         for a in alerts_all:
             a_sev = (a.get("severity") or "notice").strip().lower()
             reasons = a.get("reasons") or []
@@ -189,6 +341,9 @@ def index():
                 sev = a_sev if a_sev in alerts_summary else "notice"
                 alerts_summary[sev] += 1
 
+        # =====================================================
+        # Render
+        # =====================================================
         return render_template(
             "index.html",
             total_users=total_users,
@@ -201,6 +356,7 @@ def index():
             alerts=alerts,
             alerts_summary=alerts_summary,
         )
+
     finally:
         db.close()
 
