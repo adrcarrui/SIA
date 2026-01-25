@@ -11,26 +11,26 @@
              placeholder="Search course...">
       <button class="btn btn-sm btn-outline-primary ms-2">🔎</button>
     </form>-->
-        <a
+    <a
       href="{{ url_for('courses.index') }}"
       class="btn btn-sm btn-outline-secondary {% if not filter_my %}active{% endif %}">
       All
     </a>
-                <a
-  href="{{ url_for('courses.index',
-                   q=q,
-                   course=filter_course,
-                   name=filter_name,
-                   client=filter_client,
-                   status=filter_status,
-                   trainees=filter_trainees,
-                   notes=filter_notes,
-                   start_date=filter_start_date,
-                   end_date=filter_end_date,
-                   my=1) }}"
-  class="btn btn-primary btn-sm {% if filter_my == '1' %}active{% endif %}">
-  My Courses
-</a>
+
+    <a
+      href="{{ url_for('courses.index',
+                       q=q,
+                       course=filter_course,
+                       name=filter_name,
+                       client=filter_client,
+                       status=filter_status,
+                       notes=filter_notes,
+                       start_date=filter_start_date,
+                       end_date=filter_end_date,
+                       my=1) }}"
+      class="btn btn-primary btn-sm {% if filter_my == '1' %}active{% endif %}">
+      My Courses
+    </a>
 
     <a class="btn btn-sm btn-primary" href="{{ url_for('courses.new_course') }}">New course</a>
   </div>
@@ -46,23 +46,20 @@
     <table class="table table-sm align-middle">
       <thead class="table-light">
         <tr>
-          <th style="width:70px;">ID</th>
+          <th style="width:70px;">#</th>
           <th>Course</th>
           <th>Name</th>
           <th>Client</th>
           <th>Start</th>
           <th>End</th>
           <th>Status</th>
-          <th>Trainees</th>
           <th>Notes</th>
           <th style="width:150px;">Actions</th>
         </tr>
 
         {# fila de filtros por columna #}
         <tr>
-          <th>
-            {# si quieres filtrar por ID, puedes poner un input aquí #}
-          </th>
+          <th></th>
 
           <th>
             <input
@@ -127,17 +124,6 @@
 
           <th>
             <input
-              type="number"
-              min="0"
-              class="form-control form-control-sm"
-              name="trainees"
-              placeholder="="
-              value="{{ filter_trainees or '' }}"
-            >
-          </th>
-
-          <th>
-            <input
               type="text"
               class="form-control form-control-sm"
               name="notes"
@@ -156,7 +142,7 @@
       <tbody>
         {% for c in courses %}
         <tr>
-          <td class="text-muted">{{ c.id }}</td>
+          <td class="text-muted">{{ ((page - 1) * per_page) + loop.index }}</td>
           <td>{{ c.course or '—'}}</td>
           <td>{{ c.name or '—' }}</td>
           <td>{{ c.client or '—' }}</td>
@@ -176,7 +162,6 @@
             }.get((c.auto_status or '')|lower, 'light') %}
             <span class="badge text-bg-{{ status_color }}">{{ c.auto_status or '—' }}</span>
           </td>
-          <td>{{ c.trainees }}</td>
           <td class="text-truncate" style="max-width:260px;">
             {{ c.notes if c is defined and c.notes is not none else '' }}
           </td>
@@ -200,7 +185,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="10" class="text-center text-muted py-4">
+          <td colspan="9" class="text-center text-muted py-4">
             {% if q %}
               No courses found for “{{ q }}”.
             {% else %}
@@ -226,7 +211,6 @@
                           name=filter_name,
                           client=filter_client,
                           status=filter_status,
-                          trainees=filter_trainees,
                           start_date=filter_start_date,
                           end_date=filter_end_date,
                           notes=filter_notes) }}">«</a>
@@ -242,13 +226,13 @@
                           name=filter_name,
                           client=filter_client,
                           status=filter_status,
-                          trainees=filter_trainees,
                           start_date=filter_start_date,
                           end_date=filter_end_date,
                           notes=filter_notes) }}">»</a>
     </li>
   </ul>
 </nav>
+
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="mb-0"></h2>
 
@@ -265,7 +249,6 @@
                          name=filter_name,
                          client=filter_client,
                          status=filter_status,
-                         trainees=filter_trainees,
                          notes=filter_notes,
                          start_date=filter_start_date,
                          end_date=filter_end_date,
@@ -282,7 +265,6 @@
                          name=filter_name,
                          client=filter_client,
                          status=filter_status,
-                         trainees=filter_trainees,
                          notes=filter_notes,
                          start_date=filter_start_date,
                          end_date=filter_end_date,
@@ -299,7 +281,6 @@
                          name=filter_name,
                          client=filter_client,
                          status=filter_status,
-                         trainees=filter_trainees,
                          notes=filter_notes,
                          start_date=filter_start_date,
                          end_date=filter_end_date,
@@ -309,6 +290,5 @@
     </div>
   </div>
 </div>
-
 
 {% endblock %}

@@ -301,7 +301,6 @@ def new_user():
     actor_role = getattr(current_user, "role", None)
     assignable_roles = get_assignable_roles(actor_role)
 
-    # Si este tío no puede asignar ningún rol → no entra aquí
     if not assignable_roles:
         abort(403)
 
@@ -313,7 +312,12 @@ def new_user():
         password = request.form["password"]
         raw_email = request.form.get("email", "").strip()
         raw_role = (request.form.get("role", "user") or "user").strip().lower()
-        active = bool(request.form.get("active"))
+
+        # 👇 LEER DEPARTMENT DEL FORM
+        raw_department = (request.form.get("department", "") or "").strip()
+
+        # active: siempre True al crear
+        active = True
 
         # validar rol
         if raw_role not in assignable_roles:
@@ -324,6 +328,16 @@ def new_user():
                 user=None,
                 assignable_roles=assignable_roles,
             )
+
+        # 🔒 Forzar reglas de departamento según el actor
+        actor_role_norm = (getattr(current_user, "role", "") or "").lower()
+        actor_department = (getattr(current_user, "department", "") or "").strip()
+
+        if actor_role_norm == "employee":
+            # Un employee SOLO puede crear usuarios en su propio dept
+            raw_department = actor_department or raw_department
+
+        department = raw_department or None
 
         hashed_password = bcrypt.hashpw(
             password.encode("utf-8"), bcrypt.gensalt()
@@ -345,6 +359,7 @@ def new_user():
                 password_hash=hashed_password,
                 email=email,
                 role=role,
+                department=department,  # 👈 AQUÍ ESTABA EL AGUJERO
                 active=active,
             )
             db.add(new_user)
@@ -361,6 +376,7 @@ def new_user():
                     "username": new_user.username,
                     "email": new_user.email,
                     "role": new_user.role,
+                    "department": new_user.department,
                     "active": new_user.active,
                 },
                 description=f"User '{new_user.username}' created",
@@ -377,14 +393,12 @@ def new_user():
         finally:
             db.close()
 
-    # GET
     return render_template(
         "users/form.html",
         page_title="New user",
         user=None,
         assignable_roles=assignable_roles,
     )
-
 
 @bp.route("/<int:user_id>/edit", methods=["GET", "POST"])
 @login_required
