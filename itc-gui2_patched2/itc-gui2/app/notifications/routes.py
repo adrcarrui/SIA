@@ -181,3 +181,22 @@ def change_status(notif_id):
         return redirect(url_for("notifications.index", **request.args))
     finally:
         db.close()
+
+@bp.before_request
+def restrict_notifications_access():
+    # Si no está logueado, que lo gestione tu @login_required o tu auth
+    if not getattr(current_user, "is_authenticated", False):
+        return
+
+    role = (getattr(current_user, "role", "") or "").strip().lower()
+    dept = (getattr(current_user, "department", "") or "").strip().lower()
+
+    # TCO fuera siempre (si esta regla aplica en tu negocio)
+    if dept == "tco":
+        abort(403)
+
+    # Permitidos: admin/supervisor O departamento que empiece por "itc"
+    allowed = ("admin" in role) or ("supervisor" in role) or dept.startswith("itc")
+
+    if not allowed:
+        abort(403)

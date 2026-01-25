@@ -76,20 +76,6 @@ def login():
                         # login_user espera un objeto que implemente get_id() (tu modelo SQLAlchemy lo hace)
                         login_user(user, remember=bool(request.form.get("remember")))
                         session["reset_sidebar"] = True
-                        db.flush()
-                        log_movement(
-                                db,
-                                user_id=user.id,
-                                entity_type="user",
-                                entity_id=user.id,
-                                action="login",
-                                before_data=None,
-                                after_data=None,
-                                description=f"User {user.username} logged in from {request.remote_addr}",
-                                success=True,
-                                user_agent=request.user_agent.string,
-                            )
-                        db.commit()
                         return redirect(url_for("main.index"))
                 else:
                     error = "Usuario o contraseña incorrectos"
@@ -106,21 +92,6 @@ def login():
 
 @bp.route("/logout")
 def logout():
-    db = SessionLocal()
-    user = db.query(models.User).filter(models.User.username == current_user.username).first()
-    log_movement(
-        db,
-        user_id=current_user.id,
-        entity_type="user",
-        entity_id=user.id,
-        action="logout",
-        before_data=None,
-        after_data=None,
-        description=f"User {user.username} logged in from {request.remote_addr}",
-        success=True,
-        user_agent=request.user_agent.string,
-                            )
-    db.commit()
     logout_user()
     return redirect(url_for("auth.login"))
 

@@ -138,24 +138,30 @@
                 <span class="label">Asset types</span>
               </a>
             </li>
-
-            <!-- Notifications (solo admin/supervisor) -->
-            <li class="nav-item">
-              <a href="{{ url_for('notifications.index') }}"
-                 class="nav-link d-flex align-items-center gap-2 position-relative {{ 'active' if (request.endpoint and request.endpoint.startswith('notifications.')) else '' }}"
-                 title="Notifications">
-                <span class="icon" aria-hidden="true">🔔</span>
-                <span class="label">Notifications</span>
-
-                {% if notifications_unread_count is defined and notifications_unread_count|int > 0 %}
-                  <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                    {{ '99+' if notifications_unread_count|int > 99 else notifications_unread_count }}
-                    <span class="visually-hidden">unread notifications</span>
-                  </span>
-                {% endif %}
-              </a>
-            </li>
           {% endif %}
+
+{% set role_l = (current_user.role or '')|trim|lower %}
+{% set dept_l = (department|default('')|trim|lower) %}
+
+{# Notifications: admin/supervisor O dept ITC, PERO NUNCA TCO #}
+{% if dept_l != 'tco' and (('admin' in role_l or 'supervisor' in role_l) or dept_l.startswith('itc')) %}
+  <li class="nav-item">
+    <a href="{{ url_for('notifications.index') }}"
+       class="nav-link d-flex align-items-center gap-2 position-relative {{ 'active' if (request.endpoint and request.endpoint.startswith('notifications.')) else '' }}"
+       title="Notifications">
+      <span class="icon" aria-hidden="true">🔔</span>
+      <span class="label">Notifications</span>
+
+      {% if notifications_unread_count is defined and notifications_unread_count|int > 0 %}
+        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+          {{ '99+' if notifications_unread_count|int > 99 else notifications_unread_count }}
+          <span class="visually-hidden">unread notifications</span>
+        </span>
+      {% endif %}
+    </a>
+  </li>
+{% endif %}
+
           <!-- Movements -->
           <li class="nav-item">
             <a href="{{ url_for('movements.index') }}"
@@ -166,17 +172,17 @@
             </a>
           </li>
 
-          {# Assignments solo si el departamento NO es TCO #}
-          {% if department != 'TCO' %}
-          <li class="nav-item">
-            <a href="{{ url_for('assignments.index') }}"
-               class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint and request.endpoint.startswith('assignments.') else '' }}"
-               title="Assignments">
-              <span class="icon" aria-hidden="true">🔗</span>
-              <span class="label">Assignments</span>
-            </a>
-          </li>
-          {% endif %}
+        {# Assignments: no para TCO, y tampoco para ITC Support + employee #}
+        {% if department != 'TCO' and not ((department|trim|lower) == 'itc support' and role == 'employee') %}
+        <li class="nav-item">
+          <a href="{{ url_for('assignments.index') }}"
+            class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint and request.endpoint.startswith('assignments.') else '' }}"
+            title="Assignments">
+            <span class="icon" aria-hidden="true">🔗</span>
+            <span class="label">Assignments</span>
+          </a>
+        </li>
+        {% endif %}
         {% endif %}
 
       </ul>
