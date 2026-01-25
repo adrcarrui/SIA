@@ -19,12 +19,8 @@
     <table class="table table-sm align-middle">
       <thead class="table-light">
         <tr>
-          <th style="width:70px;">ID</th>
+          <th style="width:70px;">#</th>
           <th>Name</th>
-
-          <th class="col-uid">UID</th>
-          <th class="col-barcode">Barcode</th>
-
           <th style="min-width:160px;">Root type</th>
           <th style="min-width:180px;">Subtype</th>
           <th>Status</th>
@@ -43,26 +39,6 @@
               name="name"
               placeholder="Name"
               value="{{ filter_name or '' }}"
-            >
-          </th>
-
-          <th class="col-uid">
-            <input
-              type="text"
-              class="form-control form-control-sm"
-              name="uid"
-              placeholder="UID"
-              value="{{ filter_uid or '' }}"
-            >
-          </th>
-
-          <th class="col-barcode">
-            <input
-              type="text"
-              class="form-control form-control-sm"
-              name="barcode"
-              placeholder="Barcode"
-              value="{{ filter_barcode or '' }}"
             >
           </th>
 
@@ -122,32 +98,11 @@
         {% set req_bar  = (d.asset_type.requires_barcode if d.asset_type else False) %}
 
         <tr>
-          <td class="text-muted">{{ d.id }}</td>
+          <td class="text-muted">
+            {{ ((page - 1) * per_page) + loop.index }}
+          </td>
+
           <td>{{ d.name or '—' }}</td>
-
-          <td class="col-uid">
-            {% if req_rfid %}
-              {% if d.uid %}
-                <code>{{ d.uid }}</code>
-              {% else %}
-                <span class="text-muted">—</span>
-              {% endif %}
-            {% else %}
-              <span class="text-muted">—</span>
-            {% endif %}
-          </td>
-
-          <td class="col-barcode">
-            {% if req_bar %}
-              {% if d.barcode is defined and d.barcode %}
-                <code>{{ d.barcode }}</code>
-              {% else %}
-                <span class="text-muted">—</span>
-              {% endif %}
-            {% else %}
-              <span class="text-muted">—</span>
-            {% endif %}
-          </td>
 
           <td>
             {% if root_name %}
@@ -161,7 +116,6 @@
             {% if sub_name %}
               <span class="badge bg-light text-dark border">{{ sub_name }}</span>
 
-              {# mini “capabilities” para que se entienda el porqué de UID/Barcode #}
               <span class="ms-2 small text-muted">
                 {% if req_rfid %}<span class="badge bg-secondary">RFID</span>{% endif %}
                 {% if req_bar %}<span class="badge bg-secondary">BARCODE</span>{% endif %}
@@ -199,7 +153,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="9" class="text-center text-muted py-4">No devices.</td>
+          <td colspan="7" class="text-center text-muted py-4">No devices.</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -217,8 +171,6 @@
                           page=(page-1 if page>1 else 1),
                           per_page=per_page,
                           name=filter_name,
-                          uid=filter_uid,
-                          barcode=filter_barcode,
                           root_type_id=filter_root_type_id,
                           asset_type_id=filter_asset_type_id,
                           status=filter_status,
@@ -234,8 +186,6 @@
                           page=(page+1 if has_next else page),
                           per_page=per_page,
                           name=filter_name,
-                          uid=filter_uid,
-                          barcode=filter_barcode,
                           root_type_id=filter_root_type_id,
                           asset_type_id=filter_asset_type_id,
                           status=filter_status,
@@ -257,8 +207,6 @@
                          format='csv',
                          q=q,
                          name=filter_name,
-                         uid=filter_uid,
-                         barcode=filter_barcode,
                          root_type_id=filter_root_type_id,
                          asset_type_id=filter_asset_type_id,
                          status=filter_status,
@@ -273,8 +221,6 @@
                          format='xlsx',
                          q=q,
                          name=filter_name,
-                         uid=filter_uid,
-                         barcode=filter_barcode,
                          root_type_id=filter_root_type_id,
                          asset_type_id=filter_asset_type_id,
                          status=filter_status,
@@ -289,8 +235,6 @@
                          format='pdf',
                          q=q,
                          name=filter_name,
-                         uid=filter_uid,
-                         barcode=filter_barcode,
                          root_type_id=filter_root_type_id,
                          asset_type_id=filter_asset_type_id,
                          status=filter_status,
@@ -303,7 +247,7 @@
   </div>
 </div>
 
-{# JS: subtypes + ocultar columnas UID/Barcode según flags del subtipo/root #}
+{# JS: subtypes #}
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   const childrenMap = {{ children_map|tojson }};
@@ -353,72 +297,19 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  function setColumnsVisibility(showUid, showBarcode) {
-    const uidEls = document.querySelectorAll(".col-uid");
-    const barEls = document.querySelectorAll(".col-barcode");
-    uidEls.forEach(el => el.style.display = showUid ? "" : "none");
-    barEls.forEach(el => el.style.display = showBarcode ? "" : "none");
-  }
-
-  function flagsForRoot(rootId) {
-    const list = childrenMap[String(rootId)] || [];
-    return {
-      requires_rfid: list.some(x => !!x.requires_rfid),
-      requires_barcode: list.some(x => !!x.requires_barcode),
-    };
-  }
-
-  function flagsForSubtype(subtypeId) {
-    const all = allChildrenFlat();
-    const found = all.find(x => String(x.id) === String(subtypeId));
-    return found ? {
-      requires_rfid: !!found.requires_rfid,
-      requires_barcode: !!found.requires_barcode,
-    } : null;
-  }
-
-  function applyColumnsBySelection() {
-    const subtypeId = String(childSelect.value || "");
-    const rootId = String(rootSelect.value || "");
-
-    // 1) Si hay subtype, manda el subtype
-    if (subtypeId) {
-      const f = flagsForSubtype(subtypeId);
-      if (f) return setColumnsVisibility(f.requires_rfid, f.requires_barcode);
-    }
-
-    // 2) Si hay root, manda “si algún subtype lo requiere”
-    if (rootId) {
-      const f = flagsForRoot(rootId);
-      return setColumnsVisibility(f.requires_rfid, f.requires_barcode);
-    }
-
-    // 3) Sin filtros: mostramos ambas (no hagamos magia “creativa”)
-    setColumnsVisibility(true, true);
-  }
-
   if (!rootSelect || !childSelect) return;
 
-  // Si viene subtype pero root vacío, deducimos root
   if ((!selectedRoot || String(selectedRoot) === "") && selectedSubtype) {
     const guessed = deduceRootFromSubtype(selectedSubtype);
     if (guessed) rootSelect.value = guessed;
   }
 
   rootSelect.addEventListener("change", function () {
-    // Reset subtype cuando cambias root
     childSelect.value = "";
     refillSubtypeOptions(rootSelect.value || "");
-    applyColumnsBySelection();
   });
 
-  childSelect.addEventListener("change", function () {
-    applyColumnsBySelection();
-  });
-
-  // init
   refillSubtypeOptions(rootSelect.value || "");
-  applyColumnsBySelection();
 });
 </script>
 

@@ -72,16 +72,51 @@ def inject_notifications_unread_count():
 
 
 def get_asset_roots_and_children_map(db):
-    roots = (
+    role = (getattr(current_user, "role", "") or "").strip().lower()
+    dept = (getattr(current_user, "department", "") or "").strip().lower()
+
+    is_admin = ("admin" in role)
+    is_itc = (dept == "itc support") or role.startswith("itc")
+    is_tco = (dept == "tco")
+
+    # Root CARD id (si existe)
+    card_root = (
+        db.query(models.AssetType)
+          .filter(
+              models.AssetType.parent_id.is_(None),
+              models.AssetType.active.is_(True),
+              models.AssetType.code == "CARD",
+          )
+          .first()
+    )
+    card_root_id = card_root.id if card_root else None
+
+    # Roots visibles según perfil
+    roots_q = (
         db.query(models.AssetType)
           .filter(models.AssetType.parent_id.is_(None), models.AssetType.active.is_(True))
           .order_by(models.AssetType.sort_order.asc(), models.AssetType.code.asc())
-          .all()
     )
 
+    if not is_admin and card_root_id:
+        if is_tco:
+            roots_q = roots_q.filter(models.AssetType.id == card_root_id)
+        elif is_itc:
+            roots_q = roots_q.filter(models.AssetType.id != card_root_id)
+
+    roots = roots_q.all()
+
+    # ✅ Allowed roots = los que realmente puede ver este usuario
+    allowed_root_ids = {r.id for r in roots}
+
+    # Children: SOLO hijos de roots permitidos
     children = (
         db.query(models.AssetType)
-          .filter(models.AssetType.parent_id.isnot(None), models.AssetType.active.is_(True))
+          .filter(
+              models.AssetType.parent_id.isnot(None),
+              models.AssetType.active.is_(True),
+              models.AssetType.parent_id.in_(allowed_root_ids),
+          )
           .order_by(models.AssetType.sort_order.asc(), models.AssetType.code.asc())
           .all()
     )
@@ -115,33 +150,89 @@ def legacy_type_from_asset_code(asset_code: str) -> str:
 
 def build_devices_query(db, args):
     """
-    Filtros:
-    q, name, uid, root_type_id, asset_type_id, status, notes.
+    Filtros soportados:
+    q, name, root_type_id, asset_type_id, status, notes.
+
+    Reglas por perfil:
+    - Admin: ve todo
+    - TCO: solo devices con Root Type = CARD
+    - ITC support: solo devices con Root Type != CARD
+
+    Seguridad:
+    - TCO / ITC solo pueden filtrar por subtypes de roots permitidos
     """
+
+    # -------------------------
+    # Args
+    # -------------------------
     q       = (args.get("q") or "").strip()
     name    = (args.get("name") or "").strip()
-    uid     = (args.get("uid") or "").strip()
-    barcode = (args.get("barcode") or "").strip()
     root_id = (args.get("root_type_id") or "").strip()
     sub_id  = (args.get("asset_type_id") or "").strip()
     status  = (args.get("status") or "").strip()
     notes   = (args.get("notes") or "").strip()
 
+    # -------------------------
+    # Contexto usuario
+    # -------------------------
+    role = (getattr(current_user, "role", "") or "").strip().lower()
+    dept = (getattr(current_user, "department", "") or "").strip().lower()
+
+    is_admin = ("admin" in role)
+    is_itc = (dept == "itc support") or role.startswith("itc")
+    is_tco = (dept == "tco")
+
     Parent = aliased(models.AssetType)
 
+    # -------------------------
+    # Base query
+    # -------------------------
     query = (
         db.query(models.Device)
           .outerjoin(models.AssetType, models.Device.asset_type_id == models.AssetType.id)
           .outerjoin(Parent, models.AssetType.parent_id == Parent.id)
-          .options(joinedload(models.Device.asset_type).joinedload(models.AssetType.parent))
+          .options(
+              joinedload(models.Device.asset_type)
+              .joinedload(models.AssetType.parent)
+          )
     )
 
+    # -------------------------
+    # Root CARD
+    # -------------------------
+    card_root = (
+        db.query(models.AssetType)
+          .filter(
+              models.AssetType.parent_id.is_(None),
+              models.AssetType.active.is_(True),
+              models.AssetType.code == "CARD",
+          )
+          .first()
+    )
+    card_root_id = card_root.id if card_root else None
+
+    # -------------------------
+    # Filtro por perfil (root)
+    # -------------------------
+    if not is_admin and card_root_id:
+        is_card_root = or_(
+            Parent.id == card_root_id,          # subtypes de CARD
+            models.AssetType.id == card_root_id # CARD root directo
+        )
+
+        if is_tco:
+            query = query.filter(is_card_root)
+        elif is_itc:
+            query = query.filter(~is_card_root)
+
+    # -------------------------
+    # Search global (q)
+    # -------------------------
     if q:
         like = f"%{q}%"
         query = query.filter(
             or_(
                 models.Device.name.ilike(like),
-                models.Device.uid.ilike(like),
                 models.Device.status.ilike(like),
                 models.Device.notes.ilike(like),
                 models.AssetType.name.ilike(like),
@@ -151,27 +242,54 @@ def build_devices_query(db, args):
             )
         )
 
+    # -------------------------
+    # Filtro Name
+    # -------------------------
     if name:
         query = query.filter(models.Device.name.ilike(f"%{name}%"))
-    if uid:
-        query = query.filter(models.Device.uid.ilike(f"%{uid}%"))
-    if barcode:
-        query = query.filter(models.Device.barcode.ilike(f"%{barcode}%"))
 
-    # ✅ Root filter: incluye devices cuyo asset_type ES el root (USB sin hijos)
-    # y también devices cuyo asset_type es hijo de ese root.
+    # -------------------------
+    # Root filter explícito
+    # -------------------------
     if root_id:
         try:
             root_id_int = int(root_id)
             query = query.filter(
                 or_(
-                    Parent.id == root_id_int,              # subtypes del root
-                    models.AssetType.id == root_id_int     # el propio root
+                    Parent.id == root_id_int,
+                    models.AssetType.id == root_id_int
                 )
             )
         except ValueError:
             pass
 
+    # -------------------------
+    # Seguridad: validar subtype según perfil
+    # -------------------------
+    if sub_id and not is_admin and card_root_id:
+        try:
+            sub_id_int = int(sub_id)
+            at = (
+                db.query(models.AssetType)
+                  .filter(models.AssetType.id == sub_id_int)
+                  .first()
+            )
+            if at:
+                sub_root_id = at.parent_id or at.id
+
+                # TCO solo CARD
+                if is_tco and sub_root_id != card_root_id:
+                    sub_id = ""
+
+                # ITC support nunca CARD
+                if is_itc and sub_root_id == card_root_id:
+                    sub_id = ""
+        except ValueError:
+            sub_id = ""
+
+    # -------------------------
+    # Filtro Subtype
+    # -------------------------
     if sub_id:
         try:
             sub_id_int = int(sub_id)
@@ -179,13 +297,19 @@ def build_devices_query(db, args):
         except ValueError:
             pass
 
+    # -------------------------
+    # Status
+    # -------------------------
     if status:
         query = query.filter(models.Device.status == status)
+
+    # -------------------------
+    # Notes
+    # -------------------------
     if notes:
         query = query.filter(models.Device.notes.ilike(f"%{notes}%"))
 
     return query
-
 
 def _load_asset_type_for_device_or_error(db, asset_type_id_raw):
     """
@@ -234,8 +358,6 @@ def index():
     per_page = 20
 
     name          = (request.args.get("name") or "").strip()
-    uid           = (request.args.get("uid") or "").strip()
-    barcode       = (request.args.get("barcode") or "").strip()
     root_type_id  = (request.args.get("root_type_id") or "").strip()
     asset_type_id = (request.args.get("asset_type_id") or "").strip()
     status        = (request.args.get("status") or "").strip()
@@ -268,8 +390,6 @@ def index():
             has_next=page < pages,
 
             filter_name=name,
-            filter_uid=uid,
-            filter_barcode=barcode,
             filter_root_type_id=root_type_id,
             filter_asset_type_id=asset_type_id,
             filter_status=status,
@@ -278,11 +398,9 @@ def index():
             roots=roots,
             children_map=children_map,
             DEVICE_STATUSES=DEVICE_STATUSES,
-            
         )
     finally:
         db.close()
-
 
 @bp.route("/new", methods=["GET", "POST"])
 @login_required
@@ -296,14 +414,31 @@ def new_device():
 
             name   = (request.form.get("name") or "").strip()
             uid    = (request.form.get("uid") or "").strip()
-            status = (request.form.get("status") or "available").strip() or "available"
+
             notes  = (request.form.get("notes") or "").strip()
             barcode = (request.form.get("barcode") or "").strip() or None
 
             asset_type_id_raw = (request.form.get("asset_type_id") or "").strip()
 
-            active_val = request.form.get("active")
-            active = True if active_val is None else (active_val in ("on", "1", "true", "True"))
+            role = (getattr(current_user, "role", "") or "").strip().lower()
+            dept = (getattr(current_user, "department", "") or "").strip().lower()
+            is_admin = ("admin" in role)
+            is_itc = (dept == "itc support") or role.startswith("itc")
+            is_tco = (dept == "tco")
+
+            # Status: TCO e ITC al crear SIEMPRE available
+            if is_tco or is_itc:
+                status = "available"
+            else:
+                status = (request.form.get("status") or "available").strip() or "available"
+
+            # Active: para TCO/ITC siempre True
+            if is_tco or is_itc:
+                active = True
+            else:
+                active_val = request.form.get("active")
+                active = True if active_val is None else (active_val in ("on", "1", "true", "True"))
+
 
             if status not in DEVICE_STATUSES:
                 flash("Estado inválido. Se usará 'available'.", "warning")
@@ -565,8 +700,17 @@ def edit_device(device_id):
             d.type = dtype
             d.status = status
             d.notes = notes or None
+            role = (getattr(current_user, "role", "") or "").strip().lower()
+            dept = (getattr(current_user, "department", "") or "").strip().lower()
+            is_itc = (dept == "itc support") or role.startswith("itc")
+            is_tco = (dept == "tco")
+
             if hasattr(d, "active"):
-                d.active = (active_val == "on")
+                if is_tco or is_itc:
+                    d.active = True
+                else:
+                    d.active = (active_val == "on")
+
 
             if hasattr(d, "updated_at"):
                 d.updated_at = datetime.now(timezone.utc)
@@ -685,19 +829,16 @@ def delete_device(device_id):
 def export_devices():
     fmt = request.args.get("format", "csv").lower()
 
-    page     = max(int(request.args.get("page", 1)), 1)
-    per_page = int(request.args.get("per_page", 20))
-
     db = SessionLocal()
     try:
         query = build_devices_query(db, request.args)
+
+        # ✅ Exporta TODO lo filtrado (sin paginación)
         devices = (
             query.options(
                 joinedload(models.Device.asset_type).joinedload(models.AssetType.parent)
             )
             .order_by(models.Device.id.asc())
-            .offset((page - 1) * per_page)
-            .limit(per_page)
             .all()
         )
     finally:
@@ -712,26 +853,25 @@ def export_devices():
     else:
         return Response("Unsupported format", status=400)
 
-
 def _device_rows(devices):
     """
     Exporta el listado mostrando:
-    - Root type = asset_type.parent.name (si existe)
-    - Subtype = asset_type.name
-    - UID y Barcode según aplique
+    - # : número de fila
+    - Name
+    - Root type
+    - Subtype
+    - Status
+    - Notes
+
+    (Sin ID de BD, sin UID, sin Barcode)
     """
     rows = []
 
-    has_barcode = False
-    if devices:
-        has_barcode = hasattr(devices[0], "barcode")
-
-    header = ["ID", "Name", "UID", "Root type", "Subtype", "Status", "Notes"]
-    if has_barcode:
-        header.insert(3, "Barcode")
+    # Header
+    header = ["#", "Name", "Root type", "Subtype", "Status", "Notes"]
     rows.append(header)
 
-    for d in devices:
+    for idx, d in enumerate(devices, start=1):
         root_name = ""
         sub_name = ""
 
@@ -741,22 +881,17 @@ def _device_rows(devices):
                 root_name = getattr(d.asset_type.parent, "name", "") or ""
 
         row = [
-            d.id,
+            idx,                       # nº de fila
             d.name or "",
-            d.uid or "",
             root_name,
             sub_name,
             d.status or "",
             d.notes or "",
         ]
 
-        if has_barcode:
-            row.insert(3, getattr(d, "barcode", "") or "")
-
         rows.append(row)
 
     return rows
-
 
 def _export_devices_csv(devices):
     output = StringIO()

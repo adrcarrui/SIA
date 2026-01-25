@@ -91,39 +91,62 @@
         <div class="form-text">Only for assets that use barcode (e.g. laptops/USB).</div>
       </div>
 
-      {# Status #}
-      {% set _statuses = DEVICE_STATUSES if DEVICE_STATUSES is defined else ['available','assigned','lost','annulled'] %}
-      {% set current_status = (device.status if device and device.status else 'available') %}
-      <div class="col-md-6">
-        <label for="status" class="form-label">Status</label>
-        <select id="status" name="status" class="form-select">
-          {% if current_status not in _statuses %}
-            <option value="{{ current_status }}" selected>{{ current_status }}</option>
-          {% endif %}
-          {% for s in _statuses %}
-            <option value="{{ s }}" {{ 'selected' if current_status == s else '' }}>
-              {{ s }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
+{# Status #}
+{% set actor_role = (current_user.role or '')|lower|trim %}
+{% set actor_dept = (current_user.department or '')|lower|trim %}
+{% set is_tco = actor_dept == 'tco' %}
+{% set is_itc = actor_dept == 'itc support' or actor_role.startswith('itc') %}
 
-      {# Active #}
-      <div class="col-md-6 d-flex align-items-center">
-        <div class="form-check mt-2">
-          <input class="form-check-input"
-                 type="checkbox"
-                 id="active"
-                 name="active"
-                 value="1"
-                 {% if device %}
-                   {{ 'checked' if device.active else '' }}
-                 {% else %}
-                   checked
-                 {% endif %}>
-          <label class="form-check-label" for="active">Active</label>
+{% set _statuses = DEVICE_STATUSES if DEVICE_STATUSES is defined else ['available','assigned','lost','annulled'] %}
+{% set current_status = (device.status if device and device.status else 'available') %}
+
+{# CREATE: TCO e ITC -> status fijo available y oculto #}
+{% if (is_tco or is_itc) and not device %}
+  <input type="hidden" name="status" value="available">
+
+{# EDIT: TCO -> oculto y manda el status actual #}
+{% elif is_tco and device %}
+  <input type="hidden" name="status" value="{{ current_status }}">
+
+{# RESTO (Admin + otros + ITC edit): selector visible #}
+{% else %}
+  <div class="col-md-6">
+    <label for="status" class="form-label">Status</label>
+    <select id="status" name="status" class="form-select">
+      {% if current_status not in _statuses %}
+        <option value="{{ current_status }}" selected>{{ current_status }}</option>
+      {% endif %}
+      {% for s in _statuses %}
+        <option value="{{ s }}" {{ 'selected' if current_status == s else '' }}>
+          {{ s }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+{% endif %}
+
+            {# Active #}
+      {% if is_tco or is_itc %}
+        {# Para TCO/ITC: siempre true, no mostrar checkbox #}
+        <input type="hidden" name="active" value="1">
+      {% else %}
+        <div class="col-md-6 d-flex align-items-center">
+          <div class="form-check mt-2">
+            <input class="form-check-input"
+                   type="checkbox"
+                   id="active"
+                   name="active"
+                   value="1"
+                   {% if device %}
+                     {{ 'checked' if device.active else '' }}
+                   {% else %}
+                     checked
+                   {% endif %}>
+            <label class="form-check-label" for="active">Active</label>
+          </div>
         </div>
-      </div>
+      {% endif %}
+
 
       {# Notes #}
       <div class="col-12">
