@@ -3,8 +3,18 @@
 
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h2 class="mb-0">Notifications</h2>
-  <div class="text-muted small">
-    Unread: <span class="badge bg-danger">{{ unread_count or 0 }}</span>
+
+  <div class="d-flex align-items-center gap-2">
+    <div class="text-muted small">
+      Unread: <span class="badge bg-danger">{{ unread_count or 0 }}</span>
+    </div>
+
+    <form method="post" action="{{ url_for('notifications.mark_all_read', **request.args) }}">
+      <button class="btn btn-outline-success btn-sm" type="submit"
+              {% if (unread_count or 0) == 0 %}disabled{% endif %}>
+        Mark all read
+      </button>
+    </form>
   </div>
 </div>
 
@@ -30,7 +40,7 @@
 
   <div class="col-md-6 d-flex gap-2">
     <button class="btn btn-primary btn-sm mt-4" type="submit">Filter</button>
-    <a class="btn btn-secondary btn-sm mt-4" href="{{ url_for('notifications.index') }}">Clear</a>
+    <a class="btn btn-secondary btn-sm mt-4" href="{{ url_for('notifications.index', status=filter_status, unread='') }}">Clear</a>
   </div>
 </form>
 
@@ -38,9 +48,9 @@
   <table class="table table-sm align-middle">
     <thead class="table-light">
       <tr>
-        <th style="width:110px;">When</th>
+        <th style="width:170px;">When</th>
         <th style="width:90px;">Severity</th>
-        <th>Title</th>
+        <th>Description</th>
         <th style="width:130px;">Status</th>
         <th style="width:140px;">Actions</th>
       </tr>
@@ -49,25 +59,20 @@
     <tbody>
       {% for n in notifications %}
       <tr class="{% if not n.read_at %}table-warning{% endif %}">
-        <td class="text-muted small">{{ n.created_at }}</td>
-
-      <td>
-        {% set sev = (n.severity or 'notice')|lower|trim %}
-        {% set notif_label = {'notice':'Normal','warning':'Important','critical':'Urgent'}.get(sev, sev) %}
-        {% set scolor = {'notice':'secondary','warning':'warning','critical':'danger'}.get(sev, 'secondary') %}
-
-        <span class="badge bg-{{ scolor }}">{{ notif_label }}</span>
-      </td>
+        <td class="text-muted small">{{ n.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
 
         <td>
+          {% set sev = (n.severity or 'notice')|lower|trim %}
+          {% set notif_label = {'notice':'Normal','warning':'Important','critical':'Urgent'}.get(sev, sev) %}
+          {% set scolor = {'notice':'secondary','warning':'warning','critical':'danger'}.get(sev, 'secondary') %}
+          <span class="badge bg-{{ scolor }}">{{ notif_label }}</span>
+        </td>
+
+        <td style="max-width:260px;">
           <div class="fw-semibold">{{ n.title }}</div>
+
           {% if n.message %}
-            <div class="text-muted small">{{ n.message }}</div>
-          {% endif %}
-          {% if n.course_id %}
-            <div class="small">
-              Course: <span class="badge bg-light text-dark">#{{ n.course_id }}</span>
-            </div>
+            <div class="text-muted small" style="white-space: pre-line;">{{ n.message }}</div>
           {% endif %}
         </td>
 
@@ -80,12 +85,12 @@
         <td class="text-end">
           <div class="d-flex justify-content-end gap-2">
             {% if not n.read_at %}
-            <form method="post" action="{{ url_for('notifications.mark_read', notif_id=n.id) }}">
+            <form method="post" action="{{ url_for('notifications.mark_read', notif_id=n.id, **request.args) }}">
               <button class="btn btn-outline-success btn-sm" type="submit">Mark read</button>
             </form>
             {% endif %}
 
-            <form method="post" action="{{ url_for('notifications.change_status', notif_id=n.id) }}">
+            <form method="post" action="{{ url_for('notifications.change_status', notif_id=n.id, **request.args) }}">
               <select name="status" class="form-select form-select-sm d-inline-block" style="width:140px;">
                 <option value="open" {% if st == 'open' %}selected{% endif %}>open</option>
                 <option value="in_progress" {% if st == 'in_progress' %}selected{% endif %}>in_progress</option>
@@ -105,7 +110,8 @@
     </tbody>
   </table>
 </div>
-{# Pagination (mantiene filtros) #}
+
+{# Pagination (mantiene filtros reales: status + unread) #}
 <nav aria-label="Pagination">
   <ul class="pagination">
     <li class="page-item {% if not has_prev %}disabled{% endif %}">
@@ -113,10 +119,8 @@
          href="{{ url_for('notifications.index',
                           page=(page-1 if page>1 else 1),
                           per_page=per_page,
-                          q=q,
-                          scope=scope,
-                          only_unread=only_unread,
-                          type=type) }}">«</a>
+                          status=filter_status,
+                          unread=filter_unread) }}">«</a>
     </li>
 
     <li class="page-item active">
@@ -128,10 +132,8 @@
          href="{{ url_for('notifications.index',
                           page=(page+1 if has_next else page),
                           per_page=per_page,
-                          q=q,
-                          scope=scope,
-                          only_unread=only_unread,
-                          type=type) }}">»</a>
+                          status=filter_status,
+                          unread=filter_unread) }}">»</a>
     </li>
   </ul>
 </nav>
