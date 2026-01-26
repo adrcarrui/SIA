@@ -97,7 +97,7 @@
               </span>
             {% elif a.status == 'overdue_2' %}
               <span class="badge bg-danger">
-                Lost ({{ a.days_late }} day{% if a.days_late != 1 %}s{% endif %})
+                Overdue_2 ({{ a.days_late }} day{% if a.days_late != 1 %}s{% endif %})
               </span>
             {% else %}
               <span class="badge bg-secondary">{{ a.status }}</span>

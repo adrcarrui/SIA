@@ -40,9 +40,10 @@ def _guard():
 @login_required
 def index():
     # Default: mostrar solo unread al entrar
-    if request.args.get("unread") is None:
+# Default: al entrar mostrar solo OPEN (leídas y no leídas)
+    if request.args.get("status") is None:
         args = dict(request.args)
-        args["unread"] = "1"
+        args["status"] = "open"
         return redirect(url_for("notifications.index", **args))
 
     db = SessionLocal()
@@ -51,8 +52,14 @@ def index():
 
         status = (request.args.get("status") or "").strip()
         unread = (request.args.get("unread") or "").strip()
+        severity = (request.args.get("severity") or "").strip().lower()
         page = request.args.get("page", 1, type=int)
         per_page = request.args.get("per_page", 20, type=int)
+
+        # Validar severity para evitar valores basura
+        allowed_sev = {"", "notice", "warning", "critical"}
+        if severity not in allowed_sev:
+            severity = ""
 
         base = db.query(models.Notification).filter(models.Notification.active.is_(True))
 
@@ -67,6 +74,9 @@ def index():
                 models.Notification.read_at.is_(None),
                 models.Notification.status.notin_(["done", "dismissed"]),
             )
+
+        if severity:
+            base = base.filter(models.Notification.severity == severity)
 
         severity_rank = case(
             (models.Notification.severity == "critical", 3),
@@ -111,6 +121,7 @@ def index():
             unread_count=unread_count,
             filter_status=status,
             filter_unread=unread,
+            filter_severity=severity,
             page_title="Notifications",
             page=page,
             per_page=per_page,
@@ -218,5 +229,61 @@ def change_status(notif_id):
 
         db.commit()
         return redirect(url_for("notifications.index", **request.args))
+    finally:
+        db.close()
+
+@bp.route("/mark_all_done", methods=["POST"])
+@login_required
+def mark_all_done():
+    db = SessionLocal()
+    try:
+        scope = _dept_scope()
+
+        status = (request.args.get("status") or "").strip()
+        unread = (request.args.get("unread") or "").strip()  # "1" => solo no leídas
+
+        q = db.query(models.Notification).filter(models.Notification.active.is_(True))
+
+        # Scope por departamento (admin ve todo)
+        if scope:
+            q = q.filter(models.Notification.department_target == scope)
+
+        # Respetar filtros actuales
+        if status:
+            q = q.filter(models.Notification.status == status)
+
+        if unread == "1":
+            q = q.filter(
+                models.Notification.read_at.is_(None),
+                models.Notification.status.notin_(["done", "dismissed"]),
+            )
+
+        # Solo marcar las que tenga sentido "cerrar"
+        q = q.filter(models.Notification.status.notin_(["done", "dismissed"]))
+
+        now = datetime.now(timezone.utc)
+
+        updated = (
+            q.update(
+                {
+                    models.Notification.status: "done",
+                    models.Notification.updated_at: now,
+                    models.Notification.read_at: now,
+                    models.Notification.read_by_user_id: getattr(current_user, "id", None),
+                },
+                synchronize_session=False,
+            )
+            or 0
+        )
+
+        db.commit()
+        flash(f"Marked {updated} notification(s) as done.", "success")
+
+        # Volver a la vista manteniendo filtros
+        return redirect(url_for(
+            "notifications.index",
+            status=status,
+            unread=unread,
+        ))
     finally:
         db.close()

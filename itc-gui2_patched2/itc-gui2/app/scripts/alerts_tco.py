@@ -130,38 +130,50 @@ def get_tco_alerts(db):
 
         days_to_start = (sd - today).days
 
-        # 1) Curso empieza en <=3 días y no tiene tarjetas asignadas / o faltan
-        if 0 <= days_to_start <= 3:
-            if linked == 0:
+        # Estados lógicos del curso (por fechas)
+        course_finished = (ed is not None) and (ed < today)
+
+        course_active = (
+            (sd <= today) and
+            (ed is None or ed >= today)
+        )
+
+        course_planned = (sd > today)
+        planned_within_3_days = course_planned and (0 <= days_to_start <= 3)
+
+        # 1) Avisos "empieza pronto" SOLO para planned dentro de 3 días
+        if planned_within_3_days:
+            if req > 0 and linked == 0:
                 sev = "notice" if days_to_start == 3 else ("warning" if days_to_start == 2 else "critical")
                 severity = bump_severity(severity, sev)
-                req_txt = f"{req}" if req > 0 else "unknown"
-
                 reasons.append({
                     "key": "tco_start_soon_no_cards",
-                    "text": f"Course starts in {days_to_start} day(s) and has 0 cards linked (required {req_txt})."
+                    "text": f"Course starts in {days_to_start} day(s) and has 0 cards linked (required {req})."
                 })
 
             if req > 0 and 0 < linked < req:
                 sev = "warning" if days_to_start >= 2 else "critical"
                 severity = bump_severity(severity, sev)
-
                 reasons.append({
                     "key": "tco_start_soon_missing_cards",
                     "text": f"Course starts in {days_to_start} day(s) and is missing cards ({linked}/{req})."
                 })
 
-        # 2) Mismatch general (evita duplicado cuando start soon + linked==0)
-        if req > 0 and linked != req:
-            if not (linked == 0 and 0 <= days_to_start <= 3):
-                diff = linked - req
-                sev = "warning" if abs(diff) <= 2 else "critical"
-                severity = bump_severity(severity, sev)
+        # 2) Mismatch general:
+        # - ACTIVE: siempre
+        # - PLANNED: solo si empieza en <=3 días
+        # - FINISHED: nunca
+        should_alert_mismatch = (not course_finished) and (course_active or planned_within_3_days)
 
-                reasons.append({
-                    "key": "tco_cards_mismatch",
-                    "text": f"Cards linked ({linked}) do not match required ({req}). Diff={diff}."
-                })
+        if should_alert_mismatch and req > 0 and linked != req:
+            diff = linked - req
+            sev = "warning" if abs(diff) <= 2 else "critical"
+            severity = bump_severity(severity, sev)
+
+            reasons.append({
+                "key": "tco_cards_mismatch",
+                "text": f"Cards linked ({linked}) do not match required ({req}). Diff={diff}."
+            })
 
         # 3) Curso acabado: 1-7 warning, >7 critical (solo si quedan tarjetas enlazadas)
         if ed:
@@ -199,6 +211,7 @@ def get_tco_alerts(db):
             })
 
     return alerts
+
 def get_cards_vs_trainees_alerts(db, managed_by: str | None = None):
     """
     Cursos actuales/futuros donde:
