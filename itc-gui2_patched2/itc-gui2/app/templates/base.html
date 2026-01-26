@@ -116,7 +116,7 @@
                                         + (alerts_summary.critical or 0) %}
                   {% if total_alerts > 0 %}
                     <span
-                      class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger alerts-sidebar-badge">
+                      class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger sidebar-badge">
                       {{ '99+' if total_alerts > 99 else total_alerts }}
                       <span class="visually-hidden">active alerts</span>
                     </span>
@@ -147,17 +147,22 @@
 {% if dept_l != 'tco' and (('admin' in role_l or 'supervisor' in role_l) or dept_l.startswith('itc')) %}
   <li class="nav-item">
     <a href="{{ url_for('notifications.index') }}"
-       class="nav-link d-flex align-items-center gap-2 position-relative {{ 'active' if (request.endpoint and request.endpoint.startswith('notifications.')) else '' }}"
+       class="nav-link d-flex align-items-center gap-2 {{ 'active' if (request.endpoint and request.endpoint.startswith('notifications.')) else '' }}"
        title="Notifications">
-      <span class="icon" aria-hidden="true">🔔</span>
-      <span class="label">Notifications</span>
 
-      {% if notifications_unread_count is defined and notifications_unread_count|int > 0 %}
-        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-          {{ '99+' if notifications_unread_count|int > 99 else notifications_unread_count }}
-          <span class="visually-hidden">unread notifications</span>
-        </span>
-      {% endif %}
+      {# Wrapper relativo SOLO para el icono #}
+      <span class="icon position-relative d-inline-flex align-items-center" aria-hidden="true">
+        🔔
+
+        {% if notifications_unread_count is defined and notifications_unread_count|int > 0 %}
+          <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger sidebar-badge">
+            {{ '99+' if notifications_unread_count|int > 99 else notifications_unread_count }}
+            <span class="visually-hidden">unread notifications</span>
+          </span>
+        {% endif %}
+      </span>
+
+      <span class="label">Notifications</span>
     </a>
   </li>
 {% endif %}

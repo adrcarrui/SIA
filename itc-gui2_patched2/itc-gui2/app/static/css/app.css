@@ -445,3 +445,13 @@ button[data-bs-toggle="dropdown"]::before {
 
 .device-unknown{ background:#7f8c8d; }
 .device-badge{ min-width: 110px; text-align:center; }
+
+
+.sidebar-badge{
+  font-size: .70rem;
+  line-height: 1;
+  padding: .25em .45em;
+  min-width: 1.35rem;
+  text-align: center;
+  box-sizing: border-box;
+}
