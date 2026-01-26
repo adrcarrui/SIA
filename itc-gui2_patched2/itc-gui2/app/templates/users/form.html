@@ -57,26 +57,34 @@
         {% endif %}
       </div>
 
-      {# UID con lector NFC #}
+      {# UID con lector NFC (oculto por defecto; visible al leer) #}
       <div class="col-md-4">
         <label class="form-label">
           UID <span class="text-danger">*</span>
         </label>
+
         <div class="input-group">
           <input
-            type="text"
+            type="password"
             id="uid-input"
             name="uid"
             class="form-control"
             maxlength="64"
-            value="{{ user.uid if user and user.uid else '' }}"
-            placeholder="E.g. 04AABBCCDD"
+            value=""
+            placeholder="********"
             autocomplete="off"
+            readonly
           >
+
+          <button class="btn btn-outline-secondary" type="button" id="btn-toggle-uid" title="Show/Hide UID" aria-label="Show/Hide UID">
+            👁
+          </button>
+
           <button class="btn btn-outline-primary" type="button" id="btn-read-uid">
             <span id="btn-read-icon">📡</span> Read card
           </button>
         </div>
+
         <div id="uid-status" class="form-text mt-1 text-muted">
           Bring the device close and press <strong>Read card</strong>.
         </div>
@@ -171,17 +179,29 @@
 {# JS NFC #}
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-  const btn    = document.getElementById("btn-read-uid");
-  const status = document.getElementById("uid-status");
-  const input  = document.getElementById("uid-input");
-  const icon   = document.getElementById("btn-read-icon");
+  const btnRead   = document.getElementById("btn-read-uid");
+  const btnToggle = document.getElementById("btn-toggle-uid");
+  const status    = document.getElementById("uid-status");
+  const input     = document.getElementById("uid-input");
+  const icon      = document.getElementById("btn-read-icon");
 
   const AGENT_UID_URL = "http://127.0.0.1:8765/uid";
 
-  if (!btn || !status || !input || !icon) return;
+  if (!btnRead || !status || !input || !icon || !btnToggle) return;
+
+  function setUidVisibility(show) {
+    input.type = show ? "text" : "password";
+  }
+
+  // Por defecto: oculto
+  setUidVisibility(false);
+
+  btnToggle.addEventListener("click", function () {
+    setUidVisibility(input.type !== "text");
+  });
 
   async function readOnce() {
-    btn.disabled = true;
+    btnRead.disabled = true;
     icon.textContent = "⌛";
     status.className = "form-text mt-1 text-muted";
     status.textContent = "Attempting to read card…";
@@ -192,7 +212,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       if (!aData || !aData.success || !aData.uid) {
         status.className = "form-text mt-1 text-danger";
-        status.textContent = aData?.error || "No card detected.";
+        status.textContent = (aData && aData.error) ? aData.error : "No card detected.";
         return;
       }
 
@@ -209,6 +229,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
       if (data.success) {
         input.value = data.uid;
+
+        // 👇 Al leer, lo mostramos para que puedas comprobarlo
+        setUidVisibility(true);
+
         status.className = "form-text mt-1 text-success";
         status.textContent = "UID read: " + data.uid;
       } else {
@@ -219,12 +243,12 @@ document.addEventListener("DOMContentLoaded", function () {
       status.className = "form-text mt-1 text-danger";
       status.textContent = "Communication error.";
     } finally {
-      btn.disabled = false;
+      btnRead.disabled = false;
       icon.textContent = "📡";
     }
   }
 
-  btn.addEventListener("click", readOnce);
+  btnRead.addEventListener("click", readOnce);
 });
 </script>
 

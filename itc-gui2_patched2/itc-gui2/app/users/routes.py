@@ -441,10 +441,14 @@ def edit_user(user_id):
             user.surname = request.form.get("surname", "").strip()
 
             raw_uid = (request.form.get("uid") or "").strip()
-            if raw_uid == "" or raw_uid.lower() in ("none", "null"):
-                user.uid = None
-            else:
-                user.uid = raw_uid
+
+            # Solo actualizar si viene un valor nuevo explícito
+            if raw_uid:
+                if raw_uid.lower() in ("none", "null"):
+                    user.uid = None
+                else:
+                    user.uid = raw_uid
+            # si viene vacío, NO se toca (se mantiene el actual)
 
             user.username = (request.form.get("username") or "").strip()
             raw_email = (request.form.get("email") or "").strip()
