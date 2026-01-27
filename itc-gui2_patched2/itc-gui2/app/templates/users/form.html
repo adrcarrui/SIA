@@ -234,7 +234,7 @@ document.addEventListener("DOMContentLoaded", function () {
         setUidVisibility(true);
 
         status.className = "form-text mt-1 text-success";
-        status.textContent = "UID read: " + data.uid;
+        //status.textContent = "UID read: " + data.uid;
       } else {
         status.className = "form-text mt-1 text-danger";
         status.textContent = data.error || "Could not read card.";
