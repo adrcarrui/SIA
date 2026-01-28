@@ -10,13 +10,48 @@
 
   <!-- CSS app -->
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fullcalendar/main.min.css') }}">
-
-    <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet">
 
   <style>
-    .bg-content {
+    /* ==========================
+       LAYOUT: sidebar fija + scroll solo en contenido
+       ========================== */
+
+    html, body {
+      height: 100%;
+    }
+
+    /* El body NO debe scrollear */
+    body {
+      overflow: hidden;
+    }
+
+    /* Contenedor principal: ocupa toda la pantalla */
+    #app-layout {
+      height: 100vh;
+      overflow: hidden; /* nada de scroll aquí */
+    }
+
+    /* Sidebar: altura completa, sin moverse con el scroll del contenido */
+    #sidebar {
+      height: 100vh;
+      overflow-y: auto; /* si el menú es largo, que scrollee dentro del sidebar */
+      flex: 0 0 auto;
+    }
+
+    /* Contenido principal: columna (topbar + contenido scrolleable) */
+    main.bg-content {
+      height: 100vh;
+      overflow: hidden;            /* el main no scrollea */
+      display: flex;
+      flex-direction: column;
       background-color: #ffffff;
-      min-height: 100vh;
+    }
+
+    /* SOLO esta sección scrollea */
+    main.bg-content > section {
+      flex: 1 1 auto;
+      overflow-y: auto;
     }
   </style>
 </head>
@@ -31,7 +66,7 @@
     })();
   </script>
 
-<div class="d-flex"><!-- contenedor principal: sidebar + contenido -->
+<div class="d-flex" id="app-layout"><!-- contenedor principal: sidebar + contenido -->
 
   {# Normalizamos role y department para usarlos en el menú #}
   {% if current_user.is_authenticated %}
@@ -127,6 +162,7 @@
               <span class="label">Alerts</span>
             </a>
           </li>
+
           <!-- Assets -->
           {% set role = (current_user.role or '')|lower %}
           {% if 'admin' in role or 'supervisor' in role %}
@@ -150,7 +186,6 @@
        class="nav-link d-flex align-items-center gap-2 {{ 'active' if (request.endpoint and request.endpoint.startswith('notifications.')) else '' }}"
        title="Notifications">
 
-      {# Wrapper relativo SOLO para el icono #}
       <span class="icon position-relative d-inline-flex align-items-center" aria-hidden="true">
         🔔
 
@@ -200,10 +235,11 @@
       {% if not hide_topbar %}
       <header id="topbar" class="navbar navbar-expand bg-body border-bottom sticky-top">
         <div class="container-fluid">
-          <!-- Izquierda: título --><img src="{{ url_for('static', filename='img/tams-logo-wordmark.png') }}"
-       alt="TAMS - Training Assets Management System"
-       class="d-inline-block align-text-top"
-       style="max-height: 40px;">
+          <!-- Izquierda: título -->
+          <img src="{{ url_for('static', filename='img/tams-logo-wordmark.png') }}"
+               alt="TAMS - Training Assets Management System"
+               class="d-inline-block align-text-top"
+               style="max-height: 40px;">
           <h1 class="navbar-brand fs-6 mb-0">Training Assets Management System</h1>
 
           <!-- Derecha: reloj + usuario + logout -->
@@ -269,7 +305,6 @@
         </div>
         <form id="confirm-delete-form" method="post">
           <div class="modal-body">
-            {# El CSRF se clonará desde el formulario original vía JS si existe #}
             <p class="mb-2">
               Are you sure you want to delete user
               <strong id="confirm-delete-username"></strong>?
@@ -415,13 +450,9 @@
           const username = this.dataset.username || "this user";
           const url      = this.dataset.url;
 
-          // Texto del usuario en el modal
           nameEl.textContent = username;
-
-          // Action del formulario del modal
           formEl.action = url;
 
-          // Copiar CSRF desde el form original si existe
           const srcForm = this.closest("form");
           if (srcForm) {
             const srcCsrf = srcForm.querySelector("input[name='csrf_token']");

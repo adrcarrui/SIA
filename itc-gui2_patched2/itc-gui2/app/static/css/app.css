@@ -1,10 +1,12 @@
 /* Anchos del sidebar */
 #sidebar {
+  position: sticky;
   width: 180px;               /* abierto */
   transition: width 0.2s ease;
   background-color: #00205d !important;
 }
 body.sidebar-collapsed #sidebar {
+  position: sticky;
   width: 70px;                /* colapsado */
   background-color: #00205d;
 }
@@ -454,4 +456,28 @@ button[data-bs-toggle="dropdown"]::before {
   min-width: 1.35rem;
   text-align: center;
   box-sizing: border-box;
+}
+
+/* Layout: scroll solo en contenido, sidebar fija */
+html, body { height: 100%; }
+body { overflow: hidden; }
+
+#app-layout { height: 100vh; overflow: hidden; }
+
+/* Sidebar ocupa toda la altura y puede scrollear si hay muchos items */
+#sidebar {
+  height: 100vh;
+  overflow-y: auto; /* o hidden si quieres que NUNCA tenga scroll */
+}
+
+/* Main no scrollea, scrollea su section */
+main.bg-content {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+main.bg-content > section {
+  flex: 1 1 auto;
+  overflow-y: auto;
 }
