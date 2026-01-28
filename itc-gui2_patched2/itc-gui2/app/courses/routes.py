@@ -1469,7 +1469,8 @@ def assign_pcs(course_id):
                 return redirect(url_for("courses.assign_pcs", course_id=course_id))
 
             flash("PC(s) assigned.", "success")
-            return redirect(url_for("courses.detail", course_id=c.id))
+            return redirect(url_for("main.index"))
+            #return redirect(url_for("courses.detail", course_id=c.id))
 
         return render_template(
             "courses/assign_pcs.html",
