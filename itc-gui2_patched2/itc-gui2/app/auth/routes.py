@@ -45,7 +45,7 @@ def login():
         try:
             user = db.query(models.User).filter(models.User.username == username).first()
             if not user:
-                error = "Usuario o contraseña incorrectos"
+                error = "Invalid username or password."
             else:
                 pw_ok = False
                 # --- Case A: password_hash looks like bcrypt (starts with $2b$, $2y$, $2a$ etc.)
@@ -78,7 +78,7 @@ def login():
                         session["reset_sidebar"] = True
                         return redirect(url_for("main.index"))
                 else:
-                    error = "Usuario o contraseña incorrectos"
+                    error = "Invalid username or password."
         finally:
             db.close()
 
@@ -127,14 +127,14 @@ def nfc_login():
             return jsonify({
                 "success": False,
                 "reason": "unknown_uid",
-                "error": "Tarjeta no asociada a ningún usuario."
+                "error": "This card is not associated with any registered user."
             })
         
         if not user.active:
             return jsonify({
                 "success": False,
                 "reason": "inactive_user",
-                "error": "Usuario inactivo, acceso no permitido."
+                "error": "This user account is inactive. Access is not permitted."
             })
 
         # 3) Login

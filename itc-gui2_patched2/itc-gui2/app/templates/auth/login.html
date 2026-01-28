@@ -34,6 +34,14 @@
         <hr>
 
         <!-- Classic login as an alternative -->
+
+        {# ✅ NEW: Show credential-login errors #}
+        {% if error %}
+          <div class="alert alert-danger py-2 mb-3" role="alert">
+            {{ error }}
+          </div>
+        {% endif %}
+
         <form method="post" action="{{ url_for('auth.login') }}">
           <div class="mb-3">
             <label class="form-label">Username</label>
@@ -118,11 +126,11 @@ document.addEventListener('DOMContentLoaded', function () {
         const raw = await sResp.text();
         err.textContent = `Server error ${sResp.status}: ${raw.slice(0, 200)}`;
         return;
-}
+      }
       const sData = await sResp.json().catch(() => ({}));
 
       if (sData.success) {
-        msg.textContent = 'Tarjeta reconocida. Iniciando sesión...';
+        msg.textContent = 'Card recognized. Signing in...';
         err.textContent = '';
         stopPolling = true;
         const nextUrl = sData.next || "{{ url_for('main.index') }}";
@@ -131,13 +139,13 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       if (sData.reason === 'unknown_uid') {
-        err.textContent = sData.error || 'Tarjeta no reconocida.';
+        err.textContent = sData.error || 'This card is not associated with any user.';
       } else if (sData.reason === 'inactive_user') {
-        err.textContent = sData.error || 'Usuario inactivo.';
+        err.textContent = sData.error || 'This user account is inactive. Please contact an administrator.';
       } else if (sData.reason === 'missing_uid') {
-        err.textContent = 'No UID received from this PC.';
+        err.textContent = 'No UID was received from this computer.';
       } else {
-        err.textContent = sData.error || 'No se ha podido iniciar sesión con la tarjeta.';
+        err.textContent = sData.error || 'Unable to sign in using the NFC card.';
       }
 
     } catch (e) {
