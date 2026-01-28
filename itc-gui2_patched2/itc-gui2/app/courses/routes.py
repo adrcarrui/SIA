@@ -418,7 +418,7 @@ def edit_course(course_id):
                 return _render_course_form(db, "Edit course", c)
 
             flash("Course updated.", "success")
-            return redirect(url_for("courses.index"))
+            return redirect(url_for("main.index"))
 
         return _render_course_form(db, "Edit course", c)
 
