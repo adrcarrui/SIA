@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 
+{# Permisos: Admin o ITC support (cualquier variante que contenga "itc") #}
+{% set role_l = (current_user.role or '')|lower %}
+{% set dept_l = (current_user.department or '')|lower %}
+{% set can_assign_pcs = ('admin' in role_l) or ('itc' in dept_l) %}
+
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h2 class="mb-0">Courses</h2>
   <div class="d-flex align-items-center gap-2">
@@ -43,18 +48,18 @@
     <input type="hidden" name="page" value="1">
     <input type="hidden" name="per_page" value="{{ per_page }}">
 
-    <table class="table table-sm align-middle">
+    <table class="table table-sm align-middle" style="table-layout: fixed;">
       <thead class="table-light">
         <tr>
-          <th style="width:70px;">#</th>
-          <th>Course</th>
-          <th>Name</th>
-          <th>Client</th>
-          <th>Start</th>
-          <th>End</th>
-          <th>Status</th>
-          <th>Notes</th>
-          <th style="width:150px;">Actions</th>
+          <th style="width:60px;">#</th>
+          <th style="width:120px;">Course</th>
+          <th style="width:220px;">Name</th>
+          <th style="width:160px;">Client</th>
+          <th style="width:95px;">Start</th>
+          <th style="width:95px;">End</th>
+          <th style="width:110px;">Status</th>
+          <th style="width:260px;">Notes</th>
+          <th style="width:240px;">Actions</th>
         </tr>
 
         {# fila de filtros por columna #}
@@ -143,15 +148,27 @@
         {% for c in courses %}
         <tr>
           <td class="text-muted">{{ ((page - 1) * per_page) + loop.index }}</td>
-          <td>{{ c.course or '—'}}</td>
-          <td>{{ c.name or '—' }}</td>
-          <td>{{ c.client or '—' }}</td>
+
+          <td class="text-truncate" title="{{ c.course }}">
+            {{ c.course or '—' }}
+          </td>
+
+          <td class="text-truncate" title="{{ c.name }}">
+            {{ c.name or '—' }}
+          </td>
+
+          <td class="text-truncate" title="{{ c.client }}">
+            {{ c.client or '—' }}
+          </td>
+
           <td class="text-nowrap">
             {{ c.start_date if c.start_date is not none else '—' }}
           </td>
+
           <td class="text-nowrap">
             {{ c.end_date if c.end_date is not none else '—' }}
           </td>
+
           <td>
             {% set status_color = {
               'active':'success',
@@ -162,15 +179,27 @@
             }.get((c.auto_status or '')|lower, 'light') %}
             <span class="badge text-bg-{{ status_color }}">{{ c.auto_status or '—' }}</span>
           </td>
-          <td class="text-truncate" style="max-width:260px;">
+
+          <td class="text-truncate" title="{{ c.notes }}">
             {{ c.notes if c is defined and c.notes is not none else '' }}
           </td>
+
           <td class="text-end">
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2 justify-content-end flex-wrap">
               <a href="{{ url_for('assignments.new_bulk', course_id=c.id) }}"
                  class="btn btn-sm btn-primary">
                 Associate
               </a>
+
+            {% set actor_role = (current_user.role or '')|lower %}
+            {% set actor_dept = (current_user.department or '')|trim %}
+            {% if actor_role == 'admin' or actor_dept == 'ITC support' %}
+              <a class="btn btn-sm btn-primary"
+                href="{{ url_for('courses.assign_pcs', course_id=c.id) }}">
+                Assign PCs
+              </a>
+            {% endif %}
+
               <a href="{{ url_for('courses.edit_course', course_id=c.id) }}"
                  class="btn btn-secondary btn-sm">
                 Edit
