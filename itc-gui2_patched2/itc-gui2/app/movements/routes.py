@@ -17,6 +17,7 @@ from . import bp
 from app.db import SessionLocal
 from app.models import Movements, User
 from io import StringIO, BytesIO
+from flask import render_template, request, redirect, url_for, flash, send_file, Response, abort
 
 def build_movements_query(db, args):
     """
@@ -153,6 +154,8 @@ def index():
         has_prev = page > 1
         has_next = page * per_page < total
 
+        actions = [r[0] for r in db.query(Movements.action).distinct().order_by(Movements.action.asc()).all()]
+
         return render_template(
             "movements/index.html",
             movements=movements,
@@ -170,6 +173,8 @@ def index():
             filter_success=f_success,
             filter_date_from=f_date_from,
             filter_date_to=f_date_to,
+            # NEW
+            actions=actions,
         )
     finally:
         db.close()
@@ -249,39 +254,6 @@ def export_movements():
     else:
         return Response("Unsupported format", status=400)
     
-def _movement_rows(movements):
-    rows = []
-    rows.append([
-        "ID",
-        "Date",
-        "User",
-        "Action",
-        "Entity type",
-        "Entity ID",
-        "Description",
-    ])
-
-    for m in movements:
-        if m.user:
-            user_label = m.user.username or m.user.email or ""
-        else:
-            user_label = ""
-
-        date_str = m.created_at.strftime("%Y-%m-%d %H:%M") if m.created_at else ""
-        success_str = "Yes" if m.success else "No"
-
-        rows.append([
-            m.id,
-            date_str,
-            user_label,
-            m.action or "",
-            m.entity_type or "",
-            str(m.entity_id) if m.entity_id is not None else "",
-            (m.description or "")[:120],
-        ])
-
-    return rows
-
 
 def _export_movements_csv(movements):
     output = StringIO()
@@ -378,3 +350,21 @@ def _export_movements_pdf(movements):
         as_attachment=True,
         download_name="movements.pdf",
     )
+
+@bp.get("/<int:movement_id>/detail_fragment")
+@login_required
+def detail_fragment(movement_id):
+    db = SessionLocal()
+    try:
+        m = (
+            db.query(Movements)
+            .options(joinedload(Movements.user))
+            .filter(Movements.id == movement_id)
+            .first()
+        )
+        if not m:
+            abort(404)
+
+        return render_template("movements/detail_fragment.html", m=m)
+    finally:
+        db.close()

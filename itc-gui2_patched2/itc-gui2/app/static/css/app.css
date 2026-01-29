@@ -481,3 +481,16 @@ main.bg-content > section {
   flex: 1 1 auto;
   overflow-y: auto;
 }
+
+/* Sticky filter bar (below your fixed navbar) */
+.filters-sticky{
+  position: sticky;
+  top: 56px;              /* altura de tu navbar */
+  z-index: 1030;
+  background: var(--bs-body-bg);
+}
+
+/* optional */
+.filters-sticky hr{
+  margin-bottom: 0;
+}

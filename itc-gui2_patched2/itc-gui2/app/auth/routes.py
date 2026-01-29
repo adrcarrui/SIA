@@ -18,7 +18,6 @@ PC/SC reader and sends the UID to this endpoint.
 
 from app.scripts import log_movement
 
-
 def _normalize_uid(uid: str) -> str:
     """Normalize UID for DB lookup.
 
@@ -75,6 +74,7 @@ def login():
                     else:
                         # login_user espera un objeto que implemente get_id() (tu modelo SQLAlchemy lo hace)
                         login_user(user, remember=bool(request.form.get("remember")))
+                        session.permanent = True
                         session["reset_sidebar"] = True
                         return redirect(url_for("main.index"))
                 else:

@@ -9,8 +9,14 @@
 {% set actor_dept = (current_user.department or '') %}
 {% set show_itc = (actor_role == 'admin') or (actor_dept == 'ITC support') %}
 
-{# Requirements: TCO y Admin pueden editar. ITC solo ver. #}
-{% set can_edit_req = (actor_role == 'admin') or (actor_dept == 'TCO') %}
+{# Requirements:
+   - Admin: puede editar
+   - TCO: puede editar
+   - ITC support: SOLO supervisors pueden editar (employees: solo lectura)
+ #}
+{% set can_edit_req = (actor_role == 'admin')
+                    or (actor_dept == 'TCO')
+                    or (actor_dept == 'ITC support' and actor_role == 'supervisor') %}
 {% set req_map = req_map|default({}) %}
 {% set itc_asset_types = itc_asset_types|default([]) %}
 

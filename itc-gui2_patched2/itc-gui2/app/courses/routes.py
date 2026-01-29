@@ -1447,6 +1447,35 @@ def assign_pcs(course_id):
                 d.updated_at = now
 
             db.flush()
+            # devices ya lo tienes (lista de Device)
+            device_ids = [d.id for d in devices]
+
+            # intenta mostrar algo humano: name (barcode) si existe
+            device_labels = []
+            for d in devices:
+                name = (getattr(d, "name", None) or "").strip()
+                barcode = (getattr(d, "barcode", None) or "").strip()
+
+                if name and barcode:
+                    device_labels.append(f"{name} ({barcode})")
+                elif name:
+                    device_labels.append(name)
+                elif barcode:
+                    device_labels.append(barcode)
+                else:
+                    # último recurso (si NO quieres IDs nunca, pon "Unknown device")
+                    device_labels.append("Unknown device")
+
+            # evita descriptions kilométricas
+            MAX_SHOW = 8
+            shown = device_labels[:MAX_SHOW]
+            extra_n = max(len(device_labels) - MAX_SHOW, 0)
+
+            description = (
+                f"Assigned PCs to course '{(c.course or c.name or f'Course #{c.id}')}'"
+                + (": " + ", ".join(shown) if shown else "")
+                + (f" (+{extra_n} more)" if extra_n else "")
+            )
 
             log_movement(
                 db,
@@ -1455,12 +1484,16 @@ def assign_pcs(course_id):
                 entity_id=c.id,
                 action="assign_pcs",
                 before_data=None,
-                after_data={"device_ids": [d.id for d in devices]},
-                description=f"Assigned PCs to course '{c.course or c.name}'",
+                after_data={
+                    # SOLO labels humanos
+                    "devices": shown,
+                    "devices_total": len(device_labels),
+                    "devices_extra": extra_n,  # opcional, por si quieres pintar algo en UI
+                },
+                description=description,
                 success=True,
                 user_agent=request.user_agent.string,
             )
-
             try:
                 db.commit()
             except IntegrityError:

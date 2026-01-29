@@ -1,5 +1,6 @@
 # app/__init__.py
-from flask import Flask, redirect, url_for, request
+from datetime import datetime,timedelta
+from flask import Flask, redirect, url_for, request, session
 from .extensions import db as sqla_db, login_manager, bcrypt   # ← instancia de Flask-SQLAlchemy
 from .db import DATABASE_URL                                   # ← tu URL de SQLAlchemy puro
 from flask_login import current_user
@@ -8,16 +9,51 @@ from app.scripts.get_overdue_assignments import (
     get_overdue_course_alerts,
 )
 from app.db import SessionLocal
-
+from flask.sessions import SecureCookieSessionInterface
 # NFC is optional. In the distributed-reader model, the server does not need PC/SC.
 try:
     from app.nfc.acr122 import init_buzzer_off
 except Exception:  # smartcard libs/reader not installed on server
     init_buzzer_off = None
 
-
 def create_app():
     app = Flask(__name__)
+    class DeptSessionInterface(SecureCookieSessionInterface):
+        def get_expiration_time(self, app, session):
+            # Si la sesión no es permanente, Flask no pone expiración (cookie de navegador)
+            if not session.permanent:
+                return None
+
+            try:
+                from flask_login import current_user
+                dept = (getattr(current_user, "department", "") or "").strip().lower()
+            except Exception:
+                dept = ""
+
+            # TCO: 30 minutos
+            if dept == "tco":
+                return datetime.utcnow() + timedelta(minutes=30)
+
+            # ITC Support: muy largo (prácticamente nunca)
+            if dept == "itc support":
+                return datetime.utcnow() + timedelta(days=3650)  # 10 años
+
+            # Resto: 15 minutos
+            return datetime.utcnow() + timedelta(minutes=15)
+
+    app.session_interface = DeptSessionInterface()
+
+    @app.before_request
+    def refresh_session_by_dept():
+        if not current_user.is_authenticated:
+            return
+
+        # No dejes que el polling mantenga viva la sesión
+        if request.path.startswith("/api/counters"):
+            return
+
+        # Renovar expiración en actividad real
+        session.permanent = True
 
     if init_buzzer_off is not None:
         try:
@@ -29,6 +65,7 @@ def create_app():
     app.config["SECRET_KEY"] = "cambia-esto"
     app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
     # Inicializa extensiones (usa sqla_db, NO "db")
     sqla_db.init_app(app)
@@ -85,6 +122,7 @@ def create_app():
     from .asset_types import bp as asset_types_bp
     from .notifications import bp as notifications_bp
     from .alerts import bp as alerts_bp
+    from .api import bp as api_bp
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(main_bp)
@@ -96,6 +134,7 @@ def create_app():
     app.register_blueprint(asset_types_bp, url_prefix="/asset_types")
     app.register_blueprint(notifications_bp, url_prefix="/notifications")
     app.register_blueprint(alerts_bp, url_prefix="/alerts")
+    app.register_blueprint(api_bp, url_prefix="/api")
 
     with app.app_context():
         print("\n== URL MAP ==")

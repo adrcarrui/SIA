@@ -184,9 +184,9 @@
         >
           <span class="fw-semibold">Alerts</span>
 
-          {# Total de alertas a la derecha dentro del botón #}
+          <!--{# Total de alertas a la derecha dentro del botón #}
           <span class="ms-auto badge rounded-pill bg-danger">
-            {{ alerts|length if alerts else 0 }}
+            {{ alerts|length if alerts else 0 }}-->
           </span>
         </button>
       </h2>
@@ -200,14 +200,14 @@
         <div class="accordion-body">
 
           {% if alerts_summary %}
-            <div class="mt-2 small d-flex flex-wrap gap-2">
-              <span class="badge btn-notice-primary text-dark">
+            <div class="mt-2 small d-flex flex-wrap">
+              <span class="badge btn-notice-primary text-dark fs-6 px-3 py-2">
                 Notice: {{ alerts_summary.notice or 0 }}
               </span>
-              <span class="badge btn-warning-primary text-dark">
+              <span class="badge btn-warning-primary text-dark fs-6 px-3 py-2">
                 Warning: {{ alerts_summary.warning or 0 }}
               </span>
-              <span class="badge bg-danger text-dark">
+              <span class="badge bg-danger text-dark fs-6 px-3 py-2">
                 Critical: {{ alerts_summary.critical or 0 }}
               </span>
             </div>
