@@ -287,3 +287,32 @@ def mark_all_done():
         ))
     finally:
         db.close()
+
+@bp.route("/<int:notif_id>/unread", methods=["POST"])
+@login_required
+def mark_unread(notif_id):
+    db = SessionLocal()
+    try:
+        scope = _dept_scope()
+
+        n = db.query(models.Notification).get(notif_id)
+        if not n or not n.active:
+            flash("Notification not found.", "warning")
+            return redirect(url_for("notifications.index"))
+
+        if scope and n.department_target != scope and not _is_admin():
+            abort(403)
+
+        # No permitir volver a unread si está DONE
+        if (n.status or "").strip().lower() == "done":
+            flash("Done notifications cannot be marked as unread.", "warning")
+            return redirect(url_for("notifications.index", **request.args))
+
+        n.read_at = None
+        n.read_by_user_id = None
+        n.updated_at = datetime.now(timezone.utc)
+
+        db.commit()
+        return redirect(url_for("notifications.index", **request.args))
+    finally:
+        db.close()

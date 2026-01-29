@@ -39,13 +39,13 @@
     <label class="form-label">Severity</label>
     <select name="severity" class="form-select form-select-sm">
       <option value="" {% if not filter_severity %}selected{% endif %}>All</option>
-      <option value="notice" {% if filter_severity == 'notice' %}selected{% endif %}>notice</option>
-      <option value="warning" {% if filter_severity == 'warning' %}selected{% endif %}>warning</option>
-      <option value="critical" {% if filter_severity == 'critical' %}selected{% endif %}>critical</option>
+      <option value="notice" {% if filter_severity == 'notice' %}selected{% endif %}>Normal</option>
+      <option value="warning" {% if filter_severity == 'warning' %}selected{% endif %}>Important</option>
+      <option value="critical" {% if filter_severity == 'critical' %}selected{% endif %}>Urgent</option>
     </select>
   </div>
 
-    <div class="col-md-3">
+  <div class="col-md-3">
     <label class="form-label">Status</label>
     <select name="status" class="form-select form-select-sm">
       <option value="" {% if not filter_status %}selected{% endif %}>All</option>
@@ -121,13 +121,22 @@
           <div class="d-flex justify-content-end align-items-center gap-2 flex-nowrap">
 
             {% if not n.read_at %}
-            <form method="post"
-                  action="{{ url_for('notifications.mark_read', notif_id=n.id, **request.args) }}"
-                  class="m-0">
-              <button class="btn btn-outline-success btn-sm" type="submit">
-                Mark read
-              </button>
-            </form>
+              <form method="post"
+                    action="{{ url_for('notifications.mark_read', notif_id=n.id, **request.args) }}"
+                    class="m-0">
+                <button class="btn btn-outline-success btn-sm" type="submit">
+                  Mark read
+                </button>
+              </form>
+            {% elif st != 'done' %}
+              <form method="post"
+                    action="{{ url_for('notifications.mark_unread', notif_id=n.id, **request.args) }}"
+                    class="m-0">
+                <button class="btn btn-outline-secondary btn-sm" type="submit"
+                        title="Mark as unread">
+                  Mark unread
+                </button>
+              </form>
             {% endif %}
 
             <form method="post"
