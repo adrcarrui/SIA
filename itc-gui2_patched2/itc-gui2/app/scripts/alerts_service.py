@@ -2,6 +2,7 @@ from flask import current_app
 from app.scripts.alerts_itc import get_itc_upcoming_and_overdue_alerts
 from app.scripts.alerts_tco import get_tco_alerts
 from app.scripts.alert_state_service import upsert_seen_alert, apply_alert_states
+from app.models import AlertState, Course
 
 SEV_RANK = {"notice": 1, "warning": 2, "critical": 3}
 
@@ -151,10 +152,73 @@ def get_alerts_for_user(db, user, include_hidden: bool = False):
     else:
         alerts = []
 
+    # ---------------------------------------------------------------------
+    # ✅ CLAVE: si include_hidden=True, inyectar alertas persistidas en DB
+    # (snoozed/ignored/ack) aunque el motor ya no las genere ahora.
+    # ---------------------------------------------------------------------
+    if include_hidden and scope != "other":
+        try:
+            rows = (
+                db.query(AlertState)
+                .filter(AlertState.scope == scope)
+                .filter(AlertState.status.in_(["snoozed", "ignored", "ack"]))
+                .all()
+            ) or []
+
+            # Index de lo ya presente (course_id, alert_key)
+            present = set()
+            for a in alerts:
+                cid = a.get("course_id") or getattr(a.get("course"), "id", None)
+                if not cid:
+                    continue
+                for r in (a.get("reasons") or []):
+                    k = (r or {}).get("key")
+                    if k:
+                        present.add((int(cid), str(k)))
+
+            injected = 0
+
+            for st in rows:
+                cid = int(st.course_id)
+                key = str(st.alert_key or "").strip()
+                if not key:
+                    continue
+
+                if (cid, key) in present:
+                    continue
+
+                # cargar el curso (opcional, pero mejora la UX)
+                course_obj = None
+                try:
+                    course_obj = db.query(Course).get(cid)
+                except Exception:
+                    course_obj = None
+
+                alerts.append({
+                    "course_id": cid,
+                    "course": course_obj,
+                    "severity": "notice",
+                    "reasons": [{
+                        "key": key,
+                        "text": "Hidden alert (state stored)",
+                    }],
+                })
+
+                present.add((cid, key))
+                injected += 1
+
+            current_app.logger.warning(
+                "GA: injected_hidden=%s scope=%s include_hidden=%s rows=%s",
+                injected, scope, include_hidden, len(rows)
+            )
+
+        except Exception:
+            current_app.logger.exception("GA: inject hidden alert_states failed")
+
     # 1) Agregamos por curso/severidad
     alerts = _aggregate_alerts_by_course_and_severity(alerts)
 
-    # 👇 En tu DB existe updated_by (varchar), NO updated_by_user_id (bigint)
+    # En tu DB existe updated_by (varchar)
     updated_by = getattr(user, "email", None) or getattr(user, "username", None)
 
     # 2) UPSERT "seen" en alert_states por cada reason key
@@ -195,9 +259,13 @@ def get_alerts_for_user(db, user, include_hidden: bool = False):
         except Exception:
             pass
 
-    # 3) Aplicar estados (oculta snoozed/ignored, marca ack) + include_hidden
+    # 3) Aplicar estados (oculta snoozed/ignored si include_hidden=False)
     try:
         alerts = apply_alert_states(db, scope, alerts, include_hidden=include_hidden)
+        current_app.logger.warning(
+            "GA: after_apply n=%s scope=%s include_hidden=%s",
+            len(alerts), scope, include_hidden
+        )
     except Exception:
         current_app.logger.exception("apply_alert_states failed")
 

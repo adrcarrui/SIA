@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.extensions import db as sqla_db
 from app.alerts import bp  # el blueprint
 from app.scripts.alert_state_service import set_alert_state, clear_alert_state
+from app.models import AlertState
 
 
 def _json_error(msg: str, code: int = 400):
@@ -65,7 +66,17 @@ def api_alert_ack():
 
     if course_id is None or not alert_key:
         return _json_error("Missing course_id/alert_key")
-
+    
+    current_app.logger.warning(
+        "ALERT API: action=%s user=%s dept=%r role=%r scope=%s course_id=%s key=%s",
+        "ack",
+        getattr(current_user, "email", None),
+        getattr(current_user, "department", None),
+        getattr(current_user, "role", None),
+        scope,
+        course_id,
+        alert_key,
+    )
     try:
         set_alert_state(
             sqla_db.session,
@@ -96,7 +107,17 @@ def api_alert_ignore():
 
     if course_id is None or not alert_key:
         return _json_error("Missing course_id/alert_key")
-
+    
+    current_app.logger.warning(
+        "ALERT API: action=%s user=%s dept=%r role=%r scope=%s course_id=%s key=%s",
+        "ignore",
+        getattr(current_user, "email", None),
+        getattr(current_user, "department", None),
+        getattr(current_user, "role", None),
+        scope,
+        course_id,
+        alert_key,
+    )
     try:
         set_alert_state(
             sqla_db.session,
@@ -134,7 +155,16 @@ def api_alert_snooze():
             "Invalid until datetime (ISO8601 with timezone required). "
             "Example: 2026-01-20T09:00:00+01:00"
         )
-
+    current_app.logger.warning(
+        "ALERT API: action=%s user=%s dept=%r role=%r scope=%s course_id=%s key=%s",
+        "snooze",
+        getattr(current_user, "email", None),
+        getattr(current_user, "department", None),
+        getattr(current_user, "role", None),
+        scope,
+        course_id,
+        alert_key,
+    )
     try:
         set_alert_state(
             sqla_db.session,
@@ -147,6 +177,18 @@ def api_alert_snooze():
             updated_by=_updated_by(),
         )
         sqla_db.session.commit()
+        row = (
+        sqla_db.session.query(AlertState)
+        .filter_by(scope=scope, course_id=int(course_id), alert_key=alert_key)
+        .first()
+        )
+        current_app.logger.warning(
+            "ALERT API: persisted=%s scope=%s course_id=%s key=%s",
+            bool(row),
+            scope,
+            course_id,
+            alert_key,
+        )
         return jsonify({"ok": True, "scope": scope})
     except SQLAlchemyError:
         current_app.logger.exception("api_alert_snooze failed")

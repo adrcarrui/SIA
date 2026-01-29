@@ -20,6 +20,11 @@ def alerts_index():
     course_q = (request.args.get("course") or "").strip()   # 👈 NUEVO
     show_hidden = request.args.get("show_hidden") == "1"    # 👈 NUEVO
 
+    def is_tco_employee(user) -> bool:
+        role = (getattr(user, "role", "") or "").strip().lower()
+        dept = (getattr(user, "department", "") or "").strip().lower()
+        return (dept == "tco") and (role == "employee")
+
     # paginación
     try:
         page = max(int(request.args.get("page", 1)), 1)
@@ -49,7 +54,8 @@ def alerts_index():
         q=q,
         responsible=responsible,
         state=state,
-        course_q=course_q,  # 👈 NUEVO (tienes que añadirlo abajo en filter_alerts)
+        course_q=course_q,
+        include_hidden=show_hidden,   # 👈 NUEVO (tienes que añadirlo abajo en filter_alerts)
     )
 
     total = len(alerts)
@@ -63,6 +69,8 @@ def alerts_index():
         start = (page - 1) * per_page
         end = start + per_page
         page_items = alerts[start:end]
+
+    tco_employee_flag = bool(is_tco_employee(current_user))
 
     return render_template(
         "alerts/index.html",
@@ -81,6 +89,7 @@ def alerts_index():
         per_page=per_page,
         total=total,
         total_pages=total_pages,
+        is_tco_employee = tco_employee_flag,
     )
 
 def scope_for_user(user) -> str:

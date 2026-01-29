@@ -27,7 +27,7 @@
       <thead>
         <tr>
           <th style="width:110px;">Severity</th>
-          <th style="width:180px;">Type</th>
+          <th style="width:180px;">State</th>
           <th>Description</th>
           <th style="width:220px;">Course</th>
           <th style="width:180px;">Responsible</th>
@@ -218,6 +218,7 @@
                     View
                   </button>
 
+                  {% if not is_tco_employee %}
                   <button type="button"
                           class="btn btn-outline-secondary"
                           data-action="ack"
@@ -285,6 +286,7 @@
                           data-alert-key="{{ key }}">
                     Open
                   </button>
+                  {% endif %}
                 </div>
               {% endfor %}
             {% elif course_obj %}
