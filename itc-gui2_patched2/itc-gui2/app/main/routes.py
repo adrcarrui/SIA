@@ -1,4 +1,4 @@
-﻿from flask import render_template, session, request
+﻿from flask import render_template, session, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from . import bp
 from app.extensions import db
@@ -7,12 +7,13 @@ from app.scripts.get_overdue_assignments import (
     get_overdue_course_alerts,
     get_cards_vs_trainees_alerts,
 )
-from app.models import User, Device, Course, Assignment, Movements
+from app.models import User, Device, Course, Assignment, Movements, Notification
 from sqlalchemy import func, case
 import app.models as models
 from app.scripts.alerts_service import get_alerts_for_user
 from app.scripts.alert_filters import reason_counts_for_calendar
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 def _notif_scope_for_user():
     role = (getattr(current_user, "role", "") or "").strip().lower()
@@ -340,7 +341,50 @@ def index():
             else:
                 sev = a_sev if a_sev in alerts_summary else "notice"
                 alerts_summary[sev] += 1
+        # =====================================================
+        # ITC: aviso rápido de "pickup needed" (si existe)
+        # =====================================================
+        pickup_notif = None
+        if is_itc or is_admin:
+            pickup_notif = (
+                db.query(models.Notification)
+                .filter(models.Notification.active.is_(True))
+                .filter(models.Notification.department_target == "ITC support")
+                .filter(models.Notification.status == "open")
+                .filter(models.Notification.type == "pickup_needed")
+                .order_by(models.Notification.created_at.desc())
+                .first()
+            )    
 
+        pickup_message_display = None
+
+        if pickup_notif:
+            # Hora local bien formateada
+            local_when = None
+            if pickup_notif.created_at:
+                dt = pickup_notif.created_at
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                local_dt = dt.astimezone(ZoneInfo("Europe/Madrid"))
+                local_when = local_dt.strftime("%d/%m/%Y %H:%M")
+
+            # Extraer nota si existe (sin jugar a regex extremo)
+            note = None
+            raw_msg = pickup_notif.message or ""
+            if "Note:" in raw_msg:
+                note = raw_msg.split("Note:", 1)[1].strip()
+
+            # Construir mensaje final
+            parts = []
+            #parts.append("TCO requests ITC pickup.")
+
+            #if local_when:
+            #    parts.append(f"When: {local_when}")
+
+            if note:
+                parts.append(f"Note: {note}")
+
+            pickup_message_display = "\n".join(parts)   
         # =====================================================
         # Render
         # =====================================================
@@ -355,6 +399,8 @@ def index():
             device_stats=device_stats,
             alerts=alerts,
             alerts_summary=alerts_summary,
+            pickup_notif=pickup_notif,
+            pickup_message_display=pickup_message_display,
         )
 
     finally:
@@ -480,5 +526,48 @@ def inject_notifications_summary():
 
         unread = q.count()
         return dict(notifications_summary={"unread": unread})
+    finally:
+        db.close()
+
+@bp.route("/dashboard/pickup/<int:notif_id>/done", methods=["POST"])
+@login_required
+def mark_pickup_done(notif_id):
+    db = SessionLocal()
+    try:
+        actor_role = (getattr(current_user, "role", "") or "").strip().lower()
+        actor_dept = (getattr(current_user, "department", "") or "").strip().lower()
+
+        is_admin = ("admin" in actor_role)
+        is_itc = (actor_dept == "itc support") or actor_role.startswith("itc")
+
+        if not (is_admin or is_itc):
+            flash("Not allowed.", "danger")
+            return redirect(url_for("main.index"))
+
+        n = db.query(Notification).get(notif_id)
+        if not n or not (n.active is True):
+            flash("Notification not found.", "warning")
+            return redirect(url_for("main.index"))
+
+        # Asegura que no puedan cerrar “cualquier cosa”
+        if (n.type or "") != "pickup_needed" or (n.department_target or "") != "ITC support":
+            flash("Not allowed.", "danger")
+            return redirect(url_for("main.index"))
+
+        n.status = "done"
+        # opcional: marcar como leído también
+        try:
+            n.read = True
+        except Exception:
+            pass
+
+        # opcional: si tienes campos de auditoría
+        if hasattr(n, "updated_at"):
+            n.updated_at = datetime.now(timezone.utc)
+
+        db.commit()
+        flash("Pickup marked as done.", "success")
+        return redirect(url_for("main.index"))
+
     finally:
         db.close()
