@@ -482,15 +482,408 @@ main.bg-content > section {
   overflow-y: auto;
 }
 
-/* Sticky filter bar (below your fixed navbar) */
-.filters-sticky{
+body.no-page-scroll { overflow: hidden; }
+
+.devices-page{
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.devices-panel{
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* HEADER fijo con 2 filas */
+.devices-header-2rows{
   position: sticky;
-  top: 56px;              /* altura de tu navbar */
-  z-index: 1030;
+  top: 56px;
+  z-index: 2500;
+  background: var(--bs-body-bg);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+/* MISMA rejilla para nombres y filtros */
+.devices-grid-cols{
+  display: grid;
+  grid-template-columns: 70px 1.4fr 160px 180px 140px 1.2fr 150px;
+  gap: .5rem;
+  align-items: center;
+  padding: .35rem .5rem;
+}
+
+.devices-grid-cols-head{
+  background: rgba(0,0,0,.03);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+.devices-th{
+  font-weight: 600;
+}
+
+.devices-grid-cols-filters{
+  padding-top: .5rem;
+  padding-bottom: .5rem;
+}
+
+/* Solo scrollea la tabla */
+.devices-table-scroll{
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ====== layout general (ya lo tienes, lo dejo aquí por contexto) ====== */
+body.no-page-scroll { overflow: hidden; }
+
+.devices-page{
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.devices-panel{
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ====== UNA sola verdad: anchos de columnas ====== */
+:root{
+  --dev-col-num: 70px;
+  --dev-col-name: 220px;     /* Name más pequeño */
+  --dev-col-ident: 200px;    /* nueva columna */
+  --dev-col-root: 160px;
+  --dev-col-sub: 180px;
+  --dev-col-status: 140px;
+  --dev-col-notes: auto;     /* el resto */
+  --dev-col-actions: 150px;
+}
+
+/* ====== header fijo 2 filas ====== */
+.devices-header-2rows{
+  position: sticky;
+  top: 56px;
+  z-index: 2500;
+  background: var(--bs-body-bg);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+
+  /* compensación scrollbar (la setea JS) */
+  padding-right: var(--dev-scrollbar-pad, 0px);
+}
+
+/* Grid compartido por nombres + filtros */
+.devices-grid-cols{
+  display: grid;
+  grid-template-columns:
+    var(--dev-col-num)
+    var(--dev-col-name)
+    var(--dev-col-ident)
+    var(--dev-col-root)
+    var(--dev-col-sub)
+    var(--dev-col-status)
+    var(--dev-col-notes)
+    var(--dev-col-actions);
+  gap: .5rem;
+  align-items: center;
+  padding: .35rem .5rem;
+}
+
+.devices-grid-cols-head{
+  background: rgba(0,0,0,.03);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+.devices-th{ font-weight: 600; }
+
+/* solo scrollea el cuerpo */
+.devices-table-scroll{
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ====== tabla forzada a usar los mismos anchos ====== */
+.devices-table-fixed{
+  table-layout: fixed;
+  width: 100%;
+}
+
+.devices-table-fixed col.col-num{ width: var(--dev-col-num); }
+.devices-table-fixed col.col-name{ width: var(--dev-col-name); }
+.devices-table-fixed col.col-ident{ width: var(--dev-col-ident); }
+.devices-table-fixed col.col-root{ width: var(--dev-col-root); }
+.devices-table-fixed col.col-sub{ width: var(--dev-col-sub); }
+.devices-table-fixed col.col-status{ width: var(--dev-col-status); }
+.devices-table-fixed col.col-notes{ width: var(--dev-col-notes); }
+.devices-table-fixed col.col-actions{ width: var(--dev-col-actions); }
+
+/* Para que no reviente con IDs largos */
+.devices-table-fixed td{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================================================
+   DEVICES: Sticky header (2 rows) + perfect alignment
+   Place this at the VERY END of the CSS file
+   ========================================================= */
+
+/* Una sola verdad: columnas (incluye Identifier) */
+:root{
+  --dev-col-num: 70px;
+  --dev-col-name: 220px;     /* Name más pequeño */
+  --dev-col-ident: 200px;    /* nueva columna */
+  --dev-col-root: 160px;
+  --dev-col-sub: 180px;
+  --dev-col-status: 140px;
+  --dev-col-notes: auto;     /* el resto */
+  --dev-col-actions: 150px;
+
+  --dev-cell-py: .40rem;     /* padding vertical consistente */
+  --dev-cell-px: .50rem;     /* padding horizontal consistente */
+}
+
+/* Asegura scroll solo en la tabla, no en la página */
+body.no-page-scroll { overflow: hidden; }
+
+.devices-page{
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.devices-panel{
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Header fijo con 2 filas */
+.devices-header-2rows{
+  position: sticky;
+  top: 56px;
+  z-index: 2500;
+  background: var(--bs-body-bg);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+
+  /* para compensar scrollbar (si usas el JS) */
+  padding-right: var(--dev-scrollbar-pad, 0px);
+}
+
+/* MISMA rejilla para nombres y filtros.
+   IMPORTANTE: gap=0 para que cuadre con celdas de tabla */
+.devices-grid-cols{
+  display: grid;
+  grid-template-columns:
+    var(--dev-col-num)
+    var(--dev-col-name)
+    var(--dev-col-ident)
+    var(--dev-col-root)
+    var(--dev-col-sub)
+    var(--dev-col-status)
+    var(--dev-col-notes)
+    var(--dev-col-actions);
+  gap: 0;                 /* <-- CLAVE para alinear con tabla */
+  align-items: center;
+}
+
+/* Cada celda del grid usa el MISMO padding que la tabla */
+.devices-grid-cols > div{
+  padding: var(--dev-cell-py) var(--dev-cell-px);
+}
+
+/* Fila de títulos */
+.devices-grid-cols-head{
+  background: rgba(0,0,0,.03);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+.devices-th{
+  font-weight: 600;
+}
+
+/* Fila de filtros: una línea suave debajo para separar */
+.devices-grid-cols-filters{
+  border-bottom: 1px solid rgba(0,0,0,.35);
+}
+
+/* Scroll SOLO aquí */
+.devices-table-scroll{
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Tabla forzada a usar exactamente los anchos del header */
+.devices-table-fixed{
+  table-layout: fixed;
+  width: 100%;
+}
+
+/* Anchos por colgroup */
+.devices-table-fixed col.col-num{ width: var(--dev-col-num); }
+.devices-table-fixed col.col-name{ width: var(--dev-col-name); }
+.devices-table-fixed col.col-ident{ width: var(--dev-col-ident); }
+.devices-table-fixed col.col-root{ width: var(--dev-col-root); }
+.devices-table-fixed col.col-sub{ width: var(--dev-col-sub); }
+.devices-table-fixed col.col-status{ width: var(--dev-col-status); }
+.devices-table-fixed col.col-notes{ width: var(--dev-col-notes); }
+.devices-table-fixed col.col-actions{ width: var(--dev-col-actions); }
+
+/* Padding EXACTO igual al grid, y alineación vertical */
+.devices-table-fixed td{
+  padding: var(--dev-cell-py) var(--dev-cell-px);
+  vertical-align: middle;
+
+  /* IDs largos no rompen layout */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Si quieres que las filas respiren más, sube el padding de arriba.
+   Si quieres más compacto, bájalo. */
+.movements-table-wrap{
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+  overflow-x: hidden; /* horizontal lo maneja table-responsive */
+}
+
+.movements-filters{
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.movements-table thead th{
+  position: sticky;
+  top: 0;
+  z-index: 20;
   background: var(--bs-body-bg);
 }
 
-/* optional */
-.filters-sticky hr{
-  margin-bottom: 0;
+.movements-table thead th{
+  top: var(--movements-filters-height, 72px); /* ajusta */
+}
+
+.movements-table-wrap{
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+}
+
+/* layout clavado por columnas */
+.movements-table{
+  table-layout: fixed;
+}
+
+/* sticky para thead (2 filas) */
+.movements-table thead th{
+  position: sticky;
+  background: var(--bs-body-bg);
+  z-index: 10;
+}
+
+/* fila títulos */
+.movements-table thead tr:nth-child(1) th{
+  top: 0;
+  z-index: 20;
+}
+
+/* fila filtros: debajo de títulos */
+.movements-table thead tr:nth-child(2) th{
+  top: 38px; /* ajusta si tu header es más alto */
+  z-index: 15;
+  padding: 6px;
+}
+
+/* Evita scroll de la página si quieres el mismo efecto que Devices */
+.no-page-scroll {
+  overflow: hidden;
+}
+
+/* Panel wrapper (opcional, por estética/consistencia) */
+.movements-panel{
+  border: 1px solid var(--bs-border-color);
+  border-radius: .5rem;
+  background: var(--bs-body-bg);
+}
+
+/* Header fijo de 2 filas */
+.movements-header-2rows{
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bs-body-bg);
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+/* GRID: esto es lo que te falta y por eso se rompe */
+.movements-grid-cols{
+  display: grid;
+  grid-template-columns: 180px 220px 160px 240px 90px 1fr 110px; /* Date, User, Action, Entity, Success, Desc, Detail */
+  gap: .5rem;
+  align-items: center;
+}
+
+/* fila títulos */
+.movements-grid-cols-head{
+  background: var(--bs-tertiary-bg);
+  padding: .6rem .75rem;
+  font-weight: 600;
+}
+
+/* fila filtros */
+.movements-grid-cols-filters{
+  padding: .5rem .75rem;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+/* “th” fake */
+.movements-th{
+  white-space: nowrap;
+}
+
+/* Solo scrollean los datos */
+.movements-table-scroll{
+  max-height: calc(100vh - 320px); /* ajusta si quieres */
+  overflow-y: auto;
+}
+
+/* Tabla fixed para que colgroup mande */
+.movements-table-fixed{
+  table-layout: fixed;
+}
+
+/* Anchos del colgroup (tienen que cuadrar con el grid-template-columns) */
+.movements-table-fixed col.col-date   { width: 380px; }
+.movements-table-fixed col.col-user   { width: 220px; }
+.movements-table-fixed col.col-action { width: 160px; }
+.movements-table-fixed col.col-desc   { width: auto; }  /* 1fr */
+.movements-table-fixed col.col-detail { width: 110px; }
+
+/* Truncado elegante */
+.movements-table-fixed td.text-truncate{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movements-grid-cols{
+  display: grid;
+  grid-template-columns: 380px 220px 160px 1fr 110px;
+  gap: .5rem;
+  align-items: end;
+}
+.movements-table-fixed col.col-date { 
+  width: 380px; 
 }

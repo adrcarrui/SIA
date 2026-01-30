@@ -14,6 +14,19 @@
         'planned':'dark'
       }.get((course.auto_status or '')|lower, 'light') %}
       <span class="badge text-bg-{{ status_color }}">{{ course.auto_status or '—' }}</span>
+      {% set itc = (course.status_itc or 'start')|lower %}
+{% set itc_color = 'secondary' %}
+{% if 'cancel' in itc or 'error' in itc %}
+  {% set itc_color = 'danger' %}
+{% elif itc in ['completed','end','collected'] %}
+  {% set itc_color = 'success' %}
+{% elif 'delivered' in itc %}
+  {% set itc_color = 'primary' %}
+{% endif %}
+      {% set dept_l = (current_user.department or '')|lower %}
+    {% if dept_l != 'tco' %}Status ITC: 
+      <span class="badge text-bg-{{ itc_color }}">{{ course.status_itc or 'start' }}</span>
+    {% endif %}
     </h5>
 
     <div class="ms-auto">

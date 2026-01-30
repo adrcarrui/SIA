@@ -5,17 +5,12 @@
 {% set role_l = (current_user.role or '')|lower %}
 {% set dept_l = (current_user.department or '')|lower %}
 {% set can_assign_pcs = ('admin' in role_l) or ('itc' in dept_l) %}
+{% set can_edit_itc_status = ('admin' in role_l) or ('itc' in dept_l) or role_l.startswith('itc') %}
+{% set show_itc_column = dept_l != 'tco' %}
 
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h2 class="mb-0">Courses</h2>
   <div class="d-flex align-items-center gap-2">
-    <!--<form class="d-flex" method="get" action="{{ url_for('courses.index') }}">
-      <input name="q"
-             value="{{ q or '' }}"
-             class="form-control form-control-sm me-2"
-             placeholder="Search course...">
-      <button class="btn btn-sm btn-outline-primary ms-2">🔎</button>
-    </form>-->
     <a
       href="{{ url_for('courses.index') }}"
       class="btn btn-sm btn-outline-secondary {% if not filter_my %}active{% endif %}">
@@ -58,8 +53,11 @@
           <th style="width:95px;">Start</th>
           <th style="width:95px;">End</th>
           <th style="width:110px;">Status</th>
-          <th style="width:260px;">Notes</th>
-          <th style="width:240px;">Actions</th>
+          {% if show_itc_column %}
+          <th style="width:170px;">ITC Status</th>
+          {% endif %}
+          <th style="width:200px;">Notes</th>
+          <th style="width:300px;">Actions</th>
         </tr>
 
         {# fila de filtros por columna #}
@@ -115,17 +113,20 @@
           </th>
 
           <th>
-            <select
-              name="status"
-              class="form-select form-select-sm"
-            >
+            <select name="status" class="form-select form-select-sm">
               <option value="">All</option>
-              <option value="planned"   {% if filter_status == 'planned' %}selected{% endif %}>planned</option>
-              <option value="active"    {% if filter_status == 'active' %}selected{% endif %}>active</option>
-              <option value="finished"  {% if filter_status == 'finished' %}selected{% endif %}>finished</option>
-              <option value="cancelled" {% if filter_status == 'cancelled' %}selected{% endif %}>cancelled</option>
+              {% for st in COURSE_STATUSES %}
+                <option value="{{ st }}" {% if filter_status == st %}selected{% endif %}>{{ st }}</option>
+              {% endfor %}
             </select>
           </th>
+
+          {% if show_itc_column %}
+          <th>
+            {# ITC status no necesita filtro extra, ya cae en "status" #}
+            <span class="text-muted small">—</span>
+          </th>
+          {% endif %}
 
           <th>
             <input
@@ -146,7 +147,7 @@
 
       <tbody>
         {% for c in courses %}
-        <tr>
+        <tr data-course-row="{{ c.id }}">
           <td class="text-muted">{{ ((page - 1) * per_page) + loop.index }}</td>
 
           <td class="text-truncate" title="{{ c.course }}">
@@ -180,6 +181,26 @@
             <span class="badge text-bg-{{ status_color }}">{{ c.auto_status or '—' }}</span>
           </td>
 
+          {% if show_itc_column %}
+          <td>
+            {% set current_itc = (c.status_itc if c.status_itc in (COURSE_ITC_STATUSES or []) else 'start') %}
+            {% if can_edit_itc_status %}
+              <div class="d-flex align-items-center gap-2">
+                <select class="form-select form-select-sm itc-status-select"
+                        data-course-id="{{ c.id }}"
+                        style="min-width: 140px;">
+                  {% for st in (COURSE_ITC_STATUSES or []) %}
+                    <option value="{{ st }}" {% if current_itc == st %}selected{% endif %}>{{ st }}</option>
+                  {% endfor %}
+                </select>
+                <span class="small text-muted itc-status-msg" data-course-id="{{ c.id }}"></span>
+              </div>
+            {% else %}
+              <span class="badge text-bg-light">{{ current_itc }}</span>
+            {% endif %}
+          </td>
+          {% endif %}
+
           <td class="text-truncate" title="{{ c.notes }}">
             {{ c.notes if c is defined and c.notes is not none else '' }}
           </td>
@@ -191,14 +212,14 @@
                 Associate
               </a>
 
-            {% set actor_role = (current_user.role or '')|lower %}
-            {% set actor_dept = (current_user.department or '')|trim %}
-            {% if actor_role == 'admin' or actor_dept == 'ITC support' %}
-              <a class="btn btn-sm btn-primary"
-                href="{{ url_for('courses.assign_pcs', course_id=c.id) }}">
-                Assign PCs
-              </a>
-            {% endif %}
+              {% set actor_role = (current_user.role or '')|lower %}
+              {% set actor_dept = (current_user.department or '')|trim %}
+              {% if actor_role == 'admin' or actor_dept == 'ITC support' %}
+                <a class="btn btn-sm btn-primary"
+                   href="{{ url_for('courses.assign_pcs', course_id=c.id) }}">
+                  Assign PCs
+                </a>
+              {% endif %}
 
               <a href="{{ url_for('courses.edit_course', course_id=c.id) }}"
                  class="btn btn-secondary btn-sm">
@@ -214,7 +235,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="9" class="text-center text-muted py-4">
+          <td colspan="10" class="text-center text-muted py-4">
             {% if q %}
               No courses found for “{{ q }}”.
             {% else %}
@@ -320,4 +341,83 @@
   </div>
 </div>
 
+{# JS inline para guardar status_itc #}
+{% if show_itc_column %}
+<script>
+(function () {
+  const selects = document.querySelectorAll(".itc-status-select");
+
+  function setMsg(courseId, text, isError=false) {
+    const el = document.querySelector('.itc-status-msg[data-course-id="' + courseId + '"]');
+    if (!el) return;
+    el.textContent = text || "";
+    el.classList.toggle("text-danger", !!isError);
+    el.classList.toggle("text-muted", !isError);
+  }
+
+  selects.forEach(sel => {
+    // inicializa old value
+    sel.dataset.oldValue = sel.value;
+    sel.dataset.saving = "0";
+
+    sel.addEventListener("change", async () => {
+      const courseId = sel.dataset.courseId;
+      const newVal = sel.value;
+
+      // Si ya está guardando, no hacemos nada (evita spam)
+      if (sel.dataset.saving === "1") {
+        sel.value = sel.dataset.oldValue || sel.value;
+        return;
+      }
+
+      const oldVal = sel.dataset.oldValue || "";
+
+      // No request si no cambia
+      if (newVal === oldVal) {
+        setMsg(courseId, "");
+        return;
+      }
+
+      sel.dataset.saving = "1";
+      sel.disabled = true;
+      setMsg(courseId, "Saving...");
+
+      try {
+        const resp = await fetch(`/courses/api/course/${courseId}/itc-status`, {
+          method: "POST",
+          headers: {
+              "Content-Type": "application/json",
+              "X-Requested-With": "XMLHttpRequest"
+            },
+          body: JSON.stringify({ status_itc: newVal })
+        });
+
+        const data = await resp.json().catch(() => ({}));
+
+        if (!resp.ok || !data.success) {
+          const err = (data && data.error) ? data.error : "Error";
+          setMsg(courseId, err, true);
+
+          // revertimos UI
+          sel.value = oldVal;
+          return;
+        }
+
+        // éxito: persistimos el nuevo valor como "old"
+        sel.dataset.oldValue = newVal;
+        setMsg(courseId, "Saved");
+        setTimeout(() => setMsg(courseId, ""), 1200);
+
+      } catch (e) {
+        setMsg(courseId, "Network error", true);
+        sel.value = oldVal;
+      } finally {
+        sel.disabled = false;
+        sel.dataset.saving = "0";
+      }
+    });
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -634,6 +634,7 @@ def index():
             filter_start_date=(request.args.get("start_date") or "").strip(),
             filter_end_date=(request.args.get("end_date") or "").strip(),
             COURSE_STATUSES=COURSE_STATUSES,
+            COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
             filter_my=my,
         )
     finally:
@@ -1745,5 +1746,74 @@ def return_pcs():
     except Exception:
         db.rollback()
         raise
+    finally:
+        db.close()
+
+@bp.route("/api/course/<int:course_id>/itc-status", methods=["POST"])
+@login_required
+def api_update_itc_status(course_id):
+    # Solo ITC o admin
+    if not _is_itc_or_admin():
+        return jsonify({"success": False, "error": "Forbidden"}), 403
+
+    # --- Opción B: defensa básica anti-CSRF (Origin + XHR)
+    origin = (request.headers.get("Origin") or "").strip()
+    host = request.host_url.rstrip("/")
+
+    # Si hay Origin y no coincide con tu host, fuera
+    if origin and not origin.startswith(host):
+        return jsonify({"success": False, "error": "Bad origin"}), 403
+
+    # Exigir que venga de XHR/fetch (no perfecto, pero filtra basura)
+    if (request.headers.get("X-Requested-With") or "") != "XMLHttpRequest":
+        return jsonify({"success": False, "error": "Invalid request"}), 400
+
+    data = request.get_json(silent=True) or {}
+    new_status = (data.get("status_itc") or "").strip()
+
+    if not new_status:
+        return jsonify({"success": False, "error": "Missing status_itc"}), 400
+
+    if new_status not in COURSE_ITC_STATUSES:
+        return jsonify({"success": False, "error": "Invalid status_itc"}), 400
+
+    db = SessionLocal()
+    try:
+        c = db.query(models.Course).get(course_id)
+        if not c:
+            return jsonify({"success": False, "error": "Course not found"}), 404
+
+        before_data = {
+            "id": c.id,
+            "status_itc": c.status_itc,
+        }
+
+        c.status_itc = new_status
+        db.flush()
+
+        after_data = {
+            "id": c.id,
+            "status_itc": c.status_itc,
+        }
+
+        log_movement(
+            db,
+            user_id=getattr(current_user, "id", None),
+            entity_type="course",
+            entity_id=c.id,
+            action="update_itc_status",
+            before_data=before_data,
+            after_data=after_data,
+            description=f"Course '{c.course or c.name or f'#{c.id}'}' ITC status updated",
+            success=True,
+            user_agent=request.user_agent.string,
+        )
+
+        db.commit()
+        return jsonify({"success": True, "status_itc": c.status_itc})
+
+    except Exception as e:
+        db.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
     finally:
         db.close()
