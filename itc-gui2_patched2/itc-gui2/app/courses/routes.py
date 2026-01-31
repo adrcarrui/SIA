@@ -1517,10 +1517,14 @@ def assign_pcs(course_id):
                 action="assign_pcs",
                 before_data=None,
                 after_data={
-                    # SOLO labels humanos
+                    # --- contexto humano ---
+                    "user": getattr(current_user, "username", None),
+                    "course": c.course or c.name,
+
+                    # --- devices ---
                     "devices": shown,
                     "devices_total": len(device_labels),
-                    "devices_extra": extra_n,  # opcional, por si quieres pintar algo en UI
+                    "devices_extra": extra_n,
                 },
                 description=description,
                 success=True,
@@ -1693,7 +1697,6 @@ def return_pcs():
     try:
         if request.method == "POST":
             device_ids = request.form.getlist("device_ids[]")
-            # También aceptamos barcodes[] por si quieres auditar (opcional)
             barcodes = request.form.getlist("barcodes[]")
 
             if not device_ids:
@@ -1701,9 +1704,33 @@ def return_pcs():
                 return redirect(url_for("courses.return_pcs"))
 
             now = datetime.now(timezone.utc)
-
             returned = 0
             skipped = 0
+
+            username = getattr(current_user, "username", None)
+
+            # Agrupación por curso (humano)
+            by_course = {}  # key: course_label -> data
+
+            def device_label(d):
+                name = (getattr(d, "name", "") or "").strip()
+                barcode = (getattr(d, "barcode", "") or "").strip()
+                if name and barcode:
+                    return f"{name} ({barcode})"
+                if name:
+                    return name
+                if barcode:
+                    return barcode
+                return f"Device #{d.id}"
+
+            def course_label(c):
+                if not c:
+                    return "unassigned"
+                code = (getattr(c, "course", "") or "").strip()  # en tu modelo parece ser el code
+                name = (getattr(c, "name", "") or "").strip()
+                if code and name:
+                    return f"{code} - {name}"
+                return code or name or f"Course #{getattr(c, 'id', '?')}"
 
             for raw_id in device_ids:
                 try:
@@ -1722,14 +1749,10 @@ def return_pcs():
                     skipped += 1
                     continue
 
-                # Siempre dejamos el PC como available (esté o no asignado)
-                d.status = "available"
-                d.updated_at = now
-
-                # Encontrar assignment "vivo" para ese device
-                # (tu tabla assignments = estado actual)
+                # Buscar assignment "vivo" y cargar el curso antes de borrarlo
                 a = (
                     db.query(models.Assignment)
+                    .options(joinedload(models.Assignment.course))  # <- importante para tener el objeto Course
                     .filter(
                         models.Assignment.device_id == d.id,
                         models.Assignment.status.in_(["active", "overdue_1", "overdue_2"]),
@@ -1738,17 +1761,42 @@ def return_pcs():
                     .first()
                 )
 
+                # Siempre dejamos el PC como available (esté o no asignado)
+                d.status = "available"
+                d.updated_at = now
+
                 if not a:
                     skipped += 1
                     continue
 
-                # BORRAR la asignación (tabla viva)
+                # Capturar curso + device label ANTES del delete
+                c = getattr(a, "course", None)
+                c_label = course_label(c)
+
+                bucket = by_course.get(c_label)
+                if bucket is None:
+                    bucket = {
+                        "course": c_label,  # redundante pero cómodo
+                        "course_id": getattr(c, "id", None),  # opcional (trazabilidad)
+                        "devices": [],
+                        "device_ids": [],  # opcional (debug/trazabilidad)
+                        "count": 0,
+                    }
+                    by_course[c_label] = bucket
+
+                bucket["devices"].append(device_label(d))
+                bucket["device_ids"].append(d.id)
+                bucket["count"] += 1
+
+                # Borrar la asignación (tabla viva)
                 db.delete(a)
                 returned += 1
 
             db.flush()
 
-            # Log (si lo usas)
+            courses_count = len(by_course)
+
+            # Log humano y útil
             log_movement(
                 db,
                 user_id=getattr(current_user, "id", None),
@@ -1757,12 +1805,18 @@ def return_pcs():
                 action="bulk_return",
                 before_data=None,
                 after_data={
+                    "user": username,
                     "returned_count": returned,
                     "skipped_count": skipped,
-                    "device_ids": device_ids,
+                    "courses_count": courses_count,
+                    "by_course": by_course,
+                    # si quieres conservar lo que venía del form:
                     "barcodes": barcodes,
                 },
-                description=f"ITC returned PCs (returned={returned}, skipped={skipped})",
+                description=(
+                    f"ITC bulk return by {username or 'unknown'} "
+                    f"(returned={returned}, skipped={skipped}, courses={courses_count})"
+                ),
                 success=True,
                 user_agent=request.user_agent.string,
             )
@@ -1771,7 +1825,6 @@ def return_pcs():
             flash(f"Returned PCs: {returned}. Skipped: {skipped}.", "success")
             return redirect(url_for("main.index"))
 
-        # GET
         return render_template("courses/return_pcs.html", page_title="Return PCs")
 
     except Exception:
