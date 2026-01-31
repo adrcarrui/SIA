@@ -782,7 +782,7 @@ def delete_device(device_id):
     try:
         d = db.query(models.Device).get(device_id)
         if not d:
-            flash("Device no encontrado.", "danger")
+            flash("Device not found.", "danger")
             return redirect(url_for("devices.index"))
 
         before_data = {
@@ -815,10 +815,10 @@ def delete_device(device_id):
             db.commit()
         except IntegrityError:
             db.rollback()
-            flash("No se pudo eliminar el dispositivo. Puede estar referenciado en otros registros.", "danger")
+            flash("The device could not be deleted. It may be referenced in other records.", "danger")
             return redirect(url_for("devices.index"))
 
-        flash("Device eliminado.", "success")
+        flash("Device deleted.", "success")
         return redirect(url_for("devices.index"))
     finally:
         db.close()

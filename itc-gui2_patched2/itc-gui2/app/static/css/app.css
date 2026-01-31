@@ -530,7 +530,7 @@ body.no-page-scroll { overflow: hidden; }
 .devices-header-2rows{
   position: sticky;
   top: 56px;
-  z-index: 2500;
+  z-index: 100;
   background: var(--bs-body-bg);
   border-bottom: 1px solid rgba(0,0,0,.08);
 
@@ -756,7 +756,7 @@ body.no-page-scroll { overflow: hidden; }
 .users-header-2rows{
   position: sticky;
   top: 56px;
-  z-index: 2500;
+  z-index: 100;
   background: var(--bs-body-bg);
   border-bottom: 1px solid rgba(0,0,0,.08);
 
@@ -875,7 +875,7 @@ body.no-page-scroll { overflow: hidden; }
 .courses-header-2rows{
   position: sticky;
   top: 56px;
-  z-index: 2500;
+  z-index: 100;
   background: var(--bs-body-bg);
   border-bottom: 1px solid rgba(0,0,0,.08);
   padding-right: var(--crs-scrollbar-pad);

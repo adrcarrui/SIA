@@ -123,7 +123,6 @@ def create_app():
     from .notifications import bp as notifications_bp
     from .alerts import bp as alerts_bp
     from .api import bp as api_bp
-    from .prueba import bp as prueba_bp
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(main_bp)
@@ -136,7 +135,6 @@ def create_app():
     app.register_blueprint(notifications_bp, url_prefix="/notifications")
     app.register_blueprint(alerts_bp, url_prefix="/alerts")
     app.register_blueprint(api_bp, url_prefix="/api")
-    app.register_blueprint(prueba_bp, url_prefix="/prueba")
 
     with app.app_context():
         print("\n== URL MAP ==")

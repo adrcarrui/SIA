@@ -242,7 +242,6 @@ def edit_course(course_id):
                 "responsible_id": c.responsible_id,
             }
 
-            # BEFORE requirements
             before_req_map = _load_req_map_for_course(db, c.id)
 
             # Leer form
@@ -288,14 +287,14 @@ def edit_course(course_id):
             except ValueError:
                 trainees_val = None
 
-            # ✅ Validación "Course o Name" (UNA sola vez)
-            if not course_code and not name:
-                flash("You must fill either 'Course' or 'Name'.", "warning")
+            # ❌ ELIMINADA la regla "Course o Name"
+            # ✅ En edición: Course es obligatorio y NO se puede borrar
+            if not course_code:
+                flash("Course code is required and cannot be removed.", "warning")
 
-                # repoblar para no perder input del usuario
-                c.course = course_code
-                c.name = name
-                c.client = client
+                # Repoblar SIN tocar c.course
+                c.name = name or None
+                c.client = client or None
                 c.notes = notes or None
                 c.status_itc = status_itc
                 c.status_tco = status_tco
@@ -305,7 +304,7 @@ def edit_course(course_id):
 
                 return _render_course_form(db, "Edit course", c)
 
-            # Apply cambios al objeto
+            # Apply cambios
             c.course = course_code
             c.name = name or None
             c.client = client or None
@@ -315,6 +314,7 @@ def edit_course(course_id):
             c.status_tco = status_tco
             c.status_itc = status_itc
             c.notes = notes or None
+
 
             # Responsible
             resp_raw = (request.form.get("responsible_id") or "").strip()
@@ -709,12 +709,27 @@ def new_course():
             except ValueError:
                 trainees = 0
 
-            if not course and not name:
-                flash("You must fill either 'Course' or 'Name'.", "warning")
-                return _render_course_form(db, "New course", None)
+            # ✅ NUEVO: course obligatorio (se elimina "course o name")
+            if not course:
+                flash("Course code is required.", "warning")
+
+                # Repoblar sin perder inputs
+                dummy = models.Course(
+                    course=course,              # vacío, pero solo para re-render
+                    name=name or None,
+                    status_tco=status_tco,
+                    status_itc=status_itc,
+                    notes=notes or None,
+                    trainees=trainees,
+                    start_date=start_dt,
+                    end_date=end_dt,
+                    responsible_id=responsible_id,
+                    client=client or None,
+                )
+                return _render_course_form(db, "New course", dummy)
 
             new_c = models.Course(
-                course=course or None,
+                course=course,               # ✅ nunca None
                 name=name or None,
                 status_tco=status_tco,
                 status_itc=status_itc,
@@ -731,8 +746,8 @@ def new_course():
             req_pairs = _parse_requirements_from_form(db)
             _save_course_requirements(db, new_c, req_pairs)
             db.flush()
-            cname = (new_c.course or new_c.name or f"Course #{new_c.id}").strip()
 
+            cname = (new_c.course or new_c.name or f"Course #{new_c.id}").strip()
             req_map = _load_req_map_for_course(db, new_c.id)
 
             if course_has_itc_assets(db, new_c.id):
@@ -770,7 +785,7 @@ def new_course():
                     "responsible_id": new_c.responsible_id,
                     "client": new_c.client,
                 },
-                description=f"Course '{new_c.course or new_c.name}' created",
+                description=f"Course '{new_c.course}' created",
                 success=True,
                 user_agent=request.user_agent.string,
             )
@@ -789,6 +804,7 @@ def new_course():
 
     finally:
         db.close()
+
 
 
 @bp.route("/<int:course_id>/delete", methods=["POST"])
@@ -1074,16 +1090,31 @@ def api_calendar_events():
                 bump_severity(cid, sev)
 
         # ------------------------------------------------------------
-        # Eventos de cursos (igual que antes) pero con sev filtrada
+        # Eventos de cursos (igual que antes) pero con title según perfil + sev filtrada
         # ------------------------------------------------------------
         courses = db.query(Course).all()
+
+        # ✅ Perfil para decidir title
+        actor_role = (getattr(current_user, "role", "") or "").strip().lower()
+        actor_dept = (getattr(current_user, "department", "") or "").strip()
+        force_code_title = (actor_role == "admin") or (actor_dept == "ITC support")
 
         events = []
         for c in courses:
             if not c.start_date and not c.end_date:
                 continue
 
-            title = ((c.name or "").strip() or (c.course or "").strip() or f"Course #{c.id}")
+            code = (c.course or "").strip()
+            name = (c.name or "").strip()
+
+            # ✅ title según perfil:
+            # - admin / itc_support: siempre code
+            # - tco: name si existe, si no code
+            if force_code_title:
+                title = code or f"Course #{c.id}"
+            else:
+                title = name or code or f"Course #{c.id}"
+
             detail_url = url_for("courses.detail_fragment", course_id=c.id)
 
             sev = severity_by_course.get(c.id)  # <- ahora solo si hay OPEN
@@ -1130,7 +1161,6 @@ def api_calendar_events():
         return jsonify(events)
     finally:
         db.close()
-
 
 # ===========================
 #   EXPORT: CSV / EXCEL / PDF
