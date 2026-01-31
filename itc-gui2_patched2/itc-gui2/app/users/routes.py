@@ -275,6 +275,7 @@ def index():
             users=users,
             # búsqueda global
             q=q,
+            total=total,
             # paginación
             page=page,
             per_page=per_page,

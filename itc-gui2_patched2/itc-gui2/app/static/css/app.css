@@ -484,176 +484,35 @@ main.bg-content > section {
 
 body.no-page-scroll { overflow: hidden; }
 
-.devices-page{
-  height: calc(100vh - 56px);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.devices-panel{
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-/* HEADER fijo con 2 filas */
-.devices-header-2rows{
-  position: sticky;
-  top: 56px;
-  z-index: 2500;
-  background: var(--bs-body-bg);
-  border-bottom: 1px solid rgba(0,0,0,.08);
-}
-
-/* MISMA rejilla para nombres y filtros */
-.devices-grid-cols{
-  display: grid;
-  grid-template-columns: 70px 1.4fr 160px 180px 140px 1.2fr 150px;
-  gap: .5rem;
-  align-items: center;
-  padding: .35rem .5rem;
-}
-
-.devices-grid-cols-head{
-  background: rgba(0,0,0,.03);
-  border-bottom: 1px solid rgba(0,0,0,.08);
-}
-
-.devices-th{
-  font-weight: 600;
-}
-
-.devices-grid-cols-filters{
-  padding-top: .5rem;
-  padding-bottom: .5rem;
-}
-
-/* Solo scrollea la tabla */
-.devices-table-scroll{
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-/* ====== layout general (ya lo tienes, lo dejo aquí por contexto) ====== */
-body.no-page-scroll { overflow: hidden; }
-
-.devices-page{
-  height: calc(100vh - 56px);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.devices-panel{
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-/* ====== UNA sola verdad: anchos de columnas ====== */
-:root{
-  --dev-col-num: 70px;
-  --dev-col-name: 220px;     /* Name más pequeño */
-  --dev-col-ident: 200px;    /* nueva columna */
-  --dev-col-root: 160px;
-  --dev-col-sub: 180px;
-  --dev-col-status: 140px;
-  --dev-col-notes: auto;     /* el resto */
-  --dev-col-actions: 150px;
-}
-
-/* ====== header fijo 2 filas ====== */
-.devices-header-2rows{
-  position: sticky;
-  top: 56px;
-  z-index: 2500;
-  background: var(--bs-body-bg);
-  border-bottom: 1px solid rgba(0,0,0,.08);
-
-  /* compensación scrollbar (la setea JS) */
-  padding-right: var(--dev-scrollbar-pad, 0px);
-}
-
-/* Grid compartido por nombres + filtros */
-.devices-grid-cols{
-  display: grid;
-  grid-template-columns:
-    var(--dev-col-num)
-    var(--dev-col-name)
-    var(--dev-col-ident)
-    var(--dev-col-root)
-    var(--dev-col-sub)
-    var(--dev-col-status)
-    var(--dev-col-notes)
-    var(--dev-col-actions);
-  gap: .5rem;
-  align-items: center;
-  padding: .35rem .5rem;
-}
-
-.devices-grid-cols-head{
-  background: rgba(0,0,0,.03);
-  border-bottom: 1px solid rgba(0,0,0,.08);
-}
-
-.devices-th{ font-weight: 600; }
-
-/* solo scrollea el cuerpo */
-.devices-table-scroll{
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-/* ====== tabla forzada a usar los mismos anchos ====== */
-.devices-table-fixed{
-  table-layout: fixed;
-  width: 100%;
-}
-
-.devices-table-fixed col.col-num{ width: var(--dev-col-num); }
-.devices-table-fixed col.col-name{ width: var(--dev-col-name); }
-.devices-table-fixed col.col-ident{ width: var(--dev-col-ident); }
-.devices-table-fixed col.col-root{ width: var(--dev-col-root); }
-.devices-table-fixed col.col-sub{ width: var(--dev-col-sub); }
-.devices-table-fixed col.col-status{ width: var(--dev-col-status); }
-.devices-table-fixed col.col-notes{ width: var(--dev-col-notes); }
-.devices-table-fixed col.col-actions{ width: var(--dev-col-actions); }
-
-/* Para que no reviente con IDs largos */
-.devices-table-fixed td{
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* =========================================================
    DEVICES: Sticky header (2 rows) + perfect alignment
-   Place this at the VERY END of the CSS file
+   Same thickness as USERS / COURSES
+   Put this at the VERY END of the CSS file
    ========================================================= */
 
-/* Una sola verdad: columnas (incluye Identifier) */
+/* Evita scroll de la página si usas el layout tipo panel */
+body.no-page-scroll { overflow: hidden; }
+
+/* ====== UNA sola verdad: anchos + padding ====== */
 :root{
   --dev-col-num: 70px;
-  --dev-col-name: 220px;     /* Name más pequeño */
-  --dev-col-ident: 200px;    /* nueva columna */
+  --dev-col-name: 220px;
+  --dev-col-ident: 200px;
   --dev-col-root: 160px;
   --dev-col-sub: 180px;
   --dev-col-status: 140px;
-  --dev-col-notes: auto;     /* el resto */
+  --dev-col-notes: auto;
   --dev-col-actions: 150px;
 
-  --dev-cell-py: .40rem;     /* padding vertical consistente */
-  --dev-cell-px: .50rem;     /* padding horizontal consistente */
+  /* Grosor igual a users/courses */
+  --dev-cell-py: .40rem;
+  --dev-cell-px: .50rem;
+
+  /* (opcional) compensación scrollbar si la usas con JS */
+  --dev-scrollbar-pad: 0px;
 }
 
-/* Asegura scroll solo en la tabla, no en la página */
-body.no-page-scroll { overflow: hidden; }
-
+/* Layout */
 .devices-page{
   height: calc(100vh - 56px);
   overflow: hidden;
@@ -675,12 +534,13 @@ body.no-page-scroll { overflow: hidden; }
   background: var(--bs-body-bg);
   border-bottom: 1px solid rgba(0,0,0,.08);
 
-  /* para compensar scrollbar (si usas el JS) */
-  padding-right: var(--dev-scrollbar-pad, 0px);
+  /* si compensas scrollbar, esto lo usa */
+  padding-right: var(--dev-scrollbar-pad);
+  box-sizing: border-box;
 }
 
-/* MISMA rejilla para nombres y filtros.
-   IMPORTANTE: gap=0 para que cuadre con celdas de tabla */
+/* Grid compartido por nombres + filtros.
+   CLAVE: gap=0 y padding por celda (como users/courses) */
 .devices-grid-cols{
   display: grid;
   grid-template-columns:
@@ -692,16 +552,18 @@ body.no-page-scroll { overflow: hidden; }
     var(--dev-col-status)
     var(--dev-col-notes)
     var(--dev-col-actions);
-  gap: 0;                 /* <-- CLAVE para alinear con tabla */
+  gap: 0;
   align-items: center;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Cada celda del grid usa el MISMO padding que la tabla */
 .devices-grid-cols > div{
   padding: var(--dev-cell-py) var(--dev-cell-px);
+  box-sizing: border-box;
 }
 
-/* Fila de títulos */
 .devices-grid-cols-head{
   background: rgba(0,0,0,.03);
   border-bottom: 1px solid rgba(0,0,0,.08);
@@ -709,28 +571,28 @@ body.no-page-scroll { overflow: hidden; }
 
 .devices-th{
   font-weight: 600;
+  white-space: nowrap;
 }
 
-/* Fila de filtros: una línea suave debajo para separar */
+/* Fila filtros: sin padding extra (para no engordar) */
 .devices-grid-cols-filters{
   border-bottom: 1px solid rgba(0,0,0,.35);
 }
 
-/* Scroll SOLO aquí */
+/* Scroll SOLO en el cuerpo */
 .devices-table-scroll{
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow-y: scroll;          /* scrollbar siempre => no saltos */
   overscroll-behavior: contain;
 }
 
-/* Tabla forzada a usar exactamente los anchos del header */
+/* Tabla fixed y anchos clavados */
 .devices-table-fixed{
   table-layout: fixed;
   width: 100%;
 }
 
-/* Anchos por colgroup */
 .devices-table-fixed col.col-num{ width: var(--dev-col-num); }
 .devices-table-fixed col.col-name{ width: var(--dev-col-name); }
 .devices-table-fixed col.col-ident{ width: var(--dev-col-ident); }
@@ -740,150 +602,357 @@ body.no-page-scroll { overflow: hidden; }
 .devices-table-fixed col.col-notes{ width: var(--dev-col-notes); }
 .devices-table-fixed col.col-actions{ width: var(--dev-col-actions); }
 
-/* Padding EXACTO igual al grid, y alineación vertical */
-.devices-table-fixed td{
-  padding: var(--dev-cell-py) var(--dev-cell-px);
+/* IMPORTANTÍSIMO:
+   Bootstrap (.table-sm) mete su padding.
+   Lo pisamos para que sea EXACTO como el grid */
+.devices-table-fixed.table-sm > :not(caption) > * > *{
+  padding: var(--dev-cell-py) var(--dev-cell-px) !important;
   vertical-align: middle;
 
-  /* IDs largos no rompen layout */
+  /* No romper layout con IDs largos */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Si quieres que las filas respiren más, sube el padding de arriba.
-   Si quieres más compacto, bájalo. */
-.movements-table-wrap{
-  max-height: calc(100vh - 260px);
-  overflow-y: auto;
-  overflow-x: hidden; /* horizontal lo maneja table-responsive */
+
+/* =========================================================
+   MOVEMENTS: Sticky header (2 rows) + perfect alignment
+   Put at END and delete old movements CSS blocks
+   ========================================================= */
+
+:root{
+  --mv-col-date: 380px;
+  --mv-col-user: 220px;
+  --mv-col-action: 160px;
+  --mv-col-desc: auto;     /* resto del ancho */
+  --mv-col-detail: 110px;
+
+  --mv-cell-py: .40rem;
+  --mv-cell-px: .50rem;
 }
 
-.movements-filters{
-  position: sticky;
-  top: 0;
-  z-index: 30;
-}
-
-.movements-table thead th{
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: var(--bs-body-bg);
-}
-
-.movements-table thead th{
-  top: var(--movements-filters-height, 72px); /* ajusta */
-}
-
-.movements-table-wrap{
-  max-height: calc(100vh - 260px);
-  overflow-y: auto;
-}
-
-/* layout clavado por columnas */
-.movements-table{
-  table-layout: fixed;
-}
-
-/* sticky para thead (2 filas) */
-.movements-table thead th{
-  position: sticky;
-  background: var(--bs-body-bg);
-  z-index: 10;
-}
-
-/* fila títulos */
-.movements-table thead tr:nth-child(1) th{
-  top: 0;
-  z-index: 20;
-}
-
-/* fila filtros: debajo de títulos */
-.movements-table thead tr:nth-child(2) th{
-  top: 38px; /* ajusta si tu header es más alto */
-  z-index: 15;
-  padding: 6px;
-}
-
-/* Evita scroll de la página si quieres el mismo efecto que Devices */
-.no-page-scroll {
+/* Page/panel */
+.movements-page{
+  height: calc(100vh - 56px);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-/* Panel wrapper (opcional, por estética/consistencia) */
 .movements-panel{
-  border: 1px solid var(--bs-border-color);
-  border-radius: .5rem;
-  background: var(--bs-body-bg);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-/* Header fijo de 2 filas */
+/* Scroll container (header + table inside, as in your HTML) */
+.movements-table-scroll{
+  flex: 1;
+  min-height: 0;
+  overflow-y: scroll;          /* scrollbar siempre => no saltos */
+  overscroll-behavior: contain;
+}
+
+/* Header fijo dentro del scroll */
 .movements-header-2rows{
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 20;
   background: var(--bs-body-bg);
-  border-bottom: 1px solid var(--bs-border-color);
+  border-bottom: 1px solid rgba(0,0,0,.08);
 }
 
-/* GRID: esto es lo que te falta y por eso se rompe */
+/* Grid: SIN gap, padding por celda (igual a tabla) */
 .movements-grid-cols{
   display: grid;
-  grid-template-columns: 180px 220px 160px 240px 90px 1fr 110px; /* Date, User, Action, Entity, Success, Desc, Detail */
-  gap: .5rem;
+  grid-template-columns:
+    var(--mv-col-date)
+    var(--mv-col-user)
+    var(--mv-col-action)
+    minmax(0, 1fr)
+    var(--mv-col-detail);
+  gap: 0;
   align-items: center;
 }
 
-/* fila títulos */
+.movements-grid-cols > div{
+  padding: var(--mv-cell-py) var(--mv-cell-px);
+  box-sizing: border-box;
+}
+
 .movements-grid-cols-head{
-  background: var(--bs-tertiary-bg);
-  padding: .6rem .75rem;
+  background: rgba(0,0,0,.03);
+  border-bottom: 1px solid rgba(0,0,0,.08);
   font-weight: 600;
 }
 
-/* fila filtros */
 .movements-grid-cols-filters{
-  padding: .5rem .75rem;
-  border-top: 1px solid var(--bs-border-color);
+  border-bottom: 1px solid rgba(0,0,0,.35);
 }
 
-/* “th” fake */
-.movements-th{
-  white-space: nowrap;
-}
+.movements-th{ white-space: nowrap; }
 
-/* Solo scrollean los datos */
-.movements-table-scroll{
-  max-height: calc(100vh - 320px); /* ajusta si quieres */
-  overflow-y: auto;
-}
-
-/* Tabla fixed para que colgroup mande */
+/* Tabla fixed y anchos iguales */
 .movements-table-fixed{
   table-layout: fixed;
+  width: 100%;
 }
 
-/* Anchos del colgroup (tienen que cuadrar con el grid-template-columns) */
-.movements-table-fixed col.col-date   { width: 380px; }
-.movements-table-fixed col.col-user   { width: 220px; }
-.movements-table-fixed col.col-action { width: 160px; }
-.movements-table-fixed col.col-desc   { width: auto; }  /* 1fr */
-.movements-table-fixed col.col-detail { width: 110px; }
+.movements-table-fixed col.col-date   { width: var(--mv-col-date); }
+.movements-table-fixed col.col-user   { width: var(--mv-col-user); }
+.movements-table-fixed col.col-action { width: var(--mv-col-action); }
+.movements-table-fixed col.col-desc   { width: auto; }
+.movements-table-fixed col.col-detail { width: var(--mv-col-detail); }
 
-/* Truncado elegante */
+/* Igualar padding al grid (pisando Bootstrap table-sm) */
+.movements-table-fixed.table-sm > :not(caption) > * > *{
+  padding: var(--mv-cell-py) var(--mv-cell-px) !important;
+  vertical-align: middle;
+}
+
+/* Truncado seguro en Description */
 .movements-table-fixed td.text-truncate{
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.movements-grid-cols{
-  display: grid;
-  grid-template-columns: 380px 220px 160px 1fr 110px;
-  gap: .5rem;
-  align-items: end;
+/* =========================================================
+   USERS: Sticky header (2 rows) + perfect alignment
+   Clone of DEVICES parameters (but isolated to users-*)
+   Put this at the VERY END of the CSS file
+   ========================================================= */
+
+/* Una sola verdad: columnas + padding (igual filosofía que Devices) */
+:root{
+  --usr-col-num: 60px;
+  --usr-col-name: 220px;
+  --usr-col-surname: 220px;
+  --usr-col-username: 180px;
+  --usr-col-email: 260px;
+  --usr-col-role: 160px;
+  --usr-col-actions: 180px;
+
+  --usr-cell-py: .40rem;
+  --usr-cell-px: .50rem;
 }
-.movements-table-fixed col.col-date { 
-  width: 380px; 
+
+/* Panel users: mismo layout que devices-page/panel */
+.users-page{
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.users-panel{
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Header fijo con 2 filas (IGUAL que devices-header-2rows) */
+.users-header-2rows{
+  position: sticky;
+  top: 56px;
+  z-index: 2500;
+  background: var(--bs-body-bg);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+
+  /* si algún día compensas scrollbar como en devices */
+  padding-right: var(--usr-scrollbar-pad, 0px);
+}
+
+/* MISMA rejilla (nombres + filtros).
+   CLAVE: gap 0 + padding por celda, como Devices */
+.users-grid-cols{
+  display: grid;
+  grid-template-columns:
+    var(--usr-col-num)
+    var(--usr-col-name)
+    var(--usr-col-surname)
+    var(--usr-col-username)
+    var(--usr-col-email)
+    var(--usr-col-role)
+    var(--usr-col-actions);
+  gap: 0;
+  align-items: center;
+}
+
+/* Cada celda del grid usa el mismo padding que la tabla */
+.users-grid-cols > div{
+  padding: var(--usr-cell-py) var(--usr-cell-px);
+}
+
+/* Fila títulos */
+.users-grid-cols-head{
+  background: rgba(0,0,0,.03);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+.users-th{
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Fila filtros */
+.users-grid-cols-filters{
+  border-bottom: 1px solid rgba(0,0,0,.35);
+}
+
+/* Scroll SOLO en el cuerpo */
+.users-table-scroll{
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Tabla fija y clavada al header */
+.users-table-fixed{
+  table-layout: fixed;
+  width: 100%;
+}
+
+/* Si usas <colgroup> con styles var(--usr-col-*) ya vale.
+   Pero si prefieres clases, aquí tienes también opción por clases: */
+/*
+.users-table-fixed col.col-num      { width: var(--usr-col-num); }
+.users-table-fixed col.col-name     { width: var(--usr-col-name); }
+.users-table-fixed col.col-surname  { width: var(--usr-col-surname); }
+.users-table-fixed col.col-username { width: var(--usr-col-username); }
+.users-table-fixed col.col-email    { width: var(--usr-col-email); }
+.users-table-fixed col.col-role     { width: var(--usr-col-role); }
+.users-table-fixed col.col-actions  { width: var(--usr-col-actions); }
+*/
+
+/* Celdas: mismo padding que el header grid, y truncado seguro */
+.users-table-fixed td{
+  padding: var(--usr-cell-py) var(--usr-cell-px);
+  vertical-align: middle;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================================================
+   COURSES: Sticky header (2 rows) + perfect alignment
+   ========================================================= */
+
+:root{
+  --crs-col-num: 60px;
+  --crs-col-course: 120px;
+  --crs-col-name: 220px;
+  --crs-col-client: 160px;
+  --crs-col-start: 95px;
+  --crs-col-end: 95px;
+  --crs-col-status: 110px;
+  --crs-col-itc: 170px;
+  --crs-col-notes: 200px;
+  --crs-col-actions: 300px;
+
+  --crs-cell-py: .40rem;
+  --crs-cell-px: .50rem;
+
+  --crs-scrollbar-pad: 0px; /* lo setea el JS */
+}
+
+.courses-page{
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.courses-panel{
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.courses-header-2rows{
+  position: sticky;
+  top: 56px;
+  z-index: 2500;
+  background: var(--bs-body-bg);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  padding-right: var(--crs-scrollbar-pad);
+  box-sizing: border-box;
+}
+
+/* Grid común (con ITC) */
+.courses-grid-cols{
+  display: grid;
+  grid-template-columns:
+    var(--crs-col-num)
+    var(--crs-col-course)
+    var(--crs-col-name)
+    var(--crs-col-client)
+    var(--crs-col-start)
+    var(--crs-col-end)
+    var(--crs-col-status)
+    var(--crs-col-itc)
+    var(--crs-col-notes)
+    var(--crs-col-actions);
+  gap: 0;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Variante sin ITC (para que header y body cuadren cuando no se muestra) */
+.courses-grid-cols.no-itc{
+  grid-template-columns:
+    var(--crs-col-num)
+    var(--crs-col-course)
+    var(--crs-col-name)
+    var(--crs-col-client)
+    var(--crs-col-start)
+    var(--crs-col-end)
+    var(--crs-col-status)
+    var(--crs-col-notes)
+    var(--crs-col-actions);
+}
+
+.courses-grid-cols > div{
+  padding: var(--crs-cell-py) var(--crs-cell-px);
+  box-sizing: border-box;
+}
+
+.courses-grid-cols-head{
+  background: rgba(0,0,0,.03);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+.courses-grid-cols-filters{
+  border-bottom: 1px solid rgba(0,0,0,.35);
+}
+
+.courses-th{
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Scroll SOLO del body y siempre con scrollbar (evita saltos) */
+.courses-table-scroll{
+  flex: 1;
+  min-height: 0;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+}
+
+.courses-table-fixed{
+  table-layout: fixed;
+  width: 100%;
+}
+
+/* Pisa padding de Bootstrap table-sm para que sea EXACTO como el grid */
+.courses-table-fixed.table-sm > :not(caption) > * > *{
+  padding: var(--crs-cell-py) var(--crs-cell-px) !important;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

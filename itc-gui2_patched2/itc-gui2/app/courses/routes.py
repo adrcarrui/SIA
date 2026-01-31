@@ -635,6 +635,7 @@ def index():
             filter_end_date=(request.args.get("end_date") or "").strip(),
             COURSE_STATUSES=COURSE_STATUSES,
             COURSE_ITC_STATUSES=COURSE_ITC_STATUSES,
+            COURSE_TCO_STATUSES=COURSE_TCO_STATUSES,
             filter_my=my,
         )
     finally:

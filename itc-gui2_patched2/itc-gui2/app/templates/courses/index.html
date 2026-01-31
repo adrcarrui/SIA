@@ -8,338 +8,378 @@
 {% set can_edit_itc_status = ('admin' in role_l) or ('itc' in dept_l) or role_l.startswith('itc') %}
 {% set show_itc_column = dept_l != 'tco' %}
 
-<div class="d-flex align-items-center justify-content-between mb-3">
-  <h2 class="mb-0">Courses</h2>
-  <div class="d-flex align-items-center gap-2">
-    <a
-      href="{{ url_for('courses.index') }}"
-      class="btn btn-sm btn-outline-secondary {% if not filter_my %}active{% endif %}">
-      All
-    </a>
+<div class="courses-page">
 
-    <a
-      href="{{ url_for('courses.index',
-                       q=q,
-                       course=filter_course,
-                       name=filter_name,
-                       client=filter_client,
-                       status=filter_status,
-                       notes=filter_notes,
-                       start_date=filter_start_date,
-                       end_date=filter_end_date,
-                       my=1) }}"
-      class="btn btn-primary btn-sm {% if filter_my == '1' %}active{% endif %}">
-      My Courses
-    </a>
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h2 class="mb-0">Courses</h2>
+    <div class="d-flex align-items-center gap-2">
+      <a
+        href="{{ url_for('courses.index') }}"
+        class="btn btn-sm btn-outline-secondary {% if not filter_my %}active{% endif %}">
+        All
+      </a>
 
-    <a class="btn btn-sm btn-primary" href="{{ url_for('courses.new_course') }}">New course</a>
+      <a
+        href="{{ url_for('courses.index',
+                         q=q,
+                         course=filter_course,
+                         name=filter_name,
+                         client=filter_client,
+                         status=filter_status,
+                         notes=filter_notes,
+                         start_date=filter_start_date,
+                         end_date=filter_end_date,
+                         my=1) }}"
+        class="btn btn-primary btn-sm {% if filter_my == '1' %}active{% endif %}">
+        My Courses
+      </a>
+
+      <a class="btn btn-sm btn-primary" href="{{ url_for('courses.new_course') }}">New course</a>
+    </div>
   </div>
-</div>
 
-<div class="table-responsive">
-  <form method="get" action="{{ url_for('courses.index') }}">
+  <form method="get" action="{{ url_for('courses.index') }}" class="courses-panel">
     {# mantener búsqueda global y resetear página al filtrar #}
     <input type="hidden" name="q" value="{{ q or '' }}">
     <input type="hidden" name="page" value="1">
     <input type="hidden" name="per_page" value="{{ per_page }}">
+    {# mantener el toggle my #}
+    <input type="hidden" name="my" value="{{ filter_my or '' }}">
 
-    <table class="table table-sm align-middle" style="table-layout: fixed;">
-      <thead class="table-light">
-        <tr>
-          <th style="width:60px;">#</th>
-          <th style="width:120px;">Course</th>
-          <th style="width:220px;">Name</th>
-          <th style="width:160px;">Client</th>
-          <th style="width:95px;">Start</th>
-          <th style="width:95px;">End</th>
-          <th style="width:110px;">Status</th>
-          {% if show_itc_column %}
-          <th style="width:170px;">ITC Status</th>
-          {% endif %}
-          <th style="width:200px;">Notes</th>
-          <th style="width:300px;">Actions</th>
-        </tr>
+    <!-- ================= FIXED HEADER (2 ROWS) ================= -->
+    <div class="courses-header-2rows" id="coursesHeader">
 
-        {# fila de filtros por columna #}
-        <tr>
-          <th></th>
+      <!-- Row 1: column names -->
+      <div class="courses-grid-cols courses-grid-cols-head {% if not show_itc_column %}no-itc{% endif %}">
+        <div class="courses-th text-center fw-bold">#</div>
+        <div class="courses-th text-center fw-bold">Course</div>
+        <div class="courses-th text-center fw-bold">Name</div>
+        <div class="courses-th text-center fw-bold">Client</div>
+        <div class="courses-th text-center fw-bold">Start</div>
+        <div class="courses-th text-center fw-bold">End</div>
+        <div class="courses-th text-center fw-bold">Status</div>
+        {% if show_itc_column %}
+          <div class="courses-th text-center fw-bold">ITC Status</div>
+        {% endif %}
+        <div class="courses-th text-center fw-bold">Notes</div>
+        <div class="courses-th text-center fw-bold">Actions</div>
+      </div>
 
-          <th>
-            <input
-              type="text"
-              class="form-control form-control-sm"
-              name="course"
-              placeholder="Course"
-              value="{{ filter_course or '' }}"
-            >
-          </th>
+      <!-- Row 2: filters -->
+      <div class="courses-grid-cols courses-grid-cols-filters {% if not show_itc_column %}no-itc{% endif %}">
 
-          <th>
-            <input
-              type="text"
-              class="form-control form-control-sm"
-              name="name"
-              placeholder="Name"
-              value="{{ filter_name or '' }}"
-            >
-          </th>
+        <!-- # (no filter) -->
+        <div></div>
 
-          <th>
-            <input
-              type="text"
-              class="form-control form-control-sm"
-              name="client"
-              placeholder="Client"
-              value="{{ filter_client or '' }}"
-            >
-          </th>
+        <!-- Course -->
+        <div>
+          <input type="text"
+                 class="form-control form-control-sm"
+                 name="course"
+                 placeholder="Course"
+                 value="{{ filter_course or '' }}">
+        </div>
 
-          <th>
-            <input
-              type="date"
-              class="form-control form-control-sm"
-              name="start_date"
-              value="{{ filter_start_date or '' }}"
-            >
-          </th>
+        <!-- Name -->
+        <div>
+          <input type="text"
+                 class="form-control form-control-sm"
+                 name="name"
+                 placeholder="Name"
+                 value="{{ filter_name or '' }}">
+        </div>
 
-          <th>
-            <input
-              type="date"
-              class="form-control form-control-sm"
-              name="end_date"
-              value="{{ filter_end_date or '' }}"
-            >
-          </th>
+        <!-- Client -->
+        <div>
+          <input type="text"
+                 class="form-control form-control-sm"
+                 name="client"
+                 placeholder="Client"
+                 value="{{ filter_client or '' }}">
+        </div>
 
-          <th>
-            <select name="status" class="form-select form-select-sm">
-              <option value="">All</option>
-              {% for st in COURSE_STATUSES %}
-                <option value="{{ st }}" {% if filter_status == st %}selected{% endif %}>{{ st }}</option>
-              {% endfor %}
-            </select>
-          </th>
+        <!-- Start -->
+        <div>
+          <input type="date"
+                 class="form-control form-control-sm"
+                 name="start_date"
+                 value="{{ filter_start_date or '' }}">
+        </div>
 
-          {% if show_itc_column %}
-          <th>
-            {# ITC status no necesita filtro extra, ya cae en "status" #}
+        <!-- End -->
+        <div>
+          <input type="date"
+                 class="form-control form-control-sm"
+                 name="end_date"
+                 value="{{ filter_end_date or '' }}">
+        </div>
+
+        <!-- Status -->
+        <div>
+          <select name="status" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for st in COURSE_TCO_STATUSES %}
+              <option value="{{ st }}" {% if filter_status == st %}selected{% endif %}>{{ st }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {% if show_itc_column %}
+          <!-- ITC Status (sin filtro) -->
+          <div class="text-center">
             <span class="text-muted small">—</span>
-          </th>
-          {% endif %}
+          </div>
+        {% endif %}
 
-          <th>
-            <input
-              type="text"
-              class="form-control form-control-sm"
-              name="notes"
-              placeholder="Notes"
-              value="{{ filter_notes or '' }}"
-            >
-          </th>
+        <!-- Notes -->
+        <div>
+          <input type="text"
+                 class="form-control form-control-sm"
+                 name="notes"
+                 placeholder="Notes"
+                 value="{{ filter_notes or '' }}">
+        </div>
 
-          <th class="text-end">
-            <button type="submit" class="btn btn-primary btn-sm">Filter</button>
-            <a href="{{ url_for('courses.index') }}" class="btn btn-secondary btn-sm">Clear</a>
-          </th>
-        </tr>
-      </thead>
+        <!-- Actions -->
+        <div class="d-flex gap-2 justify-content-center">
+          <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+          <a href="{{ url_for('courses.index') }}" class="btn btn-secondary btn-sm">Clear</a>
+        </div>
 
-      <tbody>
-        {% for c in courses %}
-        <tr data-course-row="{{ c.id }}">
-          <td class="text-muted">{{ ((page - 1) * per_page) + loop.index }}</td>
+      </div>
+    </div>
 
-          <td class="text-truncate" title="{{ c.course }}">
-            {{ c.course or '—' }}
-          </td>
+    <!-- ================= TABLE BODY (SCROLL ONLY HERE) ================= -->
+    <div class="courses-table-scroll" id="coursesScroll">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 courses-table-fixed">
 
-          <td class="text-truncate" title="{{ c.name }}">
-            {{ c.name or '—' }}
-          </td>
-
-          <td class="text-truncate" title="{{ c.client }}">
-            {{ c.client or '—' }}
-          </td>
-
-          <td class="text-nowrap">
-            {{ c.start_date if c.start_date is not none else '—' }}
-          </td>
-
-          <td class="text-nowrap">
-            {{ c.end_date if c.end_date is not none else '—' }}
-          </td>
-
-          <td>
-            {% set status_color = {
-              'active':'success',
-              'finished':'secondary',
-              'lost':'warning',
-              'cancelled':'danger',
-              'planned':"dark"
-            }.get((c.auto_status or '')|lower, 'light') %}
-            <span class="badge text-bg-{{ status_color }}">{{ c.auto_status or '—' }}</span>
-          </td>
-
-          {% if show_itc_column %}
-          <td>
-            {% set current_itc = (c.status_itc if c.status_itc in (COURSE_ITC_STATUSES or []) else 'start') %}
-            {% if can_edit_itc_status %}
-              <div class="d-flex align-items-center gap-2">
-                <select class="form-select form-select-sm itc-status-select"
-                        data-course-id="{{ c.id }}"
-                        style="min-width: 140px;">
-                  {% for st in (COURSE_ITC_STATUSES or []) %}
-                    <option value="{{ st }}" {% if current_itc == st %}selected{% endif %}>{{ st }}</option>
-                  {% endfor %}
-                </select>
-                <span class="small text-muted itc-status-msg" data-course-id="{{ c.id }}"></span>
-              </div>
-            {% else %}
-              <span class="badge text-bg-light">{{ current_itc }}</span>
+          <!-- Force SAME column widths as header grid -->
+          <colgroup>
+            <col style="width: var(--crs-col-num);">
+            <col style="width: var(--crs-col-course);">
+            <col style="width: var(--crs-col-name);">
+            <col style="width: var(--crs-col-client);">
+            <col style="width: var(--crs-col-start);">
+            <col style="width: var(--crs-col-end);">
+            <col style="width: var(--crs-col-status);">
+            {% if show_itc_column %}
+              <col style="width: var(--crs-col-itc);">
             {% endif %}
-          </td>
-          {% endif %}
+            <col style="width: var(--crs-col-notes);">
+            <col style="width: var(--crs-col-actions);">
+          </colgroup>
 
-          <td class="text-truncate" title="{{ c.notes }}">
-            {{ c.notes if c is defined and c.notes is not none else '' }}
-          </td>
+          <tbody>
+            {% for c in courses %}
+            <tr data-course-row="{{ c.id }}">
+              <td class="text-muted text-center">{{ ((page - 1) * per_page) + loop.index }}</td>
 
-          <td class="text-end">
-            <div class="d-flex align-items-center gap-2 justify-content-end flex-wrap">
-              <a href="{{ url_for('assignments.new_bulk', course_id=c.id) }}"
-                 class="btn btn-sm btn-primary">
-                Associate
-              </a>
+              <td class="text-truncate text-center" title="{{ c.course }}">{{ c.course or '—' }}</td>
+              <td class="text-truncate text-center" title="{{ c.name }}">{{ c.name or '—' }}</td>
+              <td class="text-truncate text-center" title="{{ c.client }}">{{ c.client or '—' }}</td>
 
-              {% set actor_role = (current_user.role or '')|lower %}
-              {% set actor_dept = (current_user.department or '')|trim %}
-              {% if actor_role == 'admin' or actor_dept == 'ITC support' %}
-                <a class="btn btn-sm btn-primary"
-                   href="{{ url_for('courses.assign_pcs', course_id=c.id) }}">
-                  Assign PCs
-                </a>
+              <td class="text-nowrap text-center">
+                {{ c.start_date if c.start_date is not none else '—' }}
+              </td>
+
+              <td class="text-nowrap text-center">
+                {{ c.end_date if c.end_date is not none else '—' }}
+              </td>
+
+              <td class="text-center">
+                {% set status_color = {
+                  'active':'success',
+                  'finished':'secondary',
+                  'lost':'warning',
+                  'cancelled':'danger',
+                  'planned':"dark"
+                }.get((c.auto_status or '')|lower, 'light') %}
+                <span class="badge text-bg-{{ status_color }}">{{ c.auto_status or '—' }}</span>
+              </td>
+
+              {% if show_itc_column %}
+              <td>
+                {% set current_itc = (c.status_itc if c.status_itc in (COURSE_ITC_STATUSES or []) else 'start') %}
+                {% if can_edit_itc_status %}
+                  <div class="d-flex align-items-center gap-2">
+                    <select class="form-select form-select-sm itc-status-select"
+                            data-course-id="{{ c.id }}"
+                            style="min-width: 140px;">
+                      {% for st in (COURSE_ITC_STATUSES or []) %}
+                        <option value="{{ st }}" {% if current_itc == st %}selected{% endif %}>{{ st }}</option>
+                      {% endfor %}
+                    </select>
+                    <span class="small text-muted itc-status-msg" data-course-id="{{ c.id }}"></span>
+                  </div>
+                {% else %}
+                  <span class="badge text-bg-light">{{ current_itc }}</span>
+                {% endif %}
+              </td>
               {% endif %}
 
-              <a href="{{ url_for('courses.edit_course', course_id=c.id) }}"
-                 class="btn btn-secondary btn-sm">
-                Edit
-              </a>
-              <form action="{{ url_for('courses.delete_course', course_id=c.id) }}"
-                    method="post"
-                    onsubmit="return confirm('Delete course #{{ c.id }}?');">
-                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-              </form>
-            </div>
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="10" class="text-center text-muted py-4">
-            {% if q %}
-              No courses found for “{{ q }}”.
+              <td class="text-truncate" title="{{ c.notes }}">
+                {{ c.notes if c is defined and c.notes is not none else '' }}
+              </td>
+
+              <td>
+                <div class="d-flex align-items-center gap-2 justify-content-center flex-wrap">
+                  <a href="{{ url_for('assignments.new_bulk', course_id=c.id) }}"
+                     class="btn btn-sm btn-primary">
+                    Associate
+                  </a>
+
+                  {% set actor_role = (current_user.role or '')|lower %}
+                  {% set actor_dept = (current_user.department or '')|trim %}
+                  {% if actor_role == 'admin' or actor_dept == 'ITC support' %}
+                    <a class="btn btn-sm btn-primary"
+                       href="{{ url_for('courses.assign_pcs', course_id=c.id) }}">
+                      Assign PCs
+                    </a>
+                  {% endif %}
+
+                  <a href="{{ url_for('courses.edit_course', course_id=c.id) }}"
+                     class="btn btn-secondary btn-sm">
+                    Edit
+                  </a>
+
+                  <form action="{{ url_for('courses.delete_course', course_id=c.id) }}"
+                        method="post"
+                        onsubmit="return confirm('Delete course #{{ c.id }}?');">
+                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+
             {% else %}
-              No courses registered.
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+            <tr>
+              <td colspan="{{ 10 if show_itc_column else 9 }}" class="text-center text-muted py-4">
+                {% if q %}
+                  No courses found for “{{ q }}”.
+                {% else %}
+                  No courses registered.
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+
+        </table>
+      </div>
+    </div>
+
   </form>
-</div>
 
-<nav aria-label="Pagination">
-  <ul class="pagination">
-    <li class="page-item {% if not has_prev %}disabled{% endif %}">
-      <a class="page-link"
-         href="{{ url_for('courses.index',
-                          q=q,
-                          page=(page-1 if page>1 else 1),
-                          per_page=per_page,
-                          course=filter_course,
-                          name=filter_name,
-                          client=filter_client,
-                          status=filter_status,
-                          start_date=filter_start_date,
-                          end_date=filter_end_date,
-                          notes=filter_notes) }}">«</a>
-    </li>
-    <li class="page-item active"><span class="page-link">{{ page }}</span></li>
-    <li class="page-item {% if not has_next %}disabled{% endif %}">
-      <a class="page-link"
-         href="{{ url_for('courses.index',
-                          q=q,
-                          page=(page+1 if has_next else page),
-                          per_page=per_page,
-                          course=filter_course,
-                          name=filter_name,
-                          client=filter_client,
-                          status=filter_status,
-                          start_date=filter_start_date,
-                          end_date=filter_end_date,
-                          notes=filter_notes) }}">»</a>
-    </li>
-  </ul>
-</nav>
+  <!-- ================= PAGINATION ================= -->
+  <nav aria-label="Pagination" class="mt-3">
+    <ul class="pagination mb-2">
+      <li class="page-item {% if not has_prev %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('courses.index',
+                            q=q,
+                            page=(page-1 if page>1 else 1),
+                            per_page=per_page,
+                            course=filter_course,
+                            name=filter_name,
+                            client=filter_client,
+                            status=filter_status,
+                            start_date=filter_start_date,
+                            end_date=filter_end_date,
+                            notes=filter_notes,
+                            my=filter_my) }}">«</a>
+      </li>
+      <li class="page-item active"><span class="page-link">{{ page }}</span></li>
+      <li class="page-item {% if not has_next %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('courses.index',
+                            q=q,
+                            page=(page+1 if has_next else page),
+                            per_page=per_page,
+                            course=filter_course,
+                            name=filter_name,
+                            client=filter_client,
+                            status=filter_status,
+                            start_date=filter_start_date,
+                            end_date=filter_end_date,
+                            notes=filter_notes,
+                            my=filter_my) }}">»</a>
+      </li>
+    </ul>
+  </nav>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="mb-0"></h2>
+  <!-- ================= EXPORTS ================= -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div></div>
+    <div class="d-flex align-items-center gap-2">
+      <span class="small fw-bold me-1">Download as:</span>
 
-  <div class="d-flex align-items-center gap-2">
-    <span class="small fw-bold me-1">Download as:</span>
+      <div class="btn-group btn-group-sm" role="group">
+        <a class="btn btn-outline-secondary"
+           href="{{ url_for('courses.export_courses',
+                            format='csv',
+                            q=q,
+                            course=filter_course,
+                            name=filter_name,
+                            client=filter_client,
+                            status=filter_status,
+                            notes=filter_notes,
+                            start_date=filter_start_date,
+                            end_date=filter_end_date,
+                            page=page,
+                            per_page=per_page,
+                            my=filter_my) }}">CSV</a>
 
-    <div class="btn-group btn-group-sm" role="group">
-      <a
-        class="btn btn-outline-secondary"
-        href="{{ url_for('courses.export_courses',
-                         format='csv',
-                         q=q,
-                         course=filter_course,
-                         name=filter_name,
-                         client=filter_client,
-                         status=filter_status,
-                         notes=filter_notes,
-                         start_date=filter_start_date,
-                         end_date=filter_end_date,
-                         page=page,
-                         per_page=per_page) }}"
-      >CSV</a>
+        <a class="btn btn-outline-secondary"
+           href="{{ url_for('courses.export_courses',
+                            format='xlsx',
+                            q=q,
+                            course=filter_course,
+                            name=filter_name,
+                            client=filter_client,
+                            status=filter_status,
+                            notes=filter_notes,
+                            start_date=filter_start_date,
+                            end_date=filter_end_date,
+                            page=page,
+                            per_page=per_page,
+                            my=filter_my) }}">Excel</a>
 
-      <a
-        class="btn btn-outline-secondary"
-        href="{{ url_for('courses.export_courses',
-                         format='xlsx',
-                         q=q,
-                         course=filter_course,
-                         name=filter_name,
-                         client=filter_client,
-                         status=filter_status,
-                         notes=filter_notes,
-                         start_date=filter_start_date,
-                         end_date=filter_end_date,
-                         page=page,
-                         per_page=per_page) }}"
-      >Excel</a>
-
-      <a
-        class="btn btn-outline-secondary"
-        href="{{ url_for('courses.export_courses',
-                         format='pdf',
-                         q=q,
-                         course=filter_course,
-                         name=filter_name,
-                         client=filter_client,
-                         status=filter_status,
-                         notes=filter_notes,
-                         start_date=filter_start_date,
-                         end_date=filter_end_date,
-                         page=page,
-                         per_page=per_page) }}"
-      >PDF</a>
+        <a class="btn btn-outline-secondary"
+           href="{{ url_for('courses.export_courses',
+                            format='pdf',
+                            q=q,
+                            course=filter_course,
+                            name=filter_name,
+                            client=filter_client,
+                            status=filter_status,
+                            notes=filter_notes,
+                            start_date=filter_start_date,
+                            end_date=filter_end_date,
+                            page=page,
+                            per_page=per_page,
+                            my=filter_my) }}">PDF</a>
+      </div>
     </div>
   </div>
+
 </div>
+
+<!-- ===== Scrollbar compensation (header aligns with table body) ===== -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const scroll = document.getElementById("coursesScroll");
+  if (!scroll) return;
+
+  function syncScrollbarPad(){
+    const sbw = scroll.offsetWidth - scroll.clientWidth; // scrollbar width
+    document.documentElement.style.setProperty("--crs-scrollbar-pad", sbw + "px");
+  }
+
+  syncScrollbarPad();
+  window.addEventListener("resize", syncScrollbarPad);
+});
+</script>
 
 {# JS inline para guardar status_itc #}
 {% if show_itc_column %}
@@ -356,7 +396,6 @@
   }
 
   selects.forEach(sel => {
-    // inicializa old value
     sel.dataset.oldValue = sel.value;
     sel.dataset.saving = "0";
 
@@ -364,7 +403,6 @@
       const courseId = sel.dataset.courseId;
       const newVal = sel.value;
 
-      // Si ya está guardando, no hacemos nada (evita spam)
       if (sel.dataset.saving === "1") {
         sel.value = sel.dataset.oldValue || sel.value;
         return;
@@ -372,7 +410,6 @@
 
       const oldVal = sel.dataset.oldValue || "";
 
-      // No request si no cambia
       if (newVal === oldVal) {
         setMsg(courseId, "");
         return;
@@ -397,13 +434,10 @@
         if (!resp.ok || !data.success) {
           const err = (data && data.error) ? data.error : "Error";
           setMsg(courseId, err, true);
-
-          // revertimos UI
           sel.value = oldVal;
           return;
         }
 
-        // éxito: persistimos el nuevo valor como "old"
         sel.dataset.oldValue = newVal;
         setMsg(courseId, "Saved");
         setTimeout(() => setMsg(courseId, ""), 1200);
@@ -420,4 +454,5 @@
 })();
 </script>
 {% endif %}
+
 {% endblock %}

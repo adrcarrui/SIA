@@ -22,14 +22,14 @@
 
       <!-- Row 1: column names -->
       <div class="devices-grid-cols devices-grid-cols-head">
-        <div class="devices-th text-center">#</div>
-        <div class="devices-th">Name</div>
-        <div class="devices-th text-center">Identifier</div>
-        <div class="devices-th text-center">Root type</div>
-        <div class="devices-th text-center">Subtype</div>
-        <div class="devices-th text-center">Status</div>
-        <div class="devices-th">Notes</div>
-        <div class="devices-th text-end">Actions</div>
+        <div class="devices-th text-center fw-bold">#</div>
+        <div class="devices-th text-center fw-bold">Name</div>
+        <div class="devices-th text-center fw-bold">Identifier</div>
+        <div class="devices-th text-center fw-bold">Root type</div>
+        <div class="devices-th text-center fw-bold">Subtype</div>
+        <div class="devices-th text-center fw-bold">Status</div>
+        <div class="devices-th text-center fw-bold">Notes</div>
+        <div class="devices-th text-center fw-bold">Actions</div>
       </div>
 
       <!-- Row 2: filters -->
@@ -99,7 +99,7 @@
         </div>
 
         <!-- Actions -->
-        <div class="d-flex gap-2 justify-content-end">
+        <div class="d-flex gap-2 text-center">
           <button type="submit" class="btn btn-primary btn-sm">Filter</button>
           <a href="{{ url_for('devices.index') }}" class="btn btn-secondary btn-sm">Clear</a>
         </div>
@@ -202,7 +202,7 @@
                 </td>
 
                 <!-- Notes -->
-                <td>{{ d.notes or '' }}</td>
+                <td class="text-center">{{ d.notes or '' }}</td>
 
                 <!-- Actions -->
                 <td class="text-end text-center">
