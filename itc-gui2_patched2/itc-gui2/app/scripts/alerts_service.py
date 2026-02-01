@@ -1,7 +1,7 @@
 from flask import current_app
 from app.scripts.alerts_itc import get_itc_upcoming_and_overdue_alerts
 from app.scripts.alerts_tco import get_tco_alerts
-from app.scripts.alert_state_service import upsert_seen_alert, apply_alert_states
+from app.scripts.alert_state_service import upsert_seen_alert, apply_alert_states, resolve_missing_alerts
 from app.models import AlertState, Course
 
 SEV_RANK = {"notice": 1, "warning": 2, "critical": 3}
@@ -161,7 +161,7 @@ def get_alerts_for_user(db, user, include_hidden: bool = False):
             rows = (
                 db.query(AlertState)
                 .filter(AlertState.scope == scope)
-                .filter(AlertState.status.in_(["snoozed", "ignored", "ack"]))
+                .filter(AlertState.status.in_(["snoozed", "ignored", "acked"]))
                 .all()
             ) or []
 
@@ -217,6 +217,60 @@ def get_alerts_for_user(db, user, include_hidden: bool = False):
 
     # 1) Agregamos por curso/severidad
     alerts = _aggregate_alerts_by_course_and_severity(alerts)
+
+    # 2.5) Auto-close: marcar como done las keys que ya no aparecen para ese curso/scope
+# 2.5) Auto-close: marcar como done las keys que ya no aparecen para ese curso/scope
+    if scope != "other":
+        try:
+            # Mapa curso -> keys activas actuales (lo que el motor genera ahora)
+            active_by_course: dict[int, set[str]] = {}
+            for a in alerts:
+                cid = a.get("course_id") or getattr(a.get("course"), "id", None)
+                if not cid:
+                    continue
+                cid = int(cid)
+                ks = set()
+                for k in (a.get("keys") or []):
+                    if k:
+                        ks.add(str(k))
+                active_by_course[cid] = ks
+
+            # Cursos a barrer:
+            # - los que tienen alertas ahora (active_by_course)
+            # - + los que tienen estados no terminales en BD (aunque ya no salgan en UI)
+            rows = (
+                db.query(AlertState.course_id)
+                .filter(AlertState.scope == scope)
+                .filter(AlertState.status.in_(["open", "acked", "snoozed"]))
+                .distinct()
+                .all()
+            )
+            course_ids_to_sweep = set(active_by_course.keys()) | {int(r[0]) for r in rows}
+
+            for cid in course_ids_to_sweep:
+                resolve_missing_alerts(
+                    db,
+                    scope=scope,
+                    course_id=cid,
+                    active_keys=active_by_course.get(cid, set()),
+                )
+
+            db.commit()
+        except Exception:
+            current_app.logger.exception("GA: resolve_missing_alerts failed")
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
+            db.commit()
+        except Exception:
+            current_app.logger.exception("GA: resolve_missing_alerts failed")
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
 
     # En tu DB existe updated_by (varchar)
     updated_by = getattr(user, "email", None) or getattr(user, "username", None)

@@ -5,14 +5,14 @@ from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 
 from flask import current_app
-from sqlalchemy import text
+from sqlalchemy import text,func
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.models import AlertState  # donde lo hayas metido
 
 TERMINAL = {"ignored", "resolved"}
 
-VALID_STATUS = {"open", "acked", "snoozed", "ignored"}
+VALID_STATUS = {"open", "acked", "snoozed", "ignored", "done"}
 
 def now_utc():
     return datetime.now(timezone.utc)
@@ -66,9 +66,13 @@ def clear_alert_state(db, scope: str, course_id: int, alert_key: str, updated_by
 
 def upsert_seen_alert(db, scope: str, course_id: int, alert_key: str, updated_by: str | None = None):
     """
-    Registra que la alerta (scope, course_id, alert_key) ha sido "vista" en este render:
-    - si no existe: INSERT status=open, occurrences=1
-    - si existe: UPDATE last_seen_at=now, occurrences += 1
+    Registra que la alerta (scope, course_id, alert_key) ha sido "vista":
+    - si no existe: INSERT status=open
+    - si existe:
+        - last_seen_at = now
+        - occurrences += 1
+        - si status == 'done' -> status = 'open'
+        - en otros estados NO se toca el status
     """
     scope = _norm_scope(scope)
     alert_key = _norm_key(alert_key)
@@ -95,7 +99,13 @@ def upsert_seen_alert(db, scope: str, course_id: int, alert_key: str, updated_by
         ON CONFLICT ON CONSTRAINT uq_alert_states_scope_course_key
         DO UPDATE SET
             last_seen_at = :ts,
-            occurrences = alert_states.occurrences + 1
+            updated_at  = :ts,
+            updated_by  = :updated_by,
+            occurrences = alert_states.occurrences + 1,
+            status = CASE
+                WHEN alert_states.status = 'done' THEN 'open'
+                ELSE alert_states.status
+            END
         RETURNING id
     """)
 
@@ -106,7 +116,6 @@ def upsert_seen_alert(db, scope: str, course_id: int, alert_key: str, updated_by
         "ts": ts,
         "updated_by": updated_by,
     })
-
 
 def set_alert_state(
     db,
@@ -275,3 +284,24 @@ def apply_alert_states(db, scope: str, alerts: list[dict], include_hidden: bool 
         out.append(aa)
 
     return out
+
+def resolve_missing_alerts(db, *, scope: str, course_id: int, active_keys: set[str]):
+    q = (
+        db.query(AlertState)
+        .filter(
+            AlertState.scope == scope,
+            AlertState.course_id == int(course_id),
+            AlertState.status.in_(("open", "acked", "snoozed")),
+        )
+    )
+
+    if active_keys:
+        q = q.filter(~AlertState.alert_key.in_(list(active_keys)))
+
+    q.update(
+        {
+            AlertState.status: "done",
+            AlertState.updated_at: func.now(),
+        },
+        synchronize_session=False,
+    )

@@ -51,13 +51,13 @@ def get_tco_alerts(db):
         .all()
     )
 
-    # Calcula una vez los tipos de tarjeta válidos
+    # Tipos de tarjeta válidos
     card_ids = card_asset_type_ids(db)
 
     def required_cards_for_course(course: Course) -> int:
         """
-        Requeridas = sum(requirements cuyo asset_type_id está en card_ids.
-        Si no existe, fallback a course.trainees.
+        Requeridas = suma de requirements cuyo asset_type_id está en card_ids.
+        Si no hay requirements válidos, fallback a course.trainees.
         """
         req = 0
         if card_ids:
@@ -73,7 +73,9 @@ def get_tco_alerts(db):
                 )
                 req = int(req or 0)
             except Exception:
-                current_app.logger.exception("required_cards_for_course failed (course_id=%s)", course.id)
+                current_app.logger.exception(
+                    "required_cards_for_course failed (course_id=%s)", course.id
+                )
                 req = 0
 
         trainees = int(getattr(course, "trainees", 0) or 0)
@@ -81,9 +83,7 @@ def get_tco_alerts(db):
 
     def linked_cards_for_course(course_id: int) -> int:
         """
-        Cuenta tarjetas enlazadas a un curso usando assignments (tabla viva).
-        Viva = released_at IS NULL (y opcionalmente status).
-        Filtra por Device.asset_type_id IN card_ids.
+        Cuenta tarjetas enlazadas vivas (released_at IS NULL).
         """
         if not card_ids:
             return 0
@@ -94,14 +94,16 @@ def get_tco_alerts(db):
                 .join(Device, Device.id == Assignment.device_id)
                 .filter(
                     Assignment.course_id == course_id,
-                    Assignment.released_at.is_(None),  # vivo
+                    Assignment.released_at.is_(None),
                     Device.asset_type_id.in_(card_ids),
                 )
                 .scalar()
             )
             return int(n or 0)
         except Exception:
-            current_app.logger.exception("linked_cards_for_course failed (course_id=%s)", course_id)
+            current_app.logger.exception(
+                "linked_cards_for_course failed (course_id=%s)", course_id
+            )
             return 0
 
     def bump_severity(cur: str | None, new: str) -> str:
@@ -120,97 +122,144 @@ def get_tco_alerts(db):
         req = required_cards_for_course(c)
         linked = linked_cards_for_course(c.id)
 
-        current_app.logger.warning(
-            "TCO_ALERTS course=%s start=%r end=%r trainees=%r req=%s linked=%s card_ids=%s",
-            c.id, c.start_date, c.end_date, getattr(c, "trainees", None), req, linked, len(card_ids)
-        )
-
-        reasons = []   # list[{"key":..., "text":...}]
-        severity = None
-
         days_to_start = (sd - today).days
 
-        # Estados lógicos del curso (por fechas)
+        # Estados lógicos por fechas
         course_finished = (ed is not None) and (ed < today)
-
-        course_active = (
-            (sd <= today) and
-            (ed is None or ed >= today)
-        )
-
-        course_planned = (sd > today)
+        course_active = (sd <= today) and (ed is None or ed >= today)
+        course_planned = sd > today
         planned_within_3_days = course_planned and (0 <= days_to_start <= 3)
 
-        # 1) Avisos "empieza pronto" SOLO para planned dentro de 3 días
-        if planned_within_3_days:
-            if req > 0 and linked == 0:
-                sev = "notice" if days_to_start == 3 else ("warning" if days_to_start == 2 else "critical")
-                severity = bump_severity(severity, sev)
-                reasons.append({
-                    "key": "tco_start_soon_no_cards",
-                    "text": f"Course starts in {days_to_start} day(s) and has 0 cards linked (required {req})."
-                })
+        reasons = []
+        severity = None
 
-            if req > 0 and 0 < linked < req:
-                sev = "warning" if days_to_start >= 2 else "critical"
-                severity = bump_severity(severity, sev)
-                reasons.append({
-                    "key": "tco_start_soon_missing_cards",
-                    "text": f"Course starts in {days_to_start} day(s) and is missing cards ({linked}/{req})."
-                })
-
-        # 2) Mismatch general:
-        # - ACTIVE: siempre
-        # - PLANNED: solo si empieza en <=3 días
-        # - FINISHED: nunca
-        should_alert_mismatch = (not course_finished) and (course_active or planned_within_3_days)
+        # ------------------------------------------------------------------
+        # 1) Cards mismatch UNIFICADO
+        # ------------------------------------------------------------------
+        should_alert_mismatch = (not course_finished) and (
+            course_active or planned_within_3_days
+        )
 
         if should_alert_mismatch and req > 0 and linked != req:
             diff = linked - req
-            sev = "warning" if abs(diff) <= 2 else "critical"
+
+            # Severidad por tamaño del desajuste
+            size_sev = "warning" if abs(diff) <= 2 else "critical"
+
+            if planned_within_3_days:
+                # Severidad por proximidad al inicio
+                time_sev = (
+                    "notice"
+                    if days_to_start == 3
+                    else ("warning" if days_to_start == 2 else "critical")
+                )
+                sev = (
+                    time_sev
+                    if SEV_RANK.get(time_sev, 0) >= SEV_RANK.get(size_sev, 0)
+                    else size_sev
+                )
+
+                if linked == 0:
+                    text = (
+                        f"Course starts in {days_to_start} day(s) "
+                        f"and has 0 cards linked (required {req})."
+                    )
+                    legacy_keys = ["tco_start_soon_no_cards"]
+                elif linked < req:
+                    text = (
+                        f"Course starts in {days_to_start} day(s) "
+                        f"and is missing cards ({linked}/{req})."
+                    )
+                    legacy_keys = ["tco_start_soon_missing_cards"]
+                else:
+                    text = (
+                        f"Course starts in {days_to_start} day(s) "
+                        f"and has extra cards linked ({linked}/{req})."
+                    )
+                    legacy_keys = []
+            else:
+                sev = size_sev
+                if linked < req:
+                    text = f"Missing cards: linked {linked}/{req}. Diff={diff}."
+                else:
+                    text = f"Extra cards: linked {linked}/{req}. Diff={diff}."
+                legacy_keys = []
+
             severity = bump_severity(severity, sev)
+            reasons.append(
+                {
+                    "key": "tco_cards_mismatch",
+                    "text": text,
+                    "legacy_keys": legacy_keys,
+                    "extra": {
+                        "diff": diff,
+                        "required": req,
+                        "linked": linked,
+                        "days_to_start": days_to_start,
+                    },
+                }
+            )
 
-            reasons.append({
-                "key": "tco_cards_mismatch",
-                "text": f"Cards linked ({linked}) do not match required ({req}). Diff={diff}."
-            })
-
-        # 3) Curso acabado: 1-7 warning, >7 critical (solo si quedan tarjetas enlazadas)
-        if ed:
+        # ------------------------------------------------------------------
+        # 2) Curso finalizado con tarjetas aún enlazadas
+        # ------------------------------------------------------------------
+        if ed and linked > 0:
             days_since_end = (today - ed).days
-            if linked > 0:
-                if 1 <= days_since_end <= 7:
-                    severity = bump_severity(severity, "warning")
-                    reasons.append({
+            if 1 <= days_since_end <= 7:
+                severity = bump_severity(severity, "warning")
+                reasons.append(
+                    {
                         "key": "tco_course_ended_recent",
-                        "text": f"Course ended {days_since_end} day(s) ago and still has {linked} cards linked."
-                    })
-                elif days_since_end > 7:
-                    severity = bump_severity(severity, "critical")
-                    reasons.append({
+                        "text": (
+                            f"Course ended {days_since_end} day(s) ago "
+                            f"and still has {linked} cards linked."
+                        ),
+                    }
+                )
+            elif days_since_end > 7:
+                severity = bump_severity(severity, "critical")
+                reasons.append(
+                    {
                         "key": "tco_course_ended_old",
-                        "text": f"Course ended {days_since_end} day(s) ago and still has {linked} cards linked."
-                    })
+                        "text": (
+                            f"Course ended {days_since_end} day(s) ago "
+                            f"and still has {linked} cards linked."
+                        ),
+                    }
+                )
 
         if reasons:
-            message = "\n".join([f"- {r['text']}" for r in reasons])
-            alerts.append({
-                "type": "course_agg",
-                "severity": severity or "notice",
-                "code": "tco_course_summary",
-                "message": message,
-                "course": c,
-                "course_id": c.id,
-                "reasons": reasons,
-                "keys": [r["key"] for r in reasons],
-                "extra": {
-                    "required": req,
-                    "linked": linked,
-                    "days_to_start": days_to_start,
-                },
-            })
+            # keys = key principal + legacy_keys (compatibilidad)
+            keys = []
+            for r in reasons:
+                if r.get("key"):
+                    keys.append(r["key"])
+                for lk in (r.get("legacy_keys") or []):
+                    keys.append(lk)
+            keys = list(dict.fromkeys(keys))  # únicos, mantiene orden
+
+            message = "\n".join(f"- {r['text']}" for r in reasons)
+
+            alerts.append(
+                {
+                    "type": "course_agg",
+                    "severity": severity or "notice",
+                    "code": "tco_course_summary",
+                    "message": message,
+                    "course": c,
+                    "course_id": c.id,
+                    "reasons": reasons,
+                    "keys": keys,
+                    "extra": {
+                        "required": req,
+                        "linked": linked,
+                        "days_to_start": days_to_start,
+                    },
+                }
+            )
 
     return alerts
+
 
 def get_cards_vs_trainees_alerts(db, managed_by: str | None = None):
     """

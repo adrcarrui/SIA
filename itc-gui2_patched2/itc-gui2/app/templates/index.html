@@ -11,56 +11,9 @@
 {# Requires: pickup_notif passed from main.index          #}
 {# ===================================================== #}
 
-{% if pickup_notif %}
-  {% set actor_role = (current_user.role or '')|lower|trim %}
-  {% set actor_dept = (current_user.department or '')|lower|trim %}
-  {% if actor_dept == 'itc support' or actor_role.startswith('itc') or actor_role == 'admin' %}
-    <div class="card border-warning mb-3 shadow-sm">
-      <div class="card-body d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-2">
-
-        <div class="me-2">
-          <div class="d-flex align-items-center gap-2 mb-1">
-            <span class="badge bg-warning text-dark">Pickup needed</span>
-            <small class="text-muted">
-              {{ pickup_notif.created_at.strftime("%Y-%m-%d %H:%M") if pickup_notif.created_at else "" }}
-            </small>
-          </div>
-
-          <div class="fw-semibold">
-            {{ pickup_notif.title or "Pickup needed" }}
-          </div>
-
-          {% if pickup_message_display %}
-            <div class="text-muted">
-              {{ pickup_message_display }}
-            </div>
-          {% endif %}
-        </div>
-
-        <div class="d-flex gap-2">
-          <form method="post"
-                action="{{ url_for('main.mark_pickup_done', notif_id=pickup_notif.id) }}"
-                class="d-inline">
-            <button type="submit" class="btn btn-success btn-sm">
-              Mark as done
-            </button>
-          </form>
-          <a class="btn btn-primary btn-sm"
-             href="{{ url_for('notifications.index', status='open', type='pickup_needed') }}">
-            Open notifications
-          </a>
-
-          {# Botón opcional para siguiente paso (no existe aún la ruta):
-          <form method="post" action="{{ url_for('main.mark_pickup_done', notif_id=pickup_notif.id) }}">
-            <button type="submit" class="btn btn-success btn-sm">Mark as done</button>
-          </form>
-          #}
-        </div>
-
-      </div>
-    </div>
-  {% endif %}
-{% endif %}
+<div id="itc-pickup-container">
+  {% include "dashboard/_itc_pickup_fragment.html" %}
+</div>
 
 {# FILA DE TARJETAS RÁPIDAS (Devices + Alerts resumen) #}
 <div class="row mb-4 g-3 row-cols-1 row-cols-md-2">
@@ -513,4 +466,36 @@
       }
     });
   </script>
+<script>
+(function () {
+  const el = document.getElementById("itc-pickup-container");
+  if (!el) return;
+
+  const INTERVAL = 20000;
+
+  async function tick() {
+    try {
+      const r = await fetch("{{ url_for('main.dashboard_itc_pickup_fragment') }}", {
+        credentials: "same-origin",
+        headers: { "Accept": "text/html", "X-Requested-With": "fetch" }
+      });
+
+      if (!r.ok) return;
+
+      const html = await r.text();
+
+      // Si por lo que sea recibes una página entera (login/redirect), NO pises el dashboard
+      if (html.includes("<html") || html.includes("<!doctype")) return;
+
+      el.innerHTML = html;
+    } catch (e) {}
+    finally {
+      setTimeout(tick, document.hidden ? 60000 : INTERVAL);
+    }
+  }
+
+  tick();
+})();
+</script>
+
 {% endblock %}

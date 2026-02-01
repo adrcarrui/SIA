@@ -139,8 +139,7 @@
           <!-- Alerts -->
           <li class="nav-item">
             <a href="{{ url_for('alerts.alerts_index') }}"
-                 class="nav-link d-flex align-items-center gap-2 {{ 'active' if (request.endpoint and request.endpoint.startswith('alerts.')) else '' }}"
-               title="Alerts">
+               class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint and request.endpoint.startswith('alerts.') else '' }}">
 
               <span class="position-relative d-inline-flex">
                 <span class="icon" aria-hidden="true">🚨</span>
@@ -149,14 +148,18 @@
                   {% set total_alerts = (alerts_summary.notice or 0)
                                         + (alerts_summary.warning or 0)
                                         + (alerts_summary.critical or 0) %}
-                  {% if total_alerts > 0 %}
-                    <span
-                      class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger sidebar-badge">
-                      {{ '99+' if total_alerts > 99 else total_alerts }}
-                      <span class="visually-hidden">active alerts</span>
-                    </span>
-                  {% endif %}
+                {% else %}
+                  {% set total_alerts = 0 %}
                 {% endif %}
+
+                <span
+                  id="badge-alerts"
+                  class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger sidebar-badge"
+                  data-max="99"
+                  style="{{ '' if total_alerts > 0 else 'display:none;' }}">
+                  <span class="badge-value">{{ '99+' if total_alerts > 99 else total_alerts }}</span>
+                  <span class="visually-hidden">active alerts</span>
+                </span>
               </span>
 
               <span class="label">Alerts</span>
@@ -176,31 +179,40 @@
             </li>
           {% endif %}
 
-{% set role_l = (current_user.role or '')|trim|lower %}
-{% set dept_l = (department|default('')|trim|lower) %}
+          {% set role_l = (current_user.role or '')|trim|lower %}
+          {% set dept_l = (department|default('')|trim|lower) %}
 
-{# Notifications: admin/supervisor O dept ITC, PERO NUNCA TCO #}
-{% if dept_l != 'tco' and (('admin' in role_l or 'supervisor' in role_l) or dept_l.startswith('itc')) %}
-  <li class="nav-item">
-    <a href="{{ url_for('notifications.index') }}"
-       class="nav-link d-flex align-items-center gap-2 {{ 'active' if (request.endpoint and request.endpoint.startswith('notifications.')) else '' }}"
-       title="Notifications">
+          {# Notifications: admin/supervisor O dept ITC, PERO NUNCA TCO #}
+          {% if dept_l != 'tco' and (('admin' in role_l or 'supervisor' in role_l) or dept_l.startswith('itc')) %}
+          <!-- Notifications -->
+          <li class="nav-item">
+            <a href="{{ url_for('notifications.index') }}"
+               class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint and request.endpoint.startswith('notifications.') else '' }}"
+               title="Notifications">
 
-      <span class="icon position-relative d-inline-flex align-items-center" aria-hidden="true">
-        🔔
+              <span class="icon position-relative d-inline-flex align-items-center" aria-hidden="true">
+                🔔
 
-        {% if notifications_unread_count is defined and notifications_unread_count|int > 0 %}
-          <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger sidebar-badge">
-            {{ '99+' if notifications_unread_count|int > 99 else notifications_unread_count }}
-            <span class="visually-hidden">unread notifications</span>
-          </span>
-        {% endif %}
-      </span>
+                <span
+                  id="badge-notifications"
+                  class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger sidebar-badge"
+                  data-max="99"
+                  style="{{ '' if (notifications_unread_count is defined and notifications_unread_count|int > 0) else 'display:none;' }}">
+                  <span class="badge-value">
+                    {% if notifications_unread_count is defined and notifications_unread_count|int > 0 %}
+                      {{ '99+' if notifications_unread_count|int > 99 else notifications_unread_count }}
+                    {% else %}
+                      0
+                    {% endif %}
+                  </span>
+                  <span class="visually-hidden">unread notifications</span>
+                </span>
+              </span>
 
-      <span class="label">Notifications</span>
-    </a>
-  </li>
-{% endif %}
+              <span class="label">Notifications</span>
+            </a>
+          </li>
+          {% endif %}
 
           <!-- Movements -->
           <li class="nav-item">
@@ -212,17 +224,17 @@
             </a>
           </li>
 
-        {# Assignments: no para TCO, y tampoco para ITC Support + employee #}
-        {% if department != 'TCO' and not ((department|trim|lower) == 'itc support' and role == 'employee') %}
-        <li class="nav-item">
-          <a href="{{ url_for('assignments.index') }}"
-            class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint and request.endpoint.startswith('assignments.') else '' }}"
-            title="Assignments">
-            <span class="icon" aria-hidden="true">🔗</span>
-            <span class="label">Assignments</span>
-          </a>
-        </li>
-        {% endif %}
+          {# Assignments: no para TCO, y tampoco para ITC Support + employee #}
+          {% if department != 'TCO' and not ((department|trim|lower) == 'itc support' and role == 'employee') %}
+          <li class="nav-item">
+            <a href="{{ url_for('assignments.index') }}"
+              class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint and request.endpoint.startswith('assignments.') else '' }}"
+              title="Assignments">
+              <span class="icon" aria-hidden="true">🔗</span>
+              <span class="label">Assignments</span>
+            </a>
+          </li>
+          {% endif %}
         {% endif %}
 
       </ul>
@@ -494,6 +506,45 @@
       const modal = new bootstrap.Modal(modalEl);
       modal.show();
     });
+  </script>
+
+  <!-- 🔁 Polling counters -->
+  <script>
+  (function () {
+    const badgeAlerts = document.getElementById("badge-alerts");
+    const badgeNotifs = document.getElementById("badge-notifications");
+    if (!badgeAlerts && !badgeNotifs) return;
+
+    const BASE_INTERVAL = 20000;
+
+    function setBadge(el, n) {
+      if (!el) return;
+      const max = parseInt(el.dataset.max || "99", 10);
+      const val = Number(n || 0);
+      const text = (val > 0) ? (val > max ? (max + "+") : String(val)) : "0";
+
+      const valueEl = el.querySelector(".badge-value");
+      if (valueEl) valueEl.textContent = text;
+      else el.textContent = text;
+
+      el.style.display = (val > 0) ? "" : "none";
+    }
+
+    async function tick() {
+      try {
+        const r = await fetch("{{ url_for('api.counters') }}", { credentials: "same-origin" });
+        if (!r.ok) return;
+        const data = await r.json();
+        setBadge(badgeAlerts, data.alerts);
+        setBadge(badgeNotifs, data.notifications);
+      } catch (e) {}
+      finally {
+        setTimeout(tick, document.hidden ? 60000 : BASE_INTERVAL);
+      }
+    }
+
+    tick();
+  })();
   </script>
 {% endblock %}
 

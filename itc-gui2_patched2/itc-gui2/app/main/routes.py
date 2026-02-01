@@ -14,6 +14,7 @@ from app.scripts.alerts_service import get_alerts_for_user
 from app.scripts.alert_filters import reason_counts_for_calendar
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+from app.notifications.service import get_itc_pickup_notifications
 
 def _notif_scope_for_user():
     role = (getattr(current_user, "role", "") or "").strip().lower()
@@ -569,5 +570,60 @@ def mark_pickup_done(notif_id):
         flash("Pickup marked as done.", "success")
         return redirect(url_for("main.index"))
 
+    finally:
+        db.close()
+
+
+
+@bp.route("/dashboard/itc-pickup-fragment")
+@login_required
+def dashboard_itc_pickup_fragment():
+    db = SessionLocal()
+    try:
+        actor_role = (getattr(current_user, "role", "") or "").strip().lower()
+        actor_dept = (getattr(current_user, "department", "") or "").strip().lower()
+
+        is_admin = ("admin" in actor_role)
+        is_itc = (actor_dept == "itc support") or actor_role.startswith("itc")
+
+        pickup_notif = None
+        if is_itc or is_admin:
+            pickup_notif = (
+                db.query(models.Notification)
+                .filter(models.Notification.active.is_(True))
+                .filter(models.Notification.department_target == "ITC support")
+                .filter(models.Notification.status == "open")
+                .filter(models.Notification.type == "pickup_needed")
+                .order_by(models.Notification.created_at.desc())
+                .first()
+            )
+
+        pickup_message_display = None
+        if pickup_notif:
+            local_when = None
+            if pickup_notif.created_at:
+                dt = pickup_notif.created_at
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                local_dt = dt.astimezone(ZoneInfo("Europe/Madrid"))
+                local_when = local_dt.strftime("%d/%m/%Y %H:%M")
+
+            note = None
+            raw_msg = pickup_notif.message or ""
+            if "Note:" in raw_msg:
+                note = raw_msg.split("Note:", 1)[1].strip()
+
+            parts = []
+            # if local_when: parts.append(f"When: {local_when}")
+            if note:
+                parts.append(f"Note: {note}")
+
+            pickup_message_display = "\n".join(parts)
+
+        return render_template(
+            "dashboard/_itc_pickup_fragment.html",
+            pickup_notif=pickup_notif,
+            pickup_message_display=pickup_message_display,
+        )
     finally:
         db.close()

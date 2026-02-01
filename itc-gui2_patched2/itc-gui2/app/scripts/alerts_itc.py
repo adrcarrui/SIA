@@ -126,7 +126,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
     laptop_ids = [c.id for c in laptop_courses]
     alive = _assigned_laptops_by_course(db, laptop_ids)
 
-    # Vamos a construir UNA alerta por curso (course_agg) con reasons keyed
+    # UNA alerta por curso con reasons
     by_course: dict[int, dict] = {}
 
     def ensure_course_bucket(c: Course):
@@ -134,15 +134,22 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
             by_course[c.id] = {
                 "course": c,
                 "course_id": c.id,
-                "reasons": [],   # list[{"key","text","extra"}]
-                "keys_set": set(),  # dedup por key
+                "reasons": [],       # list[{"key","text","extra","legacy_keys"}]
+                "keys_set": set(),   # dedup por key principal (no por legacy)
                 "severity": None,
                 "extra": {},
             }
         return by_course[c.id]
 
-    def add_reason(bucket: dict, key: str, text: str, sev: str | None = None, extra: dict | None = None):
-        # dedup por key
+    def add_reason(
+        bucket: dict,
+        key: str,
+        text: str,
+        sev: str | None = None,
+        extra: dict | None = None,
+        legacy_keys: list[str] | None = None,
+    ):
+        # dedup SOLO por key principal
         if key in bucket["keys_set"]:
             return
         bucket["keys_set"].add(key)
@@ -154,9 +161,12 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
             "key": key,
             "text": text,
             "extra": extra or {},
+            "legacy_keys": legacy_keys or [],
         })
 
+    # -------------------------
     # UPCOMING rules
+    # -------------------------
     for c in upcoming:
         req_l = required.get(c.id, {}).get("LAPTOP", 0)
         req_p = required.get(c.id, {}).get("PENDRIVE", 0)
@@ -167,7 +177,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
         days_left = (c.start_date - today).days
         sev = _severity_for_days_left(days_left)
         if sev is None:
-            continue
+            continue  # fuera de ventana (por si acaso)
 
         cname = c.name or c.course or f"Course #{c.id}"
         status_itc = (c.status_itc or "").strip().lower()
@@ -175,68 +185,74 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
 
         bucket = ensure_course_bucket(c)
 
-        # 1) aviso proximidad (KEY ESTABLE)
-        add_reason(
-            bucket,
-            "itc_start_soon",
-            f"{cname} starts in {days_left} day(s).",
-            sev=sev,
-            extra={"days_left": days_left}
-        )
+        # 1) aviso proximidad (lo dejamos tal cual)
+        #add_reason(
+        #    bucket,
+        #    "itc_start_soon",
+        #    f"{cname} starts in {days_left} day(s).",
+        #    sev=sev,
+        #    extra={"days_left": days_left}
+        #)
 
-        # 2) laptops
+        # 2) laptops: UNIFICAMOS mismatch start_soon + today
         if req_l > 0:
             asg_l = assigned_laptops.get(c.id, 0)
 
-            # Escalado antes del inicio si mismatch (KEY ESTABLE)
-            if days_left in (3, 2, 1) and asg_l != req_l:
-                add_reason(
-                    bucket,
-                    "itc_laptops_mismatch_start_soon",
-                    f"{cname} starts in {days_left} day(s): laptops assigned {asg_l}/{req_l}.",
-                    sev=sev,
-                    extra={"days_left": days_left, "assigned": asg_l, "required": req_l}
-                )
+            if asg_l != req_l and days_left in (3, 2, 1, 0):
+                # Severidad: usa regla de días, pero hoy siempre crítico
+                sev_m = "critical" if days_left == 0 else sev
 
-            # Día 0: mismatch siempre crítico (ya era estable)
-            if days_left == 0 and asg_l != req_l:
-                add_reason(
-                    bucket,
-                    "itc_laptops_mismatch_today",
-                    f"{cname} starts today: laptops assigned {asg_l}/{req_l}.",
-                    sev="critical",
-                    extra={"assigned": asg_l, "required": req_l}
-                )
+                if days_left == 0:
+                    text = f"{cname} starts today: laptops assigned {asg_l}/{req_l}."
+                    legacy = ["itc_laptops_mismatch_today"]
+                else:
+                    text = f"{cname} starts in {days_left} day(s): laptops assigned {asg_l}/{req_l}."
+                    legacy = ["itc_laptops_mismatch_start_soon"]
 
-            # Día 0: crítico si no terminal aunque estén asignados OK
-            if days_left == 0 and not is_terminal:
                 add_reason(
                     bucket,
-                    "itc_laptops_not_terminal_today",
-                    f"{cname} starts today: laptops required ({req_l}) but ITC status is '{status_itc}' (expected terminal).",
-                    sev="critical",
-                    extra={"required": req_l, "status_itc": status_itc}
+                    "itc_laptops_mismatch",
+                    text,
+                    sev=sev_m,
+                    extra={"days_left": days_left, "assigned": asg_l, "required": req_l},
+                    legacy_keys=legacy
                 )
 
             bucket["extra"]["required_laptops"] = req_l
             bucket["extra"]["assigned_laptops"] = asg_l
 
-        # 3) pendrives: día 0 crítico si no terminal
+        # 3) Día 0: status ITC no terminal (UNIFICAMOS laptops + pendrives)
+        if days_left == 0 and not is_terminal and (req_l > 0 or req_p > 0):
+            parts = []
+            legacy = []
+
+            if req_l > 0:
+                parts.append(f"laptops required ({req_l})")
+                legacy.append("itc_laptops_not_terminal_today")
+            if req_p > 0:
+                parts.append(f"pendrives required ({req_p})")
+                legacy.append("itc_pendrives_not_terminal_today")
+
+            need_txt = " and ".join(parts)
+
+            add_reason(
+                bucket,
+                "itc_assets_not_terminal_today",
+                f"{cname} starts today: {need_txt} but ITC status is '{status_itc}' (expected terminal).",
+                sev="critical",
+                extra={"required_laptops": req_l, "required_pendrives": req_p, "status_itc": status_itc},
+                legacy_keys=legacy
+            )
+
         if req_p > 0:
-            if days_left == 0 and not is_terminal:
-                add_reason(
-                    bucket,
-                    "itc_pendrives_not_terminal_today",
-                    f"{cname} starts today: pendrives required ({req_p}) but ITC status is '{status_itc}' (expected terminal).",
-                    sev="critical",
-                    extra={"required": req_p, "status_itc": status_itc}
-                )
             bucket["extra"]["required_pendrives"] = req_p
 
         bucket["extra"]["days_left"] = days_left
         bucket["extra"]["status_itc"] = status_itc
 
+    # -------------------------
     # OVERDUE laptops (curso acabado y assignments vivos)
+    # -------------------------
     for c in laptop_courses:
         alive_cnt = alive.get(c.id, 0)
         if alive_cnt <= 0:
@@ -257,13 +273,25 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
         bucket["extra"]["days_late"] = days_late
         bucket["extra"]["alive_laptops"] = alive_cnt
 
+    # -------------------------
     # Emitimos lista final
+    # -------------------------
     alerts: list[dict] = []
     for cid, b in by_course.items():
         if not b["reasons"]:
             continue
 
         message = "\n".join([f"- {r['text']}" for r in b["reasons"]])
+
+        # keys = key principal + legacy_keys (compatibilidad con alert_states antiguos)
+        keys = []
+        for r in b["reasons"]:
+            k = r.get("key")
+            if k:
+                keys.append(k)
+            for lk in (r.get("legacy_keys") or []):
+                keys.append(lk)
+        keys = list(dict.fromkeys(keys))
 
         alerts.append({
             "type": "course_agg",
@@ -273,7 +301,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
             "course": b["course"],
             "course_id": b["course_id"],
             "reasons": b["reasons"],
-            "keys": [r["key"] for r in b["reasons"]],
+            "keys": keys,
             "extra": b["extra"],
         })
 

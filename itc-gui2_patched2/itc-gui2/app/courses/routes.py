@@ -855,15 +855,22 @@ def delete_course(course_id):
         db.delete(c)
         db.flush()
 
+        username = getattr(current_user, "username", None)
+        course_label = before_data.get("course") or before_data.get("name") or f"Course #{course_id}"
+
         log_movement(
             db,
-            user_id=getattr(current_user, "id", None),
+            user_id=getattr(current_user, "id", None),   # trazabilidad
             entity_type="course",
             entity_id=course_id,
             action="delete",
-            before_data=before_data,
+            before_data={
+                **before_data,
+                "deleted_by": username,
+                "course_label": course_label,
+            },
             after_data=None,
-            description=f"Course '{before_data['course']}' deleted",
+            description=f"Course '{course_label}' deleted by {username or 'unknown'}",
             success=True,
             user_agent=request.user_agent.string,
         )
