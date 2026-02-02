@@ -10,7 +10,7 @@ from app.scripts.get_overdue_assignments import (
 from app.models import User, Device, Course, Assignment, Movements, Notification
 from sqlalchemy import func, case
 import app.models as models
-from app.scripts.alerts_service import get_alerts_for_user
+from app.scripts.alerts_service import get_alerts_for_user, build_alerts_summary
 from app.scripts.alert_filters import reason_counts_for_calendar
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -627,3 +627,21 @@ def dashboard_itc_pickup_fragment():
         )
     finally:
         db.close()
+
+@bp.get("/dashboard/partials/alerts")
+@login_required
+def dashboard_alerts_partial():
+    db = SessionLocal()
+    try:
+        alerts_summary = build_alerts_summary(db, current_user)
+        return render_template(
+            "partials/_alerts_accordion.html",
+            alerts_summary=alerts_summary
+        )
+    finally:
+        db.close()
+
+@bp.get("/dashboard/partials/calendar")
+@login_required
+def dashboard_calendar_partial():
+    return render_template("partials/_calendar.html")

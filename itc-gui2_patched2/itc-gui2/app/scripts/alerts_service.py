@@ -328,3 +328,19 @@ def get_alerts_for_user(db, user, include_hidden: bool = False):
         a["scope"] = scope
 
     return alerts
+
+def build_alerts_summary(db, user, include_hidden=False):
+    alerts = get_alerts_for_user(db, user, include_hidden=include_hidden) or []
+
+    summary = {
+        "notice": 0,
+        "warning": 0,
+        "critical": 0,
+    }
+
+    for a in alerts:
+        sev = (a.get("severity") or "").lower()
+        if sev in summary:
+            summary[sev] += 1
+
+    return summary
