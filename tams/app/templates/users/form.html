@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+<!-- USERS FORM TEMPLATE MARKER 2026-01-25 -->
+
+{% block content %}
+
+<h2 class="mb-3">{{ page_title or (user and 'Edit user' or 'New user') }}</h2>
+
+<div class="user-form">
+  <form method="post" action="">
+
+    <div class="row g-3">
+
+      {# FILA 1: Name, Surname, Email #}
+      <div class="col-md-4">
+        <label class="form-label">Name</label>
+        <input type="text" name="name" class="form-control"
+               required
+               value="{{ user.name if user else '' }}"
+               oninvalid="this.setCustomValidity('This field is required')"
+               oninput="this.setCustomValidity('')">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Surname</label>
+        <input type="text" name="surname" class="form-control"
+               value="{{ user.surname if user else '' }}">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Email</label>
+        <input
+          type="email"
+          name="email"
+          class="form-control"
+          value="{{ user.email or '' }}"
+        >
+      </div>
+
+      {# FILA 2: Username, Password, UID #}
+      <div class="col-md-4">
+        <label class="form-label">Username</label>
+        <input type="text" name="username" class="form-control"
+               required
+               value="{{ user.username if user else '' }}"
+               oninvalid="this.setCustomValidity('This field is required')"
+               oninput="this.setCustomValidity('')">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">
+          Password{% if not user %} *{% endif %}
+        </label>
+        <input type="password" name="password" class="form-control"
+               {% if not user %}required{% endif %}>
+        {% if user %}
+          <div class="form-text">Leave blank to keep the current password.</div>
+        {% endif %}
+      </div>
+
+      {# UID con lector NFC (oculto por defecto; visible al leer) #}
+      <div class="col-md-4">
+        <label class="form-label">
+          UID <span class="text-danger">*</span>
+        </label>
+
+        <div class="input-group">
+          <input
+            type="password"
+            id="uid-input"
+            name="uid"
+            class="form-control"
+            maxlength="64"
+            value=""
+            placeholder="********"
+            autocomplete="off"
+            readonly
+          >
+
+          <button class="btn btn-outline-secondary" type="button" id="btn-toggle-uid" title="Show/Hide UID" aria-label="Show/Hide UID">
+            👁
+          </button>
+
+          <button class="btn btn-outline-primary" type="button" id="btn-read-uid">
+            <span id="btn-read-icon">📡</span> Read card
+          </button>
+        </div>
+
+        <div id="uid-status" class="form-text mt-1 text-muted">
+          Bring the device close and press <strong>Read card</strong>.
+        </div>
+      </div>
+
+      {# Role #}
+      <div class="col-md-4">
+        <label for="role" class="form-label">Role</label>
+
+        {% set current_role = (user.role if user and user.role else 'employee') %}
+
+        {% if assignable_roles %}
+          <select name="role" id="role" class="form-select" required>
+            {% for r in assignable_roles %}
+              <option value="{{ r }}"
+                      {{ 'selected' if current_role == r else '' }}>
+                {{ r.capitalize() }}
+              </option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <input type="text"
+                 class="form-control"
+                 value="{{ current_role|capitalize }}"
+                 readonly>
+          <input type="hidden" name="role" value="{{ current_role }}">
+        {% endif %}
+      </div>
+
+      {# Department #}
+      <div class="col-md-4">
+        <label class="form-label">Department</label>
+
+        {% set actor_role = (current_user.role or 'user')|lower %}
+        {% set actor_dept = (current_user.department or '') %}
+        {% set current_department = (
+              user.department if user and user.department
+              else (actor_dept if actor_dept else '')
+           )
+        %}
+
+        {% set departments_all = ['TCO', 'ITC support', ''] %}
+
+        {% if actor_role == 'admin' %}
+          <select name="department" class="form-select">
+            {% for dep in departments_all %}
+              <option value="{{ dep }}"
+                      {{ 'selected' if current_department == dep else '' }}>
+                {{ ' ' if dep == '' else dep }}
+              </option>
+            {% endfor %}
+          </select>
+
+        {% elif not user and ('supervisor' in actor_role or 'employee' in actor_role) %}
+          {% set allowed_deps = [actor_dept, ''] %}
+          <select name="department" class="form-select">
+            {% for dep in allowed_deps %}
+              <option value="{{ dep }}"
+                      {{ 'selected' if current_department == dep else '' }}>
+                {{ ' ' if dep == '' else dep }}
+              </option>
+            {% endfor %}
+          </select>
+
+        {% else %}
+          <input type="text"
+                 class="form-control"
+                 value="{{ current_department or ' ' }}"
+                 readonly>
+          <input type="hidden" name="department" value="{{ current_department }}">
+        {% endif %}
+      </div>
+
+      {# ACTIVE: oculto siempre, pero enviado correctamente #}
+      {% if user %}
+        <input type="hidden" name="active" value="{{ '1' if user.active else '' }}">
+      {% else %}
+        <input type="hidden" name="active" value="1">
+      {% endif %}
+
+    </div> {# /row #}
+
+    <div class="mt-4 d-flex justify-content-end gap-2">
+      <button class="btn btn-primary" type="submit">
+        Save
+      </button>
+      <a href="{{ url_for('users.index') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{# JS NFC #}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const btnRead   = document.getElementById("btn-read-uid");
+  const btnToggle = document.getElementById("btn-toggle-uid");
+  const status    = document.getElementById("uid-status");
+  const input     = document.getElementById("uid-input");
+  const icon      = document.getElementById("btn-read-icon");
+
+  const AGENT_UID_URL = "http://127.0.0.1:8765/uid";
+
+  if (!btnRead || !status || !input || !icon || !btnToggle) return;
+
+  function setUidVisibility(show) {
+    input.type = show ? "text" : "password";
+  }
+
+  // Por defecto: oculto
+  setUidVisibility(false);
+
+  btnToggle.addEventListener("click", function () {
+    setUidVisibility(input.type !== "text");
+  });
+
+  async function readOnce() {
+    btnRead.disabled = true;
+    icon.textContent = "⌛";
+    status.className = "form-text mt-1 text-muted";
+    status.textContent = "Attempting to read card…";
+
+    try {
+      const aResp = await fetch(AGENT_UID_URL, { method: "GET", cache: "no-store" });
+      const aData = await aResp.json().catch(() => ({}));
+
+      if (!aData || !aData.success || !aData.uid) {
+        status.className = "form-text mt-1 text-danger";
+        status.textContent = (aData && aData.error) ? aData.error : "No card detected.";
+        return;
+      }
+
+      const resp = await fetch("{{ url_for('users.read_uid_once') }}", {
+        method: "POST",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ uid: aData.uid })
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (data.success) {
+        input.value = data.uid;
+
+        // 👇 Al leer, lo mostramos para que puedas comprobarlo
+        setUidVisibility(true);
+
+        status.className = "form-text mt-1 text-success";
+        //status.textContent = "UID read: " + data.uid;
+      } else {
+        status.className = "form-text mt-1 text-danger";
+        status.textContent = data.error || "Could not read card.";
+      }
+    } catch (e) {
+      status.className = "form-text mt-1 text-danger";
+      status.textContent = "Communication error.";
+    } finally {
+      btnRead.disabled = false;
+      icon.textContent = "📡";
+    }
+  }
+
+  btnRead.addEventListener("click", readOnce);
+});
+</script>
+
+{% endblock %}

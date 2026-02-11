@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% set current_tco = (c.status_tco if c and c.status_tco else 'planned') %}
+{% set current_itc = (c.status_itc if c and c.status_itc else 'start') %}
+
+{# info del actor para la lógica de visibilidad #}
+{% set actor_role = (current_user.role or '')|lower %}
+{% set actor_dept = (current_user.department or '') %}
+{% set show_itc = (actor_role == 'admin') or (actor_dept == 'ITC support') %}
+
+{# Requirements:
+   - Admin: puede editar
+   - TCO: puede editar
+   - ITC support: SOLO supervisors pueden editar (employees: solo lectura)
+ #}
+{% set can_edit_req = (actor_role == 'admin')
+                    or (actor_dept == 'TCO')
+                    or (actor_dept == 'ITC support' and actor_role == 'supervisor') %}
+{% set req_map = req_map|default({}) %}
+{% set itc_asset_types = itc_asset_types|default([]) %}
+
+<h2 class="mb-3">
+  {{ page_title or (c and 'Edit course' or 'New course') }}
+</h2>
+
+<div class="course-form">
+  <form method="post" action="">
+
+    <div class="row g-3">
+
+      {# --------- FILA 1: Course / Name / Client --------- #}
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Code</label>
+          <input
+            name="course"
+            class="form-control"
+            value="{% if c and c.course not in [None, 'None', ''] %}{{ c.course }}{% endif %}"
+            required
+            oninvalid="this.setCustomValidity('This field is required')"
+          oninput="this.setCustomValidity('')"
+          >
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Name</label>
+          <input
+            name="name"
+            class="form-control"
+            value="{% if c and c.name not in [None, 'None', ''] %}{{ c.name }}{% endif %}"
+          >
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Client</label>
+          <input
+            name="client"
+            class="form-control"
+            value="{% if c and c.client not in [None, 'None', ''] %}{{ c.client }}{% endif %}"
+          >
+        </div>
+      </div>
+
+      {# --------- FILA 2: Fechas --------- #}
+      <div class="col-md-6">
+        <label class="form-label">Start date</label>
+        <input
+          type="date"
+          name="start_date"
+          class="form-control"
+          value="{% if c and c.start_date %}{{ c.start_date.isoformat() }}{% endif %}"
+          required
+          oninvalid="this.setCustomValidity('This field is required')"
+          oninput="this.setCustomValidity('')"
+        >
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">End date</label>
+        <input
+          type="date"
+          name="end_date"
+          class="form-control"
+          placeholder="DD-MM-YYYY"
+          value="{% if c and c.end_date %}{{ c.end_date.isoformat() }}{% endif %}"
+          required
+          oninvalid="this.setCustomValidity('This field is required')"
+          oninput="this.setCustomValidity('')"
+        >
+      </div>
+
+      {# --------- FILA 3: Trainees / Responsible --------- #}
+      <div class="col-md-6">
+        <label class="form-label">Trainees</label>
+        <input
+          name="trainees"
+          class="form-control"
+          value="{% if c and c.trainees is not none %}{{ c.trainees }}{% endif %}"
+          required
+          oninvalid="this.setCustomValidity('This field is required')"
+          oninput="this.setCustomValidity('')"
+        >
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Responsible</label>
+        <select name="responsible_id" class="form-select">
+          <option value="">
+            {% if c and c.responsible %}
+              {{ c.responsible.name }} {{ c.responsible.surname or '' }} (current)
+            {% elif c and not c.responsible %}
+              No responsible assigned
+            {% else %}
+              Creator will be responsible ({{ current_user.name }} {{ current_user.surname or '' }})
+            {% endif %}
+          </option>
+          {% for u in responsibles %}
+            <option value="{{ u.id }}"
+              {% if c and c.responsible_id == u.id %}selected{% endif %}
+            >
+              {{ u.name }} {{ u.surname or '' }}
+            </option>
+          {% endfor %}
+        </select>
+        <div class="form-text">
+          Only TCO supervisors / employees appear in the list. If you leave it empty, the course creator will be set as responsible.
+        </div>
+      </div>
+
+      {# --------- FILA 4: Asset Requirements (ITC) --------- #}
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+              <strong>Asset requirements (ITC)</strong>
+              <div class="text-muted small">
+                Only relevant ITC assets (e.g., Laptops / USB). Use 0 if not required.
+              </div>
+            </div>
+
+            {% if not can_edit_req %}
+              <span class="badge text-bg-secondary">Read-only</span>
+            {% endif %}
+          </div>
+
+          <div class="card-body">
+            {% if itc_asset_types|length == 0 %}
+              <div class="text-muted">
+                No ITC asset types configured (or roots codes not matching). Nothing to set here.
+              </div>
+            {% else %}
+
+              {# GRID RESPONSIVE: 1 col (xs) / 2 (md) / 3 (lg) / 4 (xl) #}
+              <div class="row g-2">
+                {% for at in itc_asset_types %}
+                  {% set saved_qty = (req_map.get(at.id) if req_map is mapping else None) %}
+                  {% if saved_qty is none %}
+                    {% set saved_qty = 0 %}
+                  {% endif %}
+
+                  <div class="col-12 col-md-6 col-lg-4 col-xl-3">
+                    <div class="border rounded p-2 h-100">
+                      <div class="d-flex justify-content-between align-items-start">
+                        <div class="me-2">
+                          <div class="fw-medium">{{ at.name }}</div>
+                          <div class="text-muted small">{{ at.code }}</div>
+                        </div>
+
+                        <div style="width: 110px;">
+                          {# IMPORTANTE: pares alineados por índice #}
+                          <input type="hidden" name="req_asset_type_id" value="{{ at.id }}">
+
+                          {% if can_edit_req %}
+                            <input
+                              type="number"
+                              name="req_qty"
+                              class="form-control form-control-sm"
+                              min="0"
+                              step="1"
+                              value="{{ saved_qty }}"
+                            >
+                          {% else %}
+                            <input
+                              type="number"
+                              class="form-control form-control-sm"
+                              value="{{ saved_qty }}"
+                              disabled
+                            >
+                            {# Para no perder los valores si el form se postea en modo read-only #}
+                            <input type="hidden" name="req_qty" value="{{ saved_qty }}">
+                          {% endif %}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                {% endfor %}
+              </div>
+
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {# --------- FILA 5: Status TCO / Status ITC --------- #}
+      {% set dept = (current_user.department | default('') | trim) %}
+
+      {% if dept == 'TCO' or dept == '' %}
+        {# Usuario TCO o sin departamento:
+           - NO ve ningún estado
+           - Pero seguimos mandando los valores actuales #}
+        <input type="hidden" name="status_tco" value="{{ current_tco }}">
+        <input type="hidden" name="status_itc" value="{{ current_itc }}">
+      {% else %}
+        <div class="col-md-6">
+          <label class="form-label">TCO status</label>
+          <select name="status_tco" class="form-select">
+            {% for s in COURSE_TCO_STATUSES %}
+              <option value="{{ s }}" {% if current_tco == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Business status of the course (TCO).</div>
+        </div>
+
+        <div class="col-md-6">
+          {% if show_itc %}
+            <label class="form-label">ITC status</label>
+            <select name="status_itc" class="form-select">
+              {% for s in COURSE_ITC_STATUSES %}
+                <option value="{{ s }}" {% if current_itc == s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">ITC support status of the course.</div>
+          {% else %}
+            <input type="hidden" name="status_itc" value="{{ current_itc }}">
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {# --------- Notas --------- #}
+      <div class="col-12">
+        <label class="form-label">Notes</label>
+        <textarea
+          name="notes"
+          rows="3"
+          class="form-control"
+        >{% if c and c.notes not in [None, 'None', ''] %}{{ c.notes }}{% endif %}</textarea>
+      </div>
+
+    </div>
+
+    <div class="mt-4 d-flex justify-content-end gap-2">
+      <button class="btn btn-primary" type="submit">Save</button>
+      <a href="{{ url_for('courses.index') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+
+  </form>
+</div>
+
+{% block scripts %}
+  {{ super() }}
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const form = document.querySelector('.course-form form');
+      if (!form) return;
+
+      const courseInput = form.elements['course'];
+      const nameInput   = form.elements['name'];
+
+      function clearValidity() {
+        if (courseInput) courseInput.setCustomValidity('');
+        if (nameInput) nameInput.setCustomValidity('');
+      }
+
+      if (courseInput) courseInput.addEventListener('input', clearValidity);
+      if (nameInput) nameInput.addEventListener('input', clearValidity);
+
+      form.addEventListener('submit', function (e) {
+        const courseVal = courseInput ? courseInput.value.trim() : '';
+        const nameVal   = nameInput ? nameInput.value.trim() : '';
+
+        if (!courseVal && !nameVal) {
+          e.preventDefault();
+          const msg = 'Please fill either "Course" or "Name".';
+          if (courseInput) courseInput.setCustomValidity(msg);
+          if (nameInput) nameInput.setCustomValidity(msg);
+
+          if (courseInput) courseInput.reportValidity();
+          else if (nameInput) nameInput.reportValidity();
+        }
+      });
+    });
+  </script>
+{% endblock %}
+
+{% endblock %}

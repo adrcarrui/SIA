@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-3">
+  <h4 class="mb-3">Assign PCs to course</h4>
+
+  <form method="post" id="assign-pcs-form">
+    {% if csrf_token is defined %}
+      {{ csrf_token() }}
+    {% endif %}
+
+    <!-- Curso -->
+    <div class="mb-3">
+      <label class="form-label">Course</label>
+      <input type="text" class="form-control"
+             value="{{ course.course or course.name or ('Course #' ~ course.id) }}"
+             readonly>
+      <input type="hidden" name="course_id" value="{{ course.id }}">
+    </div>
+
+    <!-- Input barcode -->
+    <div class="mb-3">
+      <label class="form-label">Scan / enter PC barcode</label>
+        <div class="d-flex gap-2">
+        <input type="text" id="barcode-input" class="form-control"
+                placeholder="e.g. ITC-PC-000123"
+                autocomplete="off">
+        </div>
+      <small id="barcode-status" class="text-muted">
+        Enter a barcode and press Enter. The PC details will be filled automatically.
+      </small>
+    </div>
+
+    <!-- Tabla -->
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th style="width:40px;">#</th>
+            <th>PC name</th>
+            <th style="width:180px;">Barcode</th>
+            <th style="width:120px;">Status</th>
+            <th>Assigned to course</th>
+            <th class="text-end" style="width:220px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="pcs-table-body">
+          <!-- filas por JS -->
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-flex justify-content-between mt-3">
+      <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
+        Cancel
+      </a>
+      <button type="submit" class="btn btn-primary" id="submit-btn" disabled>
+        Assign selected PCs
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const input  = document.getElementById("barcode-input");
+  const status = document.getElementById("barcode-status");
+  const tbody  = document.getElementById("pcs-table-body");
+  const submit = document.getElementById("submit-btn");
+  const form   = document.getElementById("assign-pcs-form");
+
+  const addedBarcodes = new Set();
+  const pendingBarcodes = new Set(); // para evitar dobles llamadas
+  let debounceTimer = null;
+
+  function setStatus(text, cls) {
+    status.className = "text-muted";
+    if (cls) status.classList.add(cls);
+    status.textContent = text;
+  }
+
+  function refreshSubmitState() {
+    const anyChecked = !!tbody.querySelector('input.row-selector:checked');
+    submit.disabled = !anyChecked;
+  }
+
+  function renumber() {
+    Array.from(tbody.rows).forEach((row, idx) => {
+      row.querySelector(".row-index").textContent = idx + 1;
+    });
+  }
+
+  function badgeForDeviceStatus(s) {
+    const v = (s || "").toLowerCase();
+    if (v === "available") return "text-bg-success";
+    if (v === "assigned")  return "text-bg-warning";
+    if (v === "lost")      return "text-bg-danger";
+    return "text-bg-secondary";
+  }
+
+  function addRow(data) {
+    const device = data.device;
+    const assigned = data.assigned_course;
+
+    const barcode = (device.barcode || "").trim();
+    if (!barcode) return;
+
+    if (addedBarcodes.has(barcode)) {
+      setStatus("Barcode already added: " + barcode, "text-warning");
+      return;
+    }
+    addedBarcodes.add(barcode);
+
+    const assignedText = assigned ? assigned.label : "-";
+    const canAssign = (device.status || "").toLowerCase() === "available" && !assigned;
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="row-index">0</td>
+      <td>
+        <div class="fw-semibold">${device.name || device.uid || ("Device #" + device.id)}</div>
+        <div class="text-muted small">${device.asset_type_code || ""}</div>
+      </td>
+      <td class="text-muted">${barcode}</td>
+      <td>
+        <span class="badge ${badgeForDeviceStatus(device.status)}">${device.status || "-"}</span>
+      </td>
+      <td class="${assigned ? 'text-warning' : 'text-muted'}">
+        ${assignedText}
+      </td>
+      <td class="text-end">
+        <input type="checkbox" class="form-check-input row-selector me-2" ${canAssign ? "checked" : ""} ${canAssign ? "" : "disabled"}>
+        <button type="button" class="btn btn-sm btn-outline-danger btn-remove">Remove</button>
+        <input type="hidden" name="device_ids[]" value="${device.id}">
+      </td>
+    `;
+
+    tbody.appendChild(tr);
+    renumber();
+    refreshSubmitState();
+
+    if (canAssign) {
+      setStatus("PC added: " + barcode, "text-success");
+    } else {
+      setStatus("PC added but cannot be assigned (not available or already assigned).", "text-warning");
+    }
+  }
+
+  async function lookupBarcode(barcode) {
+    barcode = (barcode || "").trim();
+    if (!barcode) return;
+
+    if (addedBarcodes.has(barcode)) {
+      setStatus("Barcode already added: " + barcode, "text-warning");
+      return;
+    }
+
+    if (pendingBarcodes.has(barcode)) {
+      return;
+    }
+    pendingBarcodes.add(barcode);
+
+    setStatus("Looking up barcode…", "text-muted");
+
+    try {
+      const resp = await fetch("{{ url_for('courses.api_pc_by_barcode') }}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({ barcode })
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok || !data.success) {
+        setStatus(data.error || "Barcode not found.", "text-danger");
+        return;
+      }
+
+      addRow(data);
+    } catch (e) {
+      console.error(e);
+      setStatus("Server communication error.", "text-danger");
+    } finally {
+      pendingBarcodes.delete(barcode);
+    }
+  }
+
+  function triggerFromInput() {
+    const raw = (input.value || "").trim();
+    if (!raw) return;
+
+    // Limpia y reenfoca para el siguiente escaneo
+    input.value = "";
+    input.focus();
+
+    lookupBarcode(raw);
+  }
+
+  // 1) Lector típico: termina con ENTER
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = null;
+      triggerFromInput();
+    }
+  });
+
+  // 2) Humano escribiendo (o lector sin Enter): debounce
+  input.addEventListener("input", function () {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+
+      // Si el usuario se quedó a medias, no dispares con cosas muy cortas
+      const v = (input.value || "").trim();
+      if (v.length < 3) return;
+
+      triggerFromInput();
+    }, 400);
+  });
+
+  // Tabla: checkbox
+  tbody.addEventListener("change", function (e) {
+    if (e.target.classList.contains("row-selector")) {
+      refreshSubmitState();
+    }
+  });
+
+  // Tabla: remove
+  tbody.addEventListener("click", function (e) {
+    const btn = e.target.closest(".btn-remove");
+    if (!btn) return;
+
+    const tr = btn.closest("tr");
+    if (!tr) return;
+
+    const barcodeCell = tr.cells[2];
+    const barcode = (barcodeCell ? barcodeCell.textContent : "").trim();
+    if (barcode) addedBarcodes.delete(barcode);
+
+    tr.remove();
+    renumber();
+    refreshSubmitState();
+  });
+
+  // Antes de submit: disable device_ids[] de filas no marcadas
+  form.addEventListener("submit", function () {
+    const rows = tbody.querySelectorAll("tr");
+    rows.forEach((row) => {
+      const checkbox = row.querySelector("input.row-selector");
+      const hidden = row.querySelectorAll('input[name="device_ids[]"]');
+      const disable = checkbox && !checkbox.checked;
+      hidden.forEach((inp) => inp.disabled = disable);
+    });
+  });
+
+  input.focus();
+  refreshSubmitState();
+});
+</script>
+{% endblock %}

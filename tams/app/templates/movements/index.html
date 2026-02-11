@@ -1,0 +1,450 @@
+{% extends "base.html" %}
+{% block title %}Movements history{% endblock %}
+{% block content %}
+
+<div class="movements-page">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h2 class="mb-0">Movements history</h2>
+  </div>
+
+  <p class="text-muted mb-2">
+    Total movements: {{ total }}
+  </p>
+
+  <form method="get" action="{{ url_for('movements.index') }}" class="movements-panel">
+    <input type="hidden" name="q" value="{{ q or '' }}">
+    <input type="hidden" name="page" value="1">
+    <input type="hidden" name="per_page" value="{{ per_page }}">
+
+    <!-- ================= ONE SCROLL CONTAINER (header + body aligned) ================= -->
+    <div class="movements-table-scroll">
+
+      <!-- ================= FIXED HEADER (2 ROWS) ================= -->
+      <div class="movements-header-2rows">
+
+        <!-- Row 1: column names -->
+        <div class="movements-grid-cols movements-grid-cols-head">
+          <div class="movements-th fw-bold text-center">Date</div>
+          <div class="movements-th fw-bold text-center">User</div>
+          <div class="movements-th fw-bold text-center">Action</div>
+          <div class="movements-th fw-bold text-center">Description</div>
+          <div class="movements-th fw-bold text-center">Detail</div>
+        </div>
+
+        <!-- Row 2: filters -->
+        <div class="movements-grid-cols movements-grid-cols-filters">
+
+          <!-- Date -->
+          <div>
+            <div class="d-flex gap-2">
+              <input type="date"
+                     name="date_from"
+                     class="form-control form-control-sm"
+                     value="{{ filter_date_from or '' }}"
+                     aria-label="From date">
+              <input type="date"
+                     name="date_to"
+                     class="form-control form-control-sm"
+                     value="{{ filter_date_to or '' }}"
+                     aria-label="To date">
+            </div>
+          </div>
+
+          <!-- User -->
+          <div>
+            <input type="text"
+                   name="user"
+                   class="form-control form-control-sm"
+                   placeholder="Username / email"
+                   value="{{ filter_user or '' }}">
+          </div>
+
+          <!-- Action -->
+          <div>
+            <select name="action" class="form-select form-select-sm">
+              <option value="">All</option>
+              {% if actions is defined and actions %}
+                {% for a in actions %}
+                  <option value="{{ a }}" {{ 'selected' if filter_action == a else '' }}>{{ a }}</option>
+                {% endfor %}
+              {% else %}
+                <option value="create" {{ 'selected' if filter_action=='create' else '' }}>create</option>
+                <option value="update" {{ 'selected' if filter_action=='update' else '' }}>update</option>
+                <option value="delete" {{ 'selected' if filter_action=='delete' else '' }}>delete</option>
+                <option value="assign_pcs" {{ 'selected' if filter_action=='assign_pcs' else '' }}>assign_pcs</option>
+                <option value="pickup_notify" {{ 'selected' if filter_action=='pickup_notify' else '' }}>pickup_notify</option>
+                <option value="update_itc_status" {{ 'selected' if filter_action=='update_itc_status' else '' }}>update_itc_status</option>
+                <option value="assign" {{ 'selected' if filter_action=='assign' else '' }}>assign</option>
+                <option value="auto_lost" {{ 'selected' if filter_action=='auto_lost' else '' }}>auto_lost</option>
+                <option value="bulk_return" {{ 'selected' if filter_action=='bulk_return' else '' }}>bulk_return</option>
+              {% endif %}
+            </select>
+          </div>
+
+          <!-- Description -->
+          <div>
+            <input type="text"
+                   name="description"
+                   class="form-control form-control-sm"
+                   placeholder="Description"
+                   value="{{ filter_description or '' }}">
+          </div>
+
+          <!-- Buttons (in the last column so they stay at the end) -->
+          <div class="d-flex gap-2 justify-content-end">
+            <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+            <a href="{{ url_for('movements.index') }}" class="btn btn-secondary btn-sm">Clear</a>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ================= TABLE BODY ================= -->
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 movements-table-fixed">
+
+          <!-- Keep widths aligned with grid -->
+          <colgroup>
+            <col class="col-date">
+            <col class="col-user">
+            <col class="col-action">
+            <col class="col-desc">
+            <col class="col-detail">
+          </colgroup>
+
+          <tbody>
+            {% if movements %}
+              {% for m in movements %}
+
+                {% set et = (m.entity_type or '') %}
+                {% set desc = (m.description or '') %}
+
+                {# ---------- entity label heuristics (no backend joins) ---------- #}
+                {% set course_label = '' %}
+                {% if et == 'course' and desc and "course '" in desc %}
+                  {% set course_label = desc.split("course '")[1].split("'")[0] %}
+                {% endif %}
+
+                {% set device_label = '' %}
+                {% if et == 'device' %}
+                  {% set ad = m.after_data or {} %}
+                  {% set bd = m.before_data or {} %}
+                  {% set device_label = (ad.get('device_name') or ad.get('name') or ad.get('barcode') or bd.get('device_name') or bd.get('name') or bd.get('barcode') or '') %}
+                {% endif %}
+
+                {% set entity_label = '' %}
+                {% if et == 'course' %}
+                  {% set entity_label = course_label %}
+                {% elif et == 'device' %}
+                  {% set entity_label = device_label %}
+                {% endif %}
+
+                <tr>
+                  <!-- Date -->
+                  <td class="text-nowrap text-center">
+                    {% if m.created_at %}
+                      {{ m.created_at.strftime("%Y-%m-%d %H:%M:%S") }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+
+                  <!-- User -->
+                  <td class="text-nowrap text-center">
+                    {% if m.user %}
+                      {{ m.user.username or m.user.email or ("User #" ~ m.user_id) }}
+                    {% else %}
+                      {{ ("User #" ~ (m.user_id or '')) }}
+                    {% endif %}
+                  </td>
+
+                  <!-- Action -->
+                  <td class="text-nowrap text-center">
+                    {% if m.action == "create" %}
+                      <span class="badge bg-success">create</span>
+                    {% elif m.action == "update" %}
+                      <span class="badge bg-warning text-dark">update</span>
+                    {% elif m.action == "delete" %}
+                      <span class="badge bg-danger">delete</span>
+                    {% else %}
+                      <span class="badge bg-secondary">{{ m.action }}</span>
+                    {% endif %}
+                  </td>
+
+                  <!-- Description -->
+                  <td class="text-truncate text-center" title="{{ m.description or '' }}">
+                    {% if m.description %}
+                      {{ m.description }}
+                    {% else %}
+                      <span class="text-muted text-center">No description</span>
+                    {% endif %}
+                  </td>
+
+                  <!-- Detail -->
+                  <td class="text-center">
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      data-bs-toggle="modal"
+                      data-bs-target="#movementDetailModal"
+                      data-id="{{ m.id }}"
+                      data-date="{{ m.created_at.strftime('%Y-%m-%d %H:%M:%S') if m.created_at else '' }}"
+                      data-user="{{ (m.user.username or m.user.email) if m.user else ('User #' ~ (m.user_id or '')) }}"
+                      data-action="{{ m.action or '' }}"
+                      data-entity-type="{{ et }}"
+                      data-entity-id="{{ m.entity_id if m.entity_id is not none else '' }}"
+                      data-entity-label="{{ entity_label }}"
+                      data-success="{{ 'Yes' if m.success else 'No' }}"
+                      data-user-agent="{{ m.user_agent or '' }}"
+                      data-before='{{ (m.before_data or {})|tojson }}'
+                      data-after='{{ (m.after_data or {})|tojson }}'
+                      data-description="{{ m.description or '' }}"
+                    >
+                      Detail
+                    </button>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="5" class="text-center text-muted py-4">
+                  No movements registered.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+
+        </table>
+      </div>
+
+    </div>
+  </form>
+
+  <!-- ================= PAGINATION ================= -->
+  <nav aria-label="Pagination" class="mt-3">
+    <ul class="pagination mb-2">
+      <li class="page-item {% if not has_prev %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('movements.index',
+             q=q,
+             page=(page-1 if page>1 else 1),
+             per_page=per_page,
+             user=filter_user,
+             action=filter_action,
+             description=filter_description,
+             date_from=filter_date_from,
+             date_to=filter_date_to) }}">«</a>
+      </li>
+      <li class="page-item active">
+        <span class="page-link">{{ page }}</span>
+      </li>
+      <li class="page-item {% if not has_next %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('movements.index',
+             q=q,
+             page=(page+1 if has_next else page),
+             per_page=per_page,
+             user=filter_user,
+             action=filter_action,
+             description=filter_description,
+             date_from=filter_date_from,
+             date_to=filter_date_to) }}">»</a>
+      </li>
+    </ul>
+  </nav>
+
+  <!-- ================= EXPORTS ================= -->
+  <div class="d-flex justify-content-between align-items-center">
+    <div></div>
+    <div class="d-flex align-items-center gap-2">
+      <span class="small text-muted fw-bold me-1">Download as:</span>
+
+      <div class="btn-group btn-group-sm" role="group">
+        <a class="btn btn-outline-secondary"
+           href="{{ url_for('movements.export_movements',
+             format='csv',
+             q=q,
+             user=filter_user,
+             action=filter_action,
+             description=filter_description,
+             date_from=filter_date_from,
+             date_to=filter_date_to,
+             page=page,
+             per_page=per_page) }}">CSV</a>
+
+        <a class="btn btn-outline-secondary"
+           href="{{ url_for('movements.export_movements',
+             format='xlsx',
+             q=q,
+             user=filter_user,
+             action=filter_action,
+             description=filter_description,
+             date_from=filter_date_from,
+             date_to=filter_date_to,
+             page=page,
+             per_page=per_page) }}">Excel</a>
+
+        <a class="btn btn-outline-secondary"
+           href="{{ url_for('movements.export_movements',
+             format='pdf',
+             q=q,
+             user=filter_user,
+             action=filter_action,
+             description=filter_description,
+             date_from=filter_date_from,
+             date_to=filter_date_to,
+             page=page,
+             per_page=per_page) }}">PDF</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ================= DETAIL MODAL ================= -->
+<div class="modal fade" id="movementDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Movement detail</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="row g-2 mb-3">
+          <div class="col-md-4">
+            <div class="small text-muted">Date</div>
+            <div class="fw-semibold" id="md-date">-</div>
+          </div>
+          <div class="col-md-4">
+            <div class="small text-muted">User</div>
+            <div class="fw-semibold" id="md-user">-</div>
+          </div>
+          <div class="col-md-4">
+            <div class="small text-muted">Action</div>
+            <div class="fw-semibold" id="md-action">-</div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="small text-muted">Entity</div>
+            <div class="fw-semibold" id="md-entity">-</div>
+          </div>
+          <div class="col-md-3">
+            <div class="small text-muted">Success</div>
+            <div class="fw-semibold" id="md-success">-</div>
+          </div>
+          <div class="col-md-3">
+            <div class="small text-muted">Movement ID</div>
+            <div class="fw-semibold" id="md-id">-</div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="small text-muted">Description</div>
+          <div id="md-description" style="white-space: pre-line;">-</div>
+        </div>
+
+        <div class="mb-3 d-none" id="md-devices-wrap">
+          <div class="small text-muted mb-1">Devices</div>
+          <ul class="mb-0" id="md-devices"></ul>
+        </div>
+
+        <div class="mb-3">
+          <div class="small text-muted">User agent</div>
+          <div class="font-monospace small" style="white-space: pre-wrap;" id="md-user-agent">-</div>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="small text-muted mb-1">Before</div>
+            <pre class="bg-body-tertiary border rounded p-2 small mb-0" id="md-before" style="white-space: pre-wrap;">{}</pre>
+          </div>
+          <div class="col-md-6">
+            <div class="small text-muted mb-1">After</div>
+            <pre class="bg-body-tertiary border rounded p-2 small mb-0" id="md-after" style="white-space: pre-wrap;">{}</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  document.body.classList.add("no-page-scroll");
+
+  const modal = document.getElementById("movementDetailModal");
+  if (!modal) return;
+
+  function pretty(jsonStr) {
+    try {
+      const obj = JSON.parse(jsonStr || "{}");
+      return JSON.stringify(obj, null, 2);
+    } catch (e) {
+      return (jsonStr || "{}");
+    }
+  }
+
+  function safeParse(jsonStr) {
+    try { return JSON.parse(jsonStr || "{}"); }
+    catch (e) { return {}; }
+  }
+
+  modal.addEventListener("show.bs.modal", function (ev) {
+    const btn = ev.relatedTarget;
+    if (!btn) return;
+
+    const id = btn.getAttribute("data-id") || "";
+    const date = btn.getAttribute("data-date") || "";
+    const user = btn.getAttribute("data-user") || "";
+    const action = btn.getAttribute("data-action") || "";
+    const entityType = btn.getAttribute("data-entity-type") || "";
+    const entityId = btn.getAttribute("data-entity-id") || "";
+    const entityLabel = btn.getAttribute("data-entity-label") || "";
+    const success = btn.getAttribute("data-success") || "";
+    const userAgent = btn.getAttribute("data-user-agent") || "";
+    const before = btn.getAttribute("data-before") || "{}";
+    const after = btn.getAttribute("data-after") || "{}";
+    const desc = btn.getAttribute("data-description") || "";
+
+    modal.querySelector("#md-id").textContent = id || "-";
+    modal.querySelector("#md-date").textContent = date || "-";
+    modal.querySelector("#md-user").textContent = user || "-";
+    modal.querySelector("#md-action").textContent = action || "-";
+
+    const entityParts = [];
+    if (entityType) entityParts.push(entityType);
+    if (entityLabel) entityParts.push(entityLabel);
+    if (entityId) entityParts.push("#" + entityId);
+    modal.querySelector("#md-entity").textContent = entityParts.length ? entityParts.join(" ") : "-";
+
+    modal.querySelector("#md-success").textContent = success || "-";
+    modal.querySelector("#md-user-agent").textContent = userAgent || "-";
+    modal.querySelector("#md-description").textContent = desc || "-";
+    modal.querySelector("#md-before").textContent = pretty(before);
+    modal.querySelector("#md-after").textContent = pretty(after);
+
+    const afterObj = safeParse(after);
+    const devWrap = modal.querySelector("#md-devices-wrap");
+    const devUl = modal.querySelector("#md-devices");
+    devUl.innerHTML = "";
+    if (afterObj && Array.isArray(afterObj.devices) && afterObj.devices.length) {
+      afterObj.devices.forEach((d) => {
+        const li = document.createElement("li");
+        li.textContent = String(d);
+        devUl.appendChild(li);
+      });
+      devWrap.classList.remove("d-none");
+    } else {
+      devWrap.classList.add("d-none");
+    }
+  });
+});
+</script>
+
+{% endblock %}

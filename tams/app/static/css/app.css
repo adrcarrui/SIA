@@ -1,0 +1,1082 @@
+/* Anchos del sidebar */
+#sidebar {
+  position: sticky;
+  width: 180px;               /* abierto */
+  transition: width 0.2s ease;
+  background-color: #00205d !important;
+}
+body.sidebar-collapsed #sidebar {
+  position: sticky;
+  width: 70px;                /* colapsado */
+  background-color: #00205d;
+}
+
+/* Ocultar etiquetas (texto) cuando está colapsado */
+body.sidebar-collapsed #sidebar .nav-link .label,
+body.sidebar-collapsed #sidebar .navbar-brand { 
+  display: none;
+}
+
+/* Centrar los iconos cuando está colapsado */
+body.sidebar-collapsed #sidebar .nav-link {
+  justify-content: center;            /* icono centrado */
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+/* Tamaño/espaciado de iconos */
+#sidebar .nav-link .icon {
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+
+#sidebar .nav-link .label {
+  color: inherit;
+}
+
+/* Asegurar que el botón de toggle se vea bien en ambas vistas */
+#btn-toggle-sidebar {
+  line-height: 1;
+}
+
+/* Mantener altura completa del contenedor del sidebar */
+#sidebar > .d-flex.flex-column.h-100 {
+  min-height: calc(100vh - 56px); /* ajusta si tu header es distinto */
+}
+
+/* Accesibilidad: foco visible */
+#sidebar .nav-link:focus {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: 2px;
+}
+
+/* Fondo del sidebar */
+#sidebar {
+  background-color: #00205d !important;
+}
+
+/* Color de los enlaces del sidebar (texto + spans) */
+#sidebar .nav-link {
+  color: #ffffff !important;
+}
+
+/* Asegurar que icono y label sean blancos */
+#sidebar .nav-link .icon,
+#sidebar .nav-link .label {
+  color: #ffffff !important;
+}
+
+/* Hover y foco */
+#sidebar .nav-link:hover,
+#sidebar .nav-link:focus {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff !important;
+}
+
+/* Enlace activo */
+#sidebar .nav-link.active {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff !important;
+}
+
+/* Altura compacta y separación limpia */
+#topbar .navbar-brand { margin-right: .5rem; }
+#topbar { min-height: 50px; }
+
+/* Si tu layout tiene un contenedor de contenido principal, asegúrate de que no quede oculto */
+.content-wrapper { padding-top: .75rem; }
+
+/* Reloj en móviles: quepa a la derecha si se colapsa el centro */
+@media (max-width: 767.98px) {
+  #clock { font-variant-numeric: tabular-nums; }
+}
+
+/* Borra cualquier caret/pseudo-elemento, incluso si algún tema lo añade */
+#btn-options::after,
+#btn-options::before,
+.dropdown-toggle::after,
+.dropdown-toggle::before,
+button[data-bs-toggle="dropdown"]::after,
+button[data-bs-toggle="dropdown"]::before {
+  content: none !important;
+  display: none !important;
+  border: 0 !important;
+  background: none !important;
+}
+
+/* Por si algún tema usa background-image como caret */
+#btn-options {
+  background-image: none !important;
+}
+
+/* Quita el punto/halo que algunos temas muestran en :focus/:active */
+#btn-options:focus,
+#btn-options:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Contenedor principal del calendario */
+.cal2w {
+  width: 100%;              /* que ocupe todo el ancho disponible */
+  max-width: none;          /* sin límite artificial */
+  margin-bottom: 1.5rem;
+}
+
+/* Rejilla de días: 7 columnas que llenan el espacio */
+.cal2w-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr)); /* 7 días por fila, mismos anchos */
+  gap: 1rem;
+}
+
+/* Cada día del calendario */
+.cal2w .day:hover {
+  min-height: 260px;
+  height: auto;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-color: #0d6efd;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.1);
+  background-color: rgba(255,255,255,0.7);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Por si en algún sitio toqueteaste .day.today */
+.cal2w .day.today {
+  min-height: 260px;
+  height: auto;
+  border: 1px solid rgba(0,0,0,0.08);
+  background-color: rgba(255,255,255,0.7);
+}
+
+/* Cabecera de fecha dentro del día */
+.cal2w .day .date {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+/* Texto tipo “lunes”, “martes” */
+.cal2w .day .meta {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+/* Contenedor de cursos en el día */
+.cal2w .day .content {
+  margin-top: 0.35rem;
+  /* si quieres que NO se corte nunca nada: */
+  overflow: visible;
+  /* si prefieres scroll cuando haya 20 cursos:
+     max-height: 220px;
+     overflow-y: auto;
+  */
+}
+
+/* Badges de curso */
+.cal2w .day .badge {
+  font-size: 0.75rem;
+  margin-bottom: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root,
+[data-bs-theme="light"] {
+  --bs-heading-color: #222222;  /* el color que quieras */
+}
+
+/* Si también usas tema oscuro y quieres otro color ahí */
+[data-bs-theme="dark"] {
+  --bs-heading-color: #f5f5f5;  /* o el que te dé la gana */
+}
+
+.user-form .form-label,
+.user-form .form-check-label {
+  color: #000000 !important;
+}
+
+.course-form .form-label
+.course-form .form-check-label {
+  color: #000000 !important;
+}
+
+.device-form .form-label
+.device-form .form-check-label {
+  color: #000000 !important;
+}
+
+.stat-card {
+  /*min-height: 110px;*/
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+.stat-card-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  font-weight: 500;
+}
+
+.stat-card-icon {
+  position: absolute;
+  right: 12px;
+  top: 18px;
+  font-size: 2.5rem;
+  opacity: 0.2;
+}
+
+/* Colores aproximados a tu captura */
+.bg-users {
+  background-color: #0085ad;
+}
+
+.bg-devices {
+  background-color: #6399ae;
+}
+
+.bg-courses {
+  background-color: #ff9820;
+}
+.bg-alerts {
+  background-color: #f56476;
+}
+.bg-movements {
+  background-color: #791E94;
+}
+.bg-assignments {
+  background-color: #688E26;
+}
+.stat-movements {
+  position: relative;
+  min-height: 110px;
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+/* Marca de agua solo para este cuadrado */
+.stat-card-users::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  top: 18px;
+  width: 80px;
+  height: 80px;
+  /*background-image: url("/static/img/users-watermark.png");*/
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: 0.15;              /* nivel de “marca de agua” */
+  pointer-events: none;       /* para que no moleste al click */
+}
+.table-warning > td,
+.table-warning > th {
+  background-color: #ff9800 !important;  /* naranja fuerte */
+  color: #ffffff;                        /* texto oscuro legible */
+}
+
+.table-danger > td,
+.table-danger > th {
+  background-color: #d50000 !important;  /* rojo fuerte */
+  color: #ffffff;                        /* texto blanco para contraste */
+}
+
+.fc-course-planned {
+  background-color: #fff3cd !important;
+  border-color: #ffe69c !important;
+  color: #856404 !important;
+  font-weight: 700 !important;
+}
+
+.fc-course-active {
+  background-color: #d1e7dd !important;
+  border-color: #a3cfbb !important;
+  color: #0f5132 !important;
+  font-weight: 700 !important;
+}
+
+.fc-course-finished {
+  background-color: #e2e3e5 !important;
+  border-color: #c4c8cb !important;
+  color: #41464b !important;
+  font-weight: 700 !important;
+}
+
+.fc-course-cancelled {
+  background-color: #f8d7da !important;
+  border-color: #f5c2c7 !important;
+  color: #000000 !important;
+  text-decoration: line-through;
+  font-weight: 700 !important;
+}
+
+/* Inicio de curso: verde */
+.fc-course-start .fc-event-main {
+  background-color: #94fbab !important;  /* verde suave tipo "success" */
+  border-color: #0f5132 !important;
+  color: #000000 !important;
+  font-weight: 700 !important;           /* negrita */
+}
+
+/* Fin de curso: azul */
+.fc-course-end .fc-event-main {
+  background-color: #3f88c5 !important;  /* azul suave tipo "primary" */
+  border-color: #084298 !important;
+  color: #000000 !important;
+  font-weight: 700 !important;
+}
+
+/* Borde por severidad (solo si hay reasons OPEN o snooze vencido) */
+.fc-sev-notice .fc-event-main {
+  box-shadow: 0 0 0 3px #ffc107 inset;
+}
+
+.fc-sev-warning .fc-event-main {
+  box-shadow: 0 0 0 3px #fd7e14 inset;
+}
+
+.fc-sev-critical .fc-event-main {
+  box-shadow: 0 0 0 3px #dc3545 inset;
+}
+
+.fc-badge-alert {
+  font-size: 0.7rem;
+  vertical-align: middle;
+  margin-left: 0.25rem;
+  padding-inline: 0.35em;
+  padding-block: 0.15em;
+}
+
+
+.badge-lg {
+    font-size: 0.9rem;      /* más grande que la badge normal */
+    padding: 0.45em 0.8em;  /* más alta y más ancha */
+    border-radius: 999px;   /* más “pill” */
+}
+
+/* Día de hoy con solo avisos (notice) */
+.fc .fc-daygrid-day.fc-day-notice {
+  background-color: #ffc107;      /* azul suave */
+  box-shadow: 0 0 0 2px #ffc107 inset;
+  border-radius: 6px;
+}
+
+/* Día de hoy con al menos un warning y sin critical */
+.fc .fc-daygrid-day.fc-day-warning {
+  background-color: #fd7e14;      /* amarillo suave */
+  box-shadow: 0 0 0 2px #fd7e14 inset;
+  border-radius: 6px;
+}
+
+/* Día de hoy con al menos un critical */
+.fc .fc-daygrid-day.fc-day-critical {
+  background-color: #dc3545;      /* rojo suave */
+  box-shadow: 0 0 0 2px #dc3545 inset;
+  border-radius: 6px;
+}
+
+/* Botones de FullCalendar con el azul del sidebar */
+.fc .fc-button-primary {
+  background-color: #00205d;
+  border-color: #00205d;
+  color: #ffffff;
+}
+
+/* Hover / activo */
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active,
+.fc .fc-button-primary:not(:disabled):hover {
+  background-color: #001744;  /* un poco más oscuro */
+  border-color: #001744;
+  color: #ffffff;
+}
+
+.btn-tams-primary {
+  background-color: #00205d;
+  border-color: #00205d;
+  color: #ffffff;
+}
+
+.btn-tams-primary:hover,
+.btn-tams-primary:focus {
+  background-color: #001744; /* un poco más oscuro al pasar el ratón */
+  border-color: #001744;
+  color: #ffffff;
+}
+
+.btn-tams-primary:disabled,
+.btn-tams-primary.disabled {
+  background-color: #00205d;
+  border-color: #00205d;
+  opacity: 0.65;
+  color: #ffffff;
+}
+
+.btn-notice-primary{
+  background-color: #ffc107;
+  border-color: #ffc107;
+  color: #ffffff;
+}
+
+.btn-warning-primary{
+  background-color: #fd7e14;
+  border-color: #fd7e14;
+  color: #ffffff;
+}
+
+.device-badge{
+  display:inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+  min-width: 110px;
+  text-align: center;
+}
+
+.device-canteen{ background:#2ecc71; }
+.device-guest{ background:#3498db; }
+.device-instructor{ background:#9b59b6; }
+.device-vending{ background:#e67e22; }
+
+/* ITC */
+.device-laptop{ background:#1abc9c; } /* turquesa, distinto y limpio */
+
+.device-unknown{ background:#7f8c8d; }
+.device-badge{ min-width: 110px; text-align:center; }
+
+
+.sidebar-badge{
+  font-size: .70rem;
+  line-height: 1;
+  padding: .25em .45em;
+  min-width: 1.35rem;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+/* Layout: scroll solo en contenido, sidebar fija */
+html, body { height: 100%; }
+body { overflow: hidden; }
+
+#app-layout { height: 100vh; overflow: hidden; }
+
+/* Sidebar ocupa toda la altura y puede scrollear si hay muchos items */
+#sidebar {
+  height: 100vh;
+  overflow-y: auto; /* o hidden si quieres que NUNCA tenga scroll */
+}
+
+/* Main no scrollea, scrollea su section */
+main.bg-content {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+main.bg-content > section {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+body.no-page-scroll { overflow: hidden; }
+
+/* =========================================================
+   DEVICES: Sticky header (2 rows) + perfect alignment
+   Same thickness as USERS / COURSES
+   Put this at the VERY END of the CSS file
+   ========================================================= */
+
+/* Evita scroll de la página si usas el layout tipo panel */
+body.no-page-scroll { overflow: hidden; }
+
+/* ====== UNA sola verdad: anchos + padding ====== */
+:root{
+  --dev-col-num: 70px;
+  --dev-col-name: 220px;
+  --dev-col-ident: 200px;
+  --dev-col-root: 160px;
+  --dev-col-sub: 180px;
+  --dev-col-status: 140px;
+  --dev-col-notes: auto;
+  --dev-col-actions: 150px;
+
+  /* Grosor igual a users/courses */
+  --dev-cell-py: .40rem;
+  --dev-cell-px: .50rem;
+
+  /* (opcional) compensación scrollbar si la usas con JS */
+  --dev-scrollbar-pad: 0px;
+}
+
+/* Layout */
+.devices-page{
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.devices-panel{
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Header fijo con 2 filas */
+.devices-header-2rows{
+  position: sticky;
+  top: 56px;
+  z-index: 100;
+  background: var(--bs-body-bg);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+
+  /* si compensas scrollbar, esto lo usa */
+  padding-right: var(--dev-scrollbar-pad);
+  box-sizing: border-box;
+}
+
+/* Grid compartido por nombres + filtros.
+   CLAVE: gap=0 y padding por celda (como users/courses) */
+.devices-grid-cols{
+  display: grid;
+  grid-template-columns:
+    var(--dev-col-num)
+    var(--dev-col-name)
+    var(--dev-col-ident)
+    var(--dev-col-root)
+    var(--dev-col-sub)
+    var(--dev-col-status)
+    var(--dev-col-notes)
+    var(--dev-col-actions);
+  gap: 0;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Cada celda del grid usa el MISMO padding que la tabla */
+.devices-grid-cols > div{
+  padding: var(--dev-cell-py) var(--dev-cell-px);
+  box-sizing: border-box;
+}
+
+.devices-grid-cols-head{
+  background: rgba(0,0,0,.03);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+.devices-th{
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Fila filtros: sin padding extra (para no engordar) */
+.devices-grid-cols-filters{
+  border-bottom: 1px solid rgba(0,0,0,.35);
+}
+
+/* Scroll SOLO en el cuerpo */
+.devices-table-scroll{
+  flex: 1;
+  min-height: 0;
+  overflow-y: scroll;          /* scrollbar siempre => no saltos */
+  overscroll-behavior: contain;
+}
+
+/* Tabla fixed y anchos clavados */
+.devices-table-fixed{
+  table-layout: fixed;
+  width: 100%;
+}
+
+.devices-table-fixed col.col-num{ width: var(--dev-col-num); }
+.devices-table-fixed col.col-name{ width: var(--dev-col-name); }
+.devices-table-fixed col.col-ident{ width: var(--dev-col-ident); }
+.devices-table-fixed col.col-root{ width: var(--dev-col-root); }
+.devices-table-fixed col.col-sub{ width: var(--dev-col-sub); }
+.devices-table-fixed col.col-status{ width: var(--dev-col-status); }
+.devices-table-fixed col.col-notes{ width: var(--dev-col-notes); }
+.devices-table-fixed col.col-actions{ width: var(--dev-col-actions); }
+
+/* IMPORTANTÍSIMO:
+   Bootstrap (.table-sm) mete su padding.
+   Lo pisamos para que sea EXACTO como el grid */
+.devices-table-fixed.table-sm > :not(caption) > * > *{
+  padding: var(--dev-cell-py) var(--dev-cell-px) !important;
+  vertical-align: middle;
+
+  /* No romper layout con IDs largos */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* =========================================================
+   MOVEMENTS: Sticky header (2 rows) + perfect alignment
+   Put at END and delete old movements CSS blocks
+   ========================================================= */
+
+:root{
+  --mv-col-date: 380px;
+  --mv-col-user: 220px;
+  --mv-col-action: 160px;
+  --mv-col-desc: auto;     /* resto del ancho */
+  --mv-col-detail: 110px;
+
+  --mv-cell-py: .40rem;
+  --mv-cell-px: .50rem;
+}
+
+/* Page/panel */
+.movements-page{
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.movements-panel{
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Scroll container (header + table inside, as in your HTML) */
+.movements-table-scroll{
+  flex: 1;
+  min-height: 0;
+  overflow-y: scroll;          /* scrollbar siempre => no saltos */
+  overscroll-behavior: contain;
+}
+
+/* Header fijo dentro del scroll */
+.movements-header-2rows{
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bs-body-bg);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+/* Grid: SIN gap, padding por celda (igual a tabla) */
+.movements-grid-cols{
+  display: grid;
+  grid-template-columns:
+    var(--mv-col-date)
+    var(--mv-col-user)
+    var(--mv-col-action)
+    minmax(0, 1fr)
+    var(--mv-col-detail);
+  gap: 0;
+  align-items: center;
+}
+
+.movements-grid-cols > div{
+  padding: var(--mv-cell-py) var(--mv-cell-px);
+  box-sizing: border-box;
+}
+
+.movements-grid-cols-head{
+  background: rgba(0,0,0,.03);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  font-weight: 600;
+}
+
+.movements-grid-cols-filters{
+  border-bottom: 1px solid rgba(0,0,0,.35);
+}
+
+.movements-th{ white-space: nowrap; }
+
+/* Tabla fixed y anchos iguales */
+.movements-table-fixed{
+  table-layout: fixed;
+  width: 100%;
+}
+
+.movements-table-fixed col.col-date   { width: var(--mv-col-date); }
+.movements-table-fixed col.col-user   { width: var(--mv-col-user); }
+.movements-table-fixed col.col-action { width: var(--mv-col-action); }
+.movements-table-fixed col.col-desc   { width: auto; }
+.movements-table-fixed col.col-detail { width: var(--mv-col-detail); }
+
+/* Igualar padding al grid (pisando Bootstrap table-sm) */
+.movements-table-fixed.table-sm > :not(caption) > * > *{
+  padding: var(--mv-cell-py) var(--mv-cell-px) !important;
+  vertical-align: middle;
+}
+
+/* Truncado seguro en Description */
+.movements-table-fixed td.text-truncate{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================================================
+   USERS: Sticky header (2 rows) + perfect alignment
+   Clone of DEVICES parameters (but isolated to users-*)
+   Put this at the VERY END of the CSS file
+   ========================================================= */
+
+/* Una sola verdad: columnas + padding (igual filosofía que Devices) */
+:root{
+  --usr-col-num: 70px;
+  --usr-col-name: 310px;
+  --usr-col-surname: 310px;
+  --usr-col-username: 310px;
+  --usr-col-email: 260px;
+  --usr-col-role: 200px;
+  --usr-col-actions: 180px;
+
+  --usr-cell-py: .40rem;
+  --usr-cell-px: .50rem;
+
+  --usr-scrollbar-pad: 0px;
+}
+
+/* Panel users: mismo layout que devices-page/panel */
+.users-page{
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.users-panel{
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Header fijo con 2 filas (IGUAL que devices-header-2rows) */
+.users-header-2rows{
+  position: sticky;
+  top: 56px;
+  z-index: 100;
+  background: var(--bs-body-bg);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+
+  /* si algún día compensas scrollbar como en devices */
+  padding-right: var(--usr-scrollbar-pad, 0px);
+}
+
+/* MISMA rejilla (nombres + filtros).
+   CLAVE: gap 0 + padding por celda, como Devices */
+.users-grid-cols{
+  display: grid;
+  grid-template-columns:
+    var(--usr-col-num)
+    var(--usr-col-name)
+    var(--usr-col-surname)
+    var(--usr-col-username)
+    var(--usr-col-email)
+    var(--usr-col-role)
+    var(--usr-col-actions);
+  gap: .5rem;
+  align-items: center;
+  padding: var(usr-cell-py)
+  var(--usr-cell-px);
+}
+
+/* Cada celda del grid usa el mismo padding que la tabla */
+.users-grid-cols > div{
+  padding: var(--usr-cell-py) var(--usr-cell-px);
+}
+
+/* Fila títulos */
+.users-grid-cols-head{
+  background: rgba(0,0,0,.03);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+.users-th{
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Fila filtros */
+.users-grid-cols-filters{
+  border-bottom: 1px solid rgba(0,0,0,.35);
+}
+
+/* Scroll SOLO en el cuerpo */
+.users-table-scroll{
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Tabla fija y clavada al header */
+.users-table-fixed{
+  table-layout: fixed;
+  width: 100%;
+}
+
+/* Si usas <colgroup> con styles var(--usr-col-*) ya vale.
+   Pero si prefieres clases, aquí tienes también opción por clases: */
+/*
+.users-table-fixed col.col-num      { width: var(--usr-col-num); }
+.users-table-fixed col.col-name     { width: var(--usr-col-name); }
+.users-table-fixed col.col-surname  { width: var(--usr-col-surname); }
+.users-table-fixed col.col-username { width: var(--usr-col-username); }
+.users-table-fixed col.col-email    { width: var(--usr-col-email); }
+.users-table-fixed col.col-role     { width: var(--usr-col-role); }
+.users-table-fixed col.col-actions  { width: var(--usr-col-actions); }
+*/
+
+/* Celdas: mismo padding que el header grid, y truncado seguro */
+.users-table-fixed td{
+  padding: var(--usr-cell-py) var(--usr-cell-px);
+  vertical-align: middle;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================================================
+   COURSES: Sticky header (2 rows) + perfect alignment
+   ========================================================= */
+
+:root{
+  --crs-col-num: 100px;
+  --crs-col-course: 180px;
+  --crs-col-name: 220px;
+  --crs-col-client: 160px;
+  --crs-col-start: 110px;
+  --crs-col-end: 110px;
+  --crs-col-status: 110px;
+  --crs-col-itc: 170px;
+  --crs-col-notes: 200px;
+  --crs-col-actions: 300px;
+
+  --crs-cell-py: .40rem;
+  --crs-cell-px: .50rem;
+
+  --crs-scrollbar-pad: 0px;
+}
+
+.courses-page.is-tco{
+  --crs-col-num: 100px;
+  --crs-col-course: 200px;
+  --crs-col-name: 240px;
+  --crs-col-client: 200px;
+  --crs-col-start: 150px;
+  --crs-col-end: 150px;
+  --crs-col-status: 110px;
+  /*--crs-col-itc: 170px;*/
+  --crs-col-notes: 200px;
+  --crs-col-actions: 300px;
+
+  --crs-cell-py: .40rem;
+  --crs-cell-px: .50rem;
+
+  --crs-scrollbar-pad: 0px; /* lo setea el JS */
+}
+.courses-page{
+  height: calc(100vh - 56px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.courses-panel{
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.courses-header-2rows{
+  position: sticky;
+  top: 56px;
+  z-index: 100;
+  background: var(--bs-body-bg);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  padding-right: var(--crs-scrollbar-pad);
+  box-sizing: border-box;
+}
+
+/* Grid común (con ITC) */
+.courses-grid-cols{
+  display: grid;
+  grid-template-columns:
+    var(--crs-col-num)
+    var(--crs-col-course)
+    var(--crs-col-name)
+    var(--crs-col-client)
+    var(--crs-col-start)
+    var(--crs-col-end)
+    var(--crs-col-status)
+    var(--crs-col-itc)
+    var(--crs-col-notes)
+    var(--crs-col-actions);
+  gap: 0;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Variante sin ITC (para que header y body cuadren cuando no se muestra) */
+.courses-grid-cols.no-itc{
+  grid-template-columns:
+    var(--crs-col-num)
+    var(--crs-col-course)
+    var(--crs-col-name)
+    var(--crs-col-client)
+    var(--crs-col-start)
+    var(--crs-col-end)
+    var(--crs-col-status)
+    var(--crs-col-notes)
+    var(--crs-col-actions);
+}
+
+.courses-grid-cols > div{
+  padding: var(--crs-cell-py) var(--crs-cell-px);
+  box-sizing: border-box;
+}
+
+.courses-grid-cols-head{
+  background: rgba(0,0,0,.03);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+.courses-grid-cols-filters{
+  border-bottom: 1px solid rgba(0,0,0,.35);
+}
+
+.courses-th{
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Scroll SOLO del body y siempre con scrollbar (evita saltos) */
+.courses-table-scroll{
+  flex: 1;
+  min-height: 0;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+}
+
+.courses-table-fixed{
+  table-layout: fixed;
+  width: 100%;
+}
+
+/* Pisa padding de Bootstrap table-sm para que sea EXACTO como el grid */
+.courses-table-fixed.table-sm > :not(caption) > * > *{
+  padding: var(--crs-cell-py) var(--crs-cell-px) !important;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* COURSES: que los filtros llenen la columna y no parezca 1998 */
+.courses-grid-cols > div{
+  min-width: 0; /* clave para que no “empuje” columnas */
+}
+
+.courses-grid-cols-filters input.form-control,
+.courses-grid-cols-filters select.form-select{
+  width: 100%;
+}
+
+/* Actions (fila filtros): que no se deforme */
+.courses-grid-cols-filters > div:last-child{
+  justify-content: center;
+  flex-wrap: nowrap;
+}
+
+/* COURSES: pulir fila de filtros (alineación vertical perfecta) */
+.courses-grid-cols-filters > div{
+  display: flex;
+  align-items: center;    /* centra verticalmente el contenido */
+  min-width: 0;           /* evita empujes raros */
+}
+
+/* los controles llenan la celda */
+.courses-grid-cols-filters .form-control,
+.courses-grid-cols-filters .form-select{
+  width: 100%;
+}
+
+/* iguala altura visual entre input/select/date (Bootstrap a veces “baila”) */
+.courses-grid-cols-filters .form-control-sm,
+.courses-grid-cols-filters .form-select-sm{
+  height: 31px;           /* valor mágico razonable para sm */
+  padding-top: .25rem;
+  padding-bottom: .25rem;
+}
+
+/* en Actions, no estires el contenido y céntralo de verdad */
+.courses-grid-cols-filters > div:last-child{
+  justify-content: center;
+  gap: .5rem;
+  flex-wrap: nowrap;
+}
+
+/* =========================================================
+   COURSES: colapsar ITC para TCO (columna existe pero mide 0)
+   ========================================================= */
+
+/* Cuando el wrapper tiene no-itc (lo pones en el HTML) */
+.courses-page.no-itc{
+  --crs-col-itc: 0px; /* col ITC se queda en 0 */
+}
+
+/* La celda ITC no debe tener padding/borde si mide 0 */
+.courses-page.no-itc .courses-itc-cell{
+  padding: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
+}
+
+/* El contenido interno desaparece (guion, selects, lo que sea) */
+.courses-page.no-itc .courses-itc-inner{
+  display: none !important;
+}
+
+.courses-grid-cols-filters .form-control,
+.courses-grid-cols-filters .form-select{
+  text-align: center;
+}
+.courses-grid-cols-filters select.form-select{
+  text-align-last: center; /* centra la opción seleccionada */
+}
+
+.flash-overlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 1050; /* similar a modal backdrop */
+}
+
+.flash-container{
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1060; /* encima del overlay */
+  width: min(900px, calc(100% - 2rem));
+}
+
+/* Asegura que el backdrop de Bootstrap sea visible */
+.modal-backdrop {
+  z-index: 1050 !important;
+}
+
+.modal {
+  z-index: 1055 !important;
+}
+
+/* Bootstrap ya lo hace, pero si tu CSS lo anuló, lo recuperamos */
+.modal-backdrop.show {
+  opacity: .5 !important;
+}

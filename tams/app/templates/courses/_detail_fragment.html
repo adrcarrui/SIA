@@ -1,0 +1,163 @@
+<div>
+  <div class="d-flex align-items-center mb-2">
+    <h5 class="mb-0">
+      Course:
+      <span class="text-muted">
+        {% set c1 = course.course|string|trim %}
+        {% set c2 = course.name|string|trim %}
+        {{ c1 if c1 not in ['', 'None'] else (c2 if c2 not in ['', 'None'] else 'Course #' ~ course.id) }}
+      </span>
+      {% set status_color = {
+        'active':'success',
+        'finished':'secondary',
+        'cancelled':'danger',
+        'planned':'dark'
+      }.get((course.auto_status or '')|lower, 'light') %}
+      <span class="badge text-bg-{{ status_color }}">{{ course.auto_status or '—' }}</span>
+      {% set itc = (course.status_itc or 'start')|lower %}
+{% set itc_color = 'secondary' %}
+{% if 'cancel' in itc or 'error' in itc %}
+  {% set itc_color = 'danger' %}
+{% elif itc in ['completed','end','collected'] %}
+  {% set itc_color = 'success' %}
+{% elif 'delivered' in itc %}
+  {% set itc_color = 'primary' %}
+{% endif %}
+      {% set dept_l = (current_user.department or '')|lower %}
+    {% if dept_l != 'tco' %}Status ITC: 
+      <span class="badge text-bg-{{ itc_color }}">{{ course.status_itc or 'start' }}</span>
+    {% endif %}
+    </h5>
+
+    <div class="ms-auto">
+      <a href="{{ url_for('courses.edit_course', course_id=course.id) }}"
+         class="btn btn-sm btn-secondary">
+        Edit course
+      </a>
+    </div>
+  </div>
+
+  <p class="small text-muted mb-3">
+    {% if course.start_date %}{{ course.start_date }}{% else %}–{% endif %}
+    →
+    {% if course.end_date %}{{ course.end_date }}{% else %}–{% endif %}
+  </p>
+
+  Description:
+  {% if course.notes and course.notes|trim not in ['None', 'none', ''] %}
+    <p>{{ course.notes }}</p>
+  {% endif %}
+
+  <hr>
+
+  <div class="d-flex align-items-center mb-2">
+    <h6 class="mb-0">ASSIGNED DEVICES</h6>
+
+    <div class="ms-auto d-flex gap-2">
+      <a href="{{ url_for('assignments.new_bulk', course_id=course.id) }}"
+         class="btn btn-sm btn-primary">
+        Associate
+      </a>
+      {% set actor_role = (current_user.role or '')|lower %}
+      {% set actor_dept = (current_user.department or '')|trim %}
+      {% if actor_role == 'admin' or actor_dept == 'ITC support' %}
+        <a class="btn btn-sm btn-primary"
+          href="{{ url_for('courses.assign_pcs', course_id=course.id) }}">
+          Assign PCs
+        </a>
+      {% endif %}
+      <a href="{{ url_for('assignments.bulk_returns')}}"
+         class="btn btn-sm btn-warning">
+        Return
+      </a>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th class="text-center">Assignment Nº</th>
+          <th class="text-center">Device name</th>
+          <th class="text-center">Status</th>
+          <th class="text-center">Responsible</th>
+          <th class="text-center">Assigned at</th>
+          <th class="text-center">Assigned by</th>
+          <th class="text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in active_assignments %}
+        <tr
+          {% if a.status == 'overdue_1' %}
+            class="table-warning"
+          {% elif a.status == 'overdue_2' %}
+            class="table-danger"
+          {% endif %}
+        >
+          <td class="text-center">#{{ a.id }}</td>
+
+          <td class="text-center">
+            {{ a.device.name if a.device else "Device #" ~ a.device_id }}
+          </td>
+
+          <td class="text-center">
+            {% if a.status == 'active' %}
+              <span class="badge bg-success">Active</span>
+            {% elif a.status == 'overdue_1' %}
+              <span class="badge bg-warning text-dark">
+                Overdue_1 ({{ a.days_late }} days{% if a.days_late != 1 %}s{% endif %})
+              </span>
+            {% elif a.status == 'overdue_2' %}
+              <span class="badge bg-danger">
+                Overdue_2 ({{ a.days_late }} day{% if a.days_late != 1 %}s{% endif %})
+              </span>
+            {% else %}
+              <span class="badge bg-secondary">{{ a.status }}</span>
+            {% endif %}
+          </td>
+          <td class="text-center">{{ a.responsible.username if a.responsible else '-' }}</td>
+          <td class="text-center">
+            {% if a.assigned_at %}
+              {{ a.assigned_at.strftime("%Y-%m-%d %H:%M") }}
+            {% else %}
+              –
+            {% endif %}
+          </td>
+
+          <td class="text-center">
+            {{ a.creator.username if a.creator else "—" }}
+          </td>
+
+          <td class="text-center">
+            <div class="d-flex justify-content-center align-items-center gap-2 w-100">
+              <a class="btn btn-secondary btn-sm"
+                 href="{{ url_for('assignments.edit', id=a.id) }}">
+                Edit
+              </a>
+
+              <form method="post"
+                    action="{{ url_for('assignments.delete', id=a.id) }}"
+                    class="d-inline">
+                <button type="submit"
+                        class="btn btn-sm btn-danger"
+                        onclick="return confirm('¿Delete assign #{{ a.id }}?')">
+                  Delete
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+
+        {% if not active_assignments %}
+        <tr>
+          <td colspan="6" class="text-center text-muted">
+            There are no active assigned devices for this course.
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>

@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-center align-items-center" style="min-height: calc(100vh - 56px);">
+  <div class="container" style="max-width: 480px;">
+    <div class="card shadow-sm">
+      <div class="card-body">
+
+        <!-- BLOQUE DE LOGO -->
+        <div class="text-center mb-4">
+          <img src="{{ url_for('static', filename='img/tams-logo-wordmark.png') }}"
+               alt="TAMS - Training Assets Management System"
+               class="img-fluid mb-1"
+               style="max-height: 150px;">
+          <div class="small text-muted fw-bold">
+            Training Assets Management System
+          </div>
+        </div>
+        <!-- FIN BLOQUE DE LOGO -->
+
+        <h2 class="h5 mb-3 text-center">Login</h2>
+
+        <div class="mb-4 text-center">
+          <div class="display-6 mb-2">📡</div>
+          <p class="text-muted mb-1" id="nfc-message">
+            Bring your NFC card close to the reader to log in…
+          </p>
+          <p class="small text-muted">
+            Reading is performed automatically, without pressing any button.
+          </p>
+          <div id="nfc-error" class="small text-danger mt-1"></div>
+        </div>
+
+        <hr>
+
+        <!-- Classic login as an alternative -->
+
+        {# ✅ NEW: Show credential-login errors #}
+        {% if error %}
+          <div class="alert alert-danger py-2 mb-3" role="alert">
+            {{ error }}
+          </div>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('auth.login') }}">
+          <div class="mb-3">
+            <label class="form-label">Username</label>
+            <input type="text"
+                   name="username"
+                   class="form-control"
+                   required
+                   autocomplete="username"
+                   oninvalid="this.setCustomValidity('This field is required')"
+                   oninput="this.setCustomValidity('')">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input type="password"
+                   name="password"
+                   class="form-control"
+                   required
+                   autocomplete="current-password"
+                   oninvalid="this.setCustomValidity('This field is required')"
+                   oninput="this.setCustomValidity('')">
+          </div>
+
+          <button type="submit" class="btn btn-outline-secondary w-100">
+            Login
+          </button>
+        </form>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const msg   = document.getElementById('nfc-message');
+  const err   = document.getElementById('nfc-error');
+
+  // Local agent endpoint (runs on each client PC)
+  const AGENT_UID_URL = "http://127.0.0.1:8765/uid";
+  const SERVER_LOGIN_URL = "{{ url_for('auth.nfc_login') }}";
+
+  let stopPolling = false;
+
+  async function pollNFC() {
+    if (stopPolling) return;
+
+    try {
+      // 1) Ask local agent for a UID (this reads the *local* PC/SC reader)
+      const aResp = await fetch(AGENT_UID_URL, {
+        method: "GET",
+        cache: "no-store",
+      });
+      const aData = await aResp.json().catch(() => ({}));
+
+      if (!aData || aData.success !== true) {
+        // agent is alive but no card yet
+        if (aData && aData.reason === "no_card") {
+          err.textContent = "";
+        } else if (aData && aData.reason === "agent_error") {
+          err.textContent = aData.error || "NFC agent error.";
+        } else {
+          // agent reachable but unknown response
+          err.textContent = "";
+        }
+        return;
+      }
+
+      const uid = aData.uid;
+      if (!uid) return;
+
+      // 2) Send UID to server to create the session
+      const sResp = await fetch(SERVER_LOGIN_URL, {
+        method: "POST",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ uid }),
+      });
+      if (!sResp.ok) {
+        const raw = await sResp.text();
+        err.textContent = `Server error ${sResp.status}: ${raw.slice(0, 200)}`;
+        return;
+      }
+      const sData = await sResp.json().catch(() => ({}));
+
+      if (sData.success) {
+        msg.textContent = 'Card recognized. Signing in...';
+        err.textContent = '';
+        stopPolling = true;
+        const nextUrl = sData.next || "{{ url_for('main.index') }}";
+        window.location.href = nextUrl;
+        return;
+      }
+
+      if (sData.reason === 'unknown_uid') {
+        err.textContent = sData.error || 'This card is not associated with any user.';
+      } else if (sData.reason === 'inactive_user') {
+        err.textContent = sData.error || 'This user account is inactive. Please contact an administrator.';
+      } else if (sData.reason === 'missing_uid') {
+        err.textContent = 'No UID was received from this computer.';
+      } else {
+        err.textContent = sData.error || 'Unable to sign in using the NFC card.';
+      }
+
+    } catch (e) {
+      // If agent is not running, fetch() to localhost will fail.
+      err.textContent = "NFC agent not running on this PC (localhost:8765).";
+    } finally {
+      if (!stopPolling) {
+        setTimeout(pollNFC, 700);
+      }
+    }
+  }
+
+  pollNFC();
+});
+</script>
+
+{% endblock %}

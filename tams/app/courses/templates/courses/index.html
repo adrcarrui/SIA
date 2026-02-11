@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-3">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h2 class="mb-0">Courses</h2>
+    <a href="{{ url_for('courses.new_course') }}" class="btn btn-primary btn-sm">+ Nuevo curso</a>
+  </div>
+
+  <form class="row g-2 mb-3" method="get" action="{{ url_for('courses.index') }}">
+    <div class="col-auto">
+      <input class="form-control" type="text" name="q"
+             placeholder="Buscar por nombre" value="{{ q }}">
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-outline-secondary" type="submit">Buscar</button>
+    </div>
+  </form>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>ID</th>
+          <th>Nombre</th>
+          <th>Inicio</th>
+          <th>Fin</th>
+          <th>Participantes</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in courses %}
+        <tr>
+          <td>{{ c.id }}</td>
+          <td>{{ c.name }}</td>
+          <td>{{ c.start_date }}</td>
+          <td>{{ c.end_date }}</td>
+          <td>{{ c.trainees }}</td>
+          <td>
+            {% if c.status == 'active' %}
+              <span class="badge text-bg-success">Active</span>
+            {% elif c.status == 'planned' %}
+              <span class="badge text-bg-warning">Planned</span>
+            {% else %}
+              <span class="badge text-bg-secondary">Finished</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('courses.edit_course', course_id=c.id) }}" class="btn btn-sm btn-outline-primary">Editar</a>
+            <a href="{{ url_for('courses.delete_course', course_id=c.id) }}"
+               class="btn btn-sm btn-outline-danger"
+               onclick="return confirm('¿Eliminar este curso?');">Eliminar</a>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not courses %}
+        <tr><td colspan="7" class="text-center text-body-secondary">Sin resultados</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

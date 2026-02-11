@@ -1,0 +1,350 @@
+{# app/templates/devices/form.html #}
+{% extends "base.html" %}
+{% block content %}
+
+<h2 class="mb-3">
+  {{ page_title or (device and device.id and 'Edit device' or 'New device') }}
+</h2>
+
+<div class="device-form">
+  <form method="post" action="">
+    {% if csrf_token is defined %}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% endif %}
+
+    <div class="row g-3">
+
+      {# Name #}
+      <div class="col-md-6">
+        <label for="name" class="form-label">Device name</label>
+        <input id="name"
+               name="name"
+               type="text"
+               class="form-control"
+               maxlength="120"
+               required
+               oninvalid="this.setCustomValidity('This field is required')"
+               oninput="this.setCustomValidity('')"
+               value="{{ device.name if device else '' }}">
+      </div>
+
+      {# Root type #}
+      <div class="col-md-6">
+        <label for="root_type_id" class="form-label">Root type</label>
+        <select id="root_type_id" class="form-select" required>
+          <option value="">Select type</option>
+          {% for r in roots %}
+            <option value="{{ r.id }}" {{ 'selected' if selected_root_id == r.id else '' }}>
+              {{ r.name }}
+            </option>
+          {% endfor %}
+        </select>
+        <div class="form-text">First choose the root type (CARD / LAPTOP / USB).</div>
+      </div>
+
+      {# Subtype #}
+      <div class="col-md-6">
+        <label for="asset_type_id" class="form-label">Subtype</label>
+        <select id="asset_type_id" name="asset_type_id" class="form-select">
+          <option value="">Select subtype</option>
+        </select>
+        <div class="form-text">This is what gets saved in the device.</div>
+      </div>
+
+      {# UID (RFID) #}
+      <div id="rfid-block" class="col-md-6" style="display:none;">
+        <label class="form-label">
+          UID <span class="text-danger">*</span>
+        </label>
+        <div class="input-group">
+          <input
+            type="text"
+            id="uid-input"
+            name="uid"
+            class="form-control"
+            maxlength="64"
+            value="{{ device.uid if device else '' }}"
+            placeholder="E.g. 04AABBCCDD"
+            autocomplete="off"
+          >
+          <button class="btn btn-outline-primary" type="button" id="btn-read-uid">
+            <span id="btn-read-icon">📡</span> Read card
+          </button>
+        </div>
+        <div id="uid-status" class="form-text mt-1 text-muted">
+          Bring the card close and press <strong>Read card</strong>.
+        </div>
+      </div>
+
+      {# Barcode #}
+      <div class="col-md-6" id="barcode-block" style="display:none;">
+        <label for="barcode" class="form-label">
+          Barcode <span class="text-danger">*</span>
+        </label>
+        <input id="barcode"
+               name="barcode"
+               type="text"
+               class="form-control"
+               maxlength="128"
+               value="{{ device.barcode if device and device.barcode else '' }}"
+               placeholder="Scan or enter barcode">
+        <div class="form-text">Only for assets that use barcode (e.g. laptops/USB).</div>
+      </div>
+
+{# Status #}
+{% set actor_role = (current_user.role or '')|lower|trim %}
+{% set actor_dept = (current_user.department or '')|lower|trim %}
+{% set is_tco = actor_dept == 'tco' %}
+{% set is_itc = actor_dept == 'itc support' or actor_role.startswith('itc') %}
+
+{% set _statuses = DEVICE_STATUSES if DEVICE_STATUSES is defined else ['available','assigned','lost','annulled'] %}
+{% set current_status = (device.status if device and device.status else 'available') %}
+
+{# CREATE: TCO e ITC -> status fijo available y oculto #}
+{% if (is_tco or is_itc) and not device %}
+  <input type="hidden" name="status" value="available">
+
+{# EDIT: TCO -> oculto y manda el status actual #}
+{% elif is_tco and device %}
+  <input type="hidden" name="status" value="{{ current_status }}">
+
+{# RESTO (Admin + otros + ITC edit): selector visible #}
+{% else %}
+  <div class="col-md-6">
+    <label for="status" class="form-label">Status</label>
+    <select id="status" name="status" class="form-select">
+      {% if current_status not in _statuses %}
+        <option value="{{ current_status }}" selected>{{ current_status }}</option>
+      {% endif %}
+      {% for s in _statuses %}
+        <option value="{{ s }}" {{ 'selected' if current_status == s else '' }}>
+          {{ s }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+{% endif %}
+
+            {# Active #}
+      {% if is_tco or is_itc %}
+        {# Para TCO/ITC: siempre true, no mostrar checkbox #}
+        <input type="hidden" name="active" value="1">
+      {% else %}
+        <div class="col-md-6 d-flex align-items-center">
+          <div class="form-check mt-2">
+            <input class="form-check-input"
+                   type="checkbox"
+                   id="active"
+                   name="active"
+                   value="1"
+                   {% if device %}
+                     {{ 'checked' if device.active else '' }}
+                   {% else %}
+                     checked
+                   {% endif %}>
+            <label class="form-check-label" for="active">Active</label>
+          </div>
+        </div>
+      {% endif %}
+
+
+      {# Notes #}
+      <div class="col-12">
+        <label for="notes" class="form-label">Comments</label>
+        <textarea id="notes"
+                  name="notes"
+                  rows="3"
+                  maxlength="255"
+                  class="form-control">{{ device.notes if device else '' }}</textarea>
+      </div>
+
+      {# Read-only timestamps when editing #}
+      {% if device and (device.created_at or device.updated_at) %}
+        <div class="col-md-6">
+          <label class="form-label">Created</label>
+          <input type="text" class="form-control" value="{{ device.created_at }}" disabled>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Last update</label>
+          <input type="text" class="form-control" value="{{ device.updated_at }}" disabled>
+        </div>
+      {% endif %}
+
+    </div>
+
+    <div class="mt-4 d-flex justify-content-end gap-2">
+      <button class="btn btn-primary" type="submit">Save</button>
+      <a href="{{ url_for('devices.index') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+
+  </form>
+</div>
+
+{# JS: root/subtype + show/hide RFID/Barcode + required flags #}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const childrenMap = {{ children_map|tojson }};
+  const rootSelect = document.getElementById("root_type_id");
+  const childSelect = document.getElementById("asset_type_id");
+
+  const rfidBlock = document.getElementById("rfid-block");
+  const uidInput  = document.getElementById("uid-input");
+
+  const barcodeBlock = document.getElementById("barcode-block");
+  const barcodeInput = document.getElementById("barcode");
+
+  const selectedChildId = {{ (selected_child_id if selected_child_id else None)|tojson }};
+
+  function currentChildObj() {
+    const rootId = String(rootSelect.value || "");
+    const list = childrenMap[rootId] || [];
+    return list.find(x => String(x.id) === String(childSelect.value)) || null;
+  }
+
+  function setRequired(el, required, msg) {
+    if (!el) return;
+    el.required = !!required;
+    el.oninvalid = required ? function(){ this.setCustomValidity(msg || "This field is required"); } : null;
+    el.oninput = function(){ this.setCustomValidity(""); };
+  }
+
+  function applyVisibility(obj) {
+    const reqRfid = !!(obj && obj.requires_rfid);
+    const reqBar  = !!(obj && obj.requires_barcode);
+
+    if (rfidBlock) rfidBlock.style.display = reqRfid ? "" : "none";
+    if (barcodeBlock) barcodeBlock.style.display = reqBar ? "" : "none";
+
+    setRequired(uidInput, reqRfid, "UID is required for this subtype");
+    setRequired(barcodeInput, reqBar, "Barcode is required for this subtype");
+
+    // si no aplica, vaciamos el campo para no guardar basura accidental
+    if (!reqRfid && uidInput) uidInput.value = "";
+    if (!reqBar && barcodeInput) barcodeInput.value = "";
+  }
+
+  function refillChildren() {
+    const rootId = String(rootSelect.value || "");
+    childSelect.innerHTML = '<option value="">Select subtype</option>';
+
+    const list = childrenMap[rootId] || [];
+    let selectedObj = null;
+
+    for (const c of list) {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.name;
+
+      if (selectedChildId && Number(c.id) === Number(selectedChildId)) {
+        opt.selected = true;
+        selectedObj = c;
+      }
+      childSelect.appendChild(opt);
+    }
+
+    applyVisibility(selectedObj);
+  }
+
+  if (!rootSelect || !childSelect) return;
+
+  rootSelect.addEventListener("change", function () {
+    // cambia root -> limpia subtype y oculta campos
+    childSelect.value = "";
+    refillChildren();
+    applyVisibility(null);
+  });
+
+  childSelect.addEventListener("change", function () {
+    applyVisibility(currentChildObj());
+  });
+
+  // init
+  refillChildren();
+
+  // si estamos editando y ya hay subtipo, fuerza visibilidad
+  if (selectedChildId) {
+    applyVisibility(currentChildObj());
+  } else {
+    applyVisibility(null);
+  }
+});
+</script>
+
+{# JS NFC: solo actúa si el bloque RFID está visible #}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const btn    = document.getElementById("btn-read-uid");
+  const status = document.getElementById("uid-status");
+  const input  = document.getElementById("uid-input");
+  const icon   = document.getElementById("btn-read-icon");
+  const rfidBlock = document.getElementById("rfid-block");
+
+  // Local agent endpoint (runs on each client PC)
+  const AGENT_UID_URL = "http://127.0.0.1:8765/uid";
+
+  if (!btn || !status || !input || !icon || !rfidBlock) return;
+
+  async function readOnce() {
+    // si RFID no aplica (bloque oculto), no hacemos nada
+    if (rfidBlock.style.display === "none") return;
+
+    btn.disabled = true;
+    icon.textContent = "⌛";
+    status.classList.remove("text-danger", "text-success");
+    status.classList.add("text-muted");
+    status.textContent = "Attempting to read card…";
+
+    try {
+      // 1) Read UID from local agent
+      const aResp = await fetch(AGENT_UID_URL, { method: "GET", cache: "no-store" });
+      const aData = await aResp.json().catch(() => ({}));
+
+      if (!aData || aData.success !== true || !aData.uid) {
+        status.classList.remove("text-muted", "text-success");
+        status.classList.add("text-danger");
+        if (aData && aData.reason === "no_card") {
+          status.textContent = "No card detected. Bring it closer and try again.";
+        } else {
+          status.textContent = (aData && aData.error) ? aData.error : "NFC agent not running on this PC (localhost:8765).";
+        }
+        return;
+      }
+
+      // 2) Ask server to normalize/resolve UID (keeps existing backend flow)
+      const resp = await fetch("{{ url_for('users.read_uid_once') }}", {
+        method: "POST",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ uid: aData.uid })
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (data.success) {
+        input.value = data.uid;
+        status.classList.remove("text-muted", "text-danger");
+        status.classList.add("text-success");
+        status.textContent = "UID read: " + data.uid + ". Now save the form.";
+      } else {
+        status.classList.remove("text-muted", "text-success");
+        status.classList.add("text-danger");
+
+        status.textContent = data.error || "Could not read card.";
+      }
+    } catch (e) {
+      status.classList.remove("text-muted", "text-success");
+      status.classList.add("text-danger");
+      status.textContent = "Communication error.";
+    } finally {
+      btn.disabled = false;
+      icon.textContent = "📡";
+    }
+  }
+
+  btn.addEventListener("click", readOnce);
+});
+</script>
+
+{% endblock %}
