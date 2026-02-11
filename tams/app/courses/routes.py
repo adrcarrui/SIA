@@ -2157,3 +2157,215 @@ def api_update_itc_status(course_id):
         return jsonify({"success": False, "error": str(e)}), 500
     finally:
         db.close()
+
+def _find_assigned_course_for_device(db, device_id: int):
+    row = (
+        db.query(models.Assignment, models.Course)
+        .join(models.Course, models.Course.id == models.Assignment.course_id)
+        .filter(
+            models.Assignment.device_id == device_id,
+            models.Assignment.status == "active",  # o tu condición
+        )
+        .order_by(models.Assignment.id.desc())
+        .first()
+    )
+    if not row:
+        return None
+
+    a, c = row
+    return {
+        "assignment_id": a.id,
+        "course_id": c.id,
+        "course": c.course,
+        "name": c.name,
+        "client": c.client,
+        "start_date": c.start_date.isoformat() if c.start_date else None,
+        "end_date": c.end_date.isoformat() if c.end_date else None,
+    }
+
+@bp.route("/api/pc-lookup", methods=["POST"])
+@login_required
+def api_pc_lookup():
+    if not _is_itc_or_admin():
+        return jsonify({"success": False, "error": "Forbidden"}), 403
+
+    data = request.get_json(silent=True) or {}
+    q = (data.get("q") or "").strip()
+    if not q:
+        return jsonify({"success": False, "error": "Missing query"}), 400
+
+    db = SessionLocal()
+    try:
+        Parent = aliased(models.AssetType)
+
+        base = (
+            db.query(models.Device)
+            .join(models.AssetType, models.Device.asset_type_id == models.AssetType.id)
+            .outerjoin(Parent, models.AssetType.parent_id == Parent.id)
+            .options(joinedload(models.Device.asset_type).joinedload(models.AssetType.parent))
+            .filter(
+                models.AssetType.active.is_(True),
+                or_(models.AssetType.code == "COMPUTER", Parent.code == "COMPUTER"),
+            )
+        )
+
+        # 1) exact barcode
+        d = base.filter(models.Device.barcode == q).first()
+        if not d:
+            # 2) exact UID
+            d = base.filter(models.Device.uid == q).first()
+
+        matches = []
+        if not d:
+            # 3) name exact (case-insensitive)
+            matches = (
+                base.filter(func.lower(models.Device.name) == q.lower())
+                .limit(10)
+                .all()
+            )
+
+            # 4) name partial
+            if not matches and len(q) >= 3:
+                matches = (
+                    base.filter(models.Device.name.ilike(f"%{q}%"))
+                    .limit(10)
+                    .all()
+                )
+
+            if len(matches) == 1:
+                d = matches[0]
+
+        if not d and not matches:
+            return jsonify({"success": False, "error": "Not found"}), 404
+
+        if not d and len(matches) > 1:
+            return jsonify({
+                "success": False,
+                "error": "Multiple matches",
+                "matches": [
+                    {"id": x.id, "name": x.name, "uid": x.uid, "barcode": x.barcode}
+                    for x in matches
+                ]
+            }), 409
+
+        # Reutiliza tu lógica de “assigned_course” si ya la montas en api_pc_by_barcode
+        assigned = _find_assigned_course_for_device(db, d.id)  # o tu función/consulta actual
+
+        return jsonify({
+            "success": True,
+            "device": {
+                "id": d.id,
+                "name": d.name,
+                "uid": d.uid,
+                "barcode": d.barcode,
+                "status": d.status,
+                "asset_type_code": (d.asset_type.code if d.asset_type else None),
+            },
+            "assigned_course": assigned
+        })
+    finally:
+        db.close()
+
+def _find_active_loan_for_card(db, card_device_id: int):
+    CLOSED = {"returned", "cancelled", "lost"}  # ajusta a tus valores reales
+
+    row = (
+        db.query(models.Assignment, models.Course)
+        .join(models.Course, models.Course.id == models.Assignment.course_id)
+        .filter(
+            models.Assignment.device_id == card_device_id,
+            ~models.Assignment.status.in_(CLOSED),
+        )
+        .order_by(models.Assignment.id.desc())
+        .first()
+    )
+
+    if not row:
+        return None
+
+    a, c = row
+    parts = [(c.course or "").strip(), (c.name or "").strip(), (c.client or "").strip()]
+    label = " | ".join([p for p in parts if p]) or (f"Course #{c.id}")
+
+    return {
+        "assignment_id": a.id,
+        "course_id": c.id,
+        "label": label,
+        "status": a.status,
+    }
+
+
+@bp.route("/api/card-lookup", methods=["POST"])
+@login_required
+def api_card_lookup():
+    data = request.get_json(silent=True) or {}
+    q = (data.get("q") or "").strip()
+    if not q:
+        return jsonify({"success": False, "error": "Missing query"}), 400
+
+    db = SessionLocal()
+    try:
+        Parent = aliased(models.AssetType)
+
+        base = (
+            db.query(models.Device)
+            .join(models.AssetType, models.Device.asset_type_id == models.AssetType.id)
+            .outerjoin(Parent, models.AssetType.parent_id == Parent.id)
+            .options(joinedload(models.Device.asset_type).joinedload(models.AssetType.parent))
+            .filter(
+                models.AssetType.active.is_(True),
+                or_(
+                    models.AssetType.code == "CARD",
+                    Parent.code == "CARD",
+                ),
+            )
+        )
+
+        # Tarjetas: en tu tabla pone Barcode=No, así que aquí el match real es UID y nombre.
+        d = base.filter(models.Device.uid == q).first()
+
+        matches = []
+        if not d:
+            matches = (
+                base.filter(func.lower(models.Device.name) == q.lower())
+                .limit(10)
+                .all()
+            )
+            if not matches and len(q) >= 3:
+                matches = (
+                    base.filter(models.Device.name.ilike(f"%{q}%"))
+                    .limit(10)
+                    .all()
+                )
+            if len(matches) == 1:
+                d = matches[0]
+
+        if not d and not matches:
+            return jsonify({"success": False, "error": "Not found"}), 404
+
+        if not d and len(matches) > 1:
+            return jsonify({
+                "success": False,
+                "error": "Multiple matches",
+                "matches": [
+                    {"id": x.id, "name": x.name, "uid": x.uid, "barcode": x.barcode}
+                    for x in matches
+                ]
+            }), 409
+
+        active_loan = _find_active_loan_for_card(db, d.id)
+
+        return jsonify({
+            "success": True,
+            "card": {
+                "id": d.id,
+                "name": d.name,
+                "uid": d.uid,
+                "barcode": d.barcode,  # probablemente None, y está bien
+                "status": d.status,
+                "asset_type_code": (d.asset_type.code if d.asset_type else None),
+            },
+            "active_loan": active_loan,
+        })
+    finally:
+        db.close()

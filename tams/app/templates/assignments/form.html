@@ -13,7 +13,10 @@
         <option value="{{ d.id }}"
           {% if assignment and d.id == assignment.device_id %}selected{% endif %}
         >
-          {{ d.name }} <!--(ID {{ d.id }})-->
+          {% if d.uid %}{{ d.uid }}{% endif %}
+          {% if d.barcode %}{% if d.uid %} / {% endif %}{{ d.barcode }}{% endif %}
+          {% if d.uid or d.barcode %} — {% endif %}
+          {{ d.name or ('Device #' ~ d.id) }}
         </option>
       {% endfor %}
     </select>

@@ -20,6 +20,21 @@
       </small>
     </div>
 
+    <!-- Input manual (UID / Name) -->
+    <div class="mb-3">
+      <label class="form-label">Or enter card identifier (UID / Name)</label>
+      <input
+        type="text"
+        id="card-query-input"
+        class="form-control"
+        placeholder="Type UID or card name…"
+        autocomplete="off"
+      >
+      <div class="form-text" id="card-query-status">
+        Press Enter to add (or wait a moment after typing).
+      </div>
+    </div>
+
     <!-- Tabla de devices -->
     <div class="table-responsive mb-3">
       <table class="table table-sm align-middle mb-0">
@@ -35,7 +50,7 @@
           </tr>
         </thead>
         <tbody id="devices-table-body">
-          <!-- Filas generadas por JS al leer tarjetas -->
+          <!-- Filas generadas por JS -->
         </tbody>
       </table>
     </div>
@@ -53,7 +68,7 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-  console.log("assignments bulk RETURN NFC JS cargado (auto-poll)");
+  console.log("assignments bulk RETURN NFC JS cargado (auto-poll) + manual lookup");
 
   const btn    = document.getElementById("btn-read-uid");
   const status = document.getElementById("uid-status");
@@ -61,27 +76,61 @@ document.addEventListener("DOMContentLoaded", function () {
   const tbody  = document.getElementById("devices-table-body");
   const submit = document.getElementById("submit-btn");
 
-  if (!btn || !status || !icon || !tbody || !submit) {
-    console.warn("Elementos NFC (assignments bulk return) no encontrados en el DOM");
+  const qInput  = document.getElementById("card-query-input");
+  const qStatus = document.getElementById("card-query-status");
+
+  if (!btn || !status || !icon || !tbody || !submit || !qInput || !qStatus) {
+    console.warn("Elementos (assignments bulk return) no encontrados en el DOM");
     return;
   }
 
   // Para evitar duplicados de UID
   const addedUids = new Set();
   let polling = true;
-  const POLL_DELAY_MS = 1000;  // 1s entre lecturas
+  const POLL_DELAY_MS = 1000;
 
   // Local agent endpoint (runs on each client PC)
   const AGENT_UID_URL = "http://127.0.0.1:8765/uid";
+
+  function setQStatus(text, cls) {
+    qStatus.className = "form-text";
+    if (cls) qStatus.classList.add(cls);
+    qStatus.textContent = text;
+  }
 
   function refreshSubmitState() {
     submit.disabled = (tbody.rows.length === 0);
   }
 
-  async function addRowFromUid(data) {
-    console.log("addRowFromUid (NFC) data:", data);
+  function renumber() {
+    Array.from(tbody.rows).forEach((row, idx) => {
+      row.cells[0].textContent = idx + 1;
+    });
+  }
 
-    const uid = data.uid;
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function summarizeMatches(matches) {
+    const top = (matches || []).slice(0, 3).map(m => {
+      const name = m.name || ("#" + m.id);
+      const uid = m.uid ? ("UID " + m.uid) : "";
+      return [name, uid].filter(Boolean).join(" | ");
+    });
+    const more = (matches && matches.length > 3) ? ` (+${matches.length - 3} more)` : "";
+    return top.join(" / ") + more;
+  }
+
+  async function addRowFromUid(data) {
+    console.log("addRowFromUid (UID resolved) data:", data);
+
+    const uid = (data.uid || "").trim();
     if (!uid) {
       status.classList.remove("text-success", "text-muted", "text-warning");
       status.classList.add("text-danger");
@@ -123,8 +172,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const info = payload.data || {};
 
-    // Aquí NO filtramos por 'status' ni 'active' ni nada en el front.
-    // Mostramos lo que venga.
     const assignmentId = info.assignment_id || null;
     const courseName   = info.course_name || "Not linked";
     const endDate      = info.course_end_date || "-";
@@ -139,24 +186,24 @@ document.addEventListener("DOMContentLoaded", function () {
 
     addedUids.add(uid);
 
-    const rowIndex = tbody.rows.length + 1;
     const tr = document.createElement("tr");
+    const canReturn = !!assignmentId;
 
-    const canReturn = !!assignmentId;  // si no hay assignment_id, se muestra igual pero no se devolverá nada
+    tr.dataset.uid = uid;
 
     tr.innerHTML = `
-      <td>${rowIndex}</td>
-      <td>${deviceName}</td>
-      <td>${uid}</td>
-      <td>${courseName}</td>
-      <td>${endDate}</td>
-      <td>${overdueDays}</td>
+      <td>0</td>
+      <td>${escapeHtml(deviceName)}</td>
+      <td><span class="font-monospace">${escapeHtml(uid)}</span></td>
+      <td>${escapeHtml(courseName)}</td>
+      <td>${escapeHtml(endDate)}</td>
+      <td>${escapeHtml(overdueDays)}</td>
       <td class="text-end">
         ${canReturn ? `
           <input type="checkbox"
-                 class="form-check-input me-2"
+                 class="form-check-input me-2 row-selector"
                  name="assignment_ids"
-                 value="${assignmentId}"
+                 value="${escapeHtml(assignmentId)}"
                  checked>
         ` : `
           <span class="text-muted me-2">No assignment</span>
@@ -165,12 +212,13 @@ document.addEventListener("DOMContentLoaded", function () {
                 class="btn btn-sm btn-outline-danger btn-remove-device">
           Remove
         </button>
-        <input type="hidden" name="uids[]" value="${uid}">
-        ${deviceId ? `<input type="hidden" name="device_ids[]" value="${deviceId}">` : ""}
+        <input type="hidden" name="uids[]" value="${escapeHtml(uid)}">
+        ${deviceId ? `<input type="hidden" name="device_ids[]" value="${escapeHtml(deviceId)}">` : ""}
       </td>
     `;
 
     tbody.appendChild(tr);
+    renumber();
     refreshSubmitState();
 
     status.classList.remove("text-danger", "text-muted", "text-warning");
@@ -185,19 +233,98 @@ document.addEventListener("DOMContentLoaded", function () {
     const tr = ev.target.closest("tr");
     if (!tr) return;
 
-    const uidInput = tr.querySelector('input[name="uids[]"]');
-    if (uidInput) {
-      addedUids.delete(uidInput.value);
-    }
+    const uid = tr.dataset.uid || "";
+    if (uid) addedUids.delete(uid);
 
     tr.remove();
-
-    // Renumerar filas
-    Array.from(tbody.rows).forEach((row, idx) => {
-      row.cells[0].textContent = idx + 1;
-    });
-
+    renumber();
     refreshSubmitState();
+  });
+
+  // --- Manual lookup (UID / Name) -> api_card_lookup -> reuse addRowFromUid ---
+  const pendingQueries = new Set();
+  let debounceTimer = null;
+
+  async function lookupCard(q) {
+    q = (q || "").trim();
+    if (!q) return;
+
+    if (pendingQueries.has(q)) return;
+    pendingQueries.add(q);
+
+    setQStatus("Looking up identifier…", "text-muted");
+
+    try {
+      const resp = await fetch("{{ url_for('courses.api_card_lookup') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+        body: JSON.stringify({ q })
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok || !data.success) {
+        if (resp.status === 409 && data.matches && Array.isArray(data.matches) && data.matches.length) {
+          setQStatus("Multiple matches. Be more specific: " + summarizeMatches(data.matches), "text-warning");
+          return;
+        }
+        setQStatus(data.error || "Not found.", "text-danger");
+        return;
+      }
+
+      const card = data.card || data.device;
+      if (!card || !card.uid) {
+        setQStatus("Lookup returned no UID for that card.", "text-danger");
+        return;
+      }
+
+      // Reutilizamos tu pipeline (bulk_return_find) pasando un objeto compatible
+      await addRowFromUid({
+        uid: card.uid,
+        device_id: card.id,
+        device_name: card.name || ("Card #" + card.id),
+      });
+
+      setQStatus("Added: " + (card.uid || card.name || ("#" + card.id)), "text-success");
+    } catch (e) {
+      console.error(e);
+      setQStatus("Server communication error.", "text-danger");
+    } finally {
+      pendingQueries.delete(q);
+    }
+  }
+
+  function triggerManual() {
+    const raw = (qInput.value || "").trim();
+    if (!raw) return;
+    qInput.value = "";
+    qInput.focus();
+    lookupCard(raw);
+  }
+
+  qInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = null;
+      triggerManual();
+    }
+  });
+
+  qInput.addEventListener("input", function () {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      const v = (qInput.value || "").trim();
+      if (v.length < 3) return;
+      triggerManual();
+    }, 500);
+  });
+
+  // Checkbox change -> enable/disable submit based on selection
+  tbody.addEventListener("change", function () {
+    // si quieres: submit disabled si no hay ningún checkbox marcado
+    // ahora lo dejamos como estaba (submit depende de filas), pero aquí puedes endurecerlo
   });
 
   async function readOnce() {

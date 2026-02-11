@@ -29,19 +29,37 @@
       </small>
     </div>
 
+    <!-- Input manual (UID / barcode / name) -->
+    <div class="mb-3">
+      <label class="form-label">Or scan / enter card identifier (UID / Barcode / Name)</label>
+      <div class="d-flex gap-2">
+        <input
+          type="text"
+          id="card-query-input"
+          class="form-control"
+          placeholder="Type UID or card name and press enter…"
+          autocomplete="off"
+        >
+      </div>
+      <small id="card-query-status" class="text-muted">
+        Press Enter to add. (Also works with typing, after a short delay.)
+      </small>
+    </div>
+
     <!-- Tabla de devices -->
     <div class="table-responsive mb-3">
       <table class="table table-sm align-middle mb-0">
         <thead>
           <tr>
-            <th>#</th>
+            <th style="width:40px;">#</th>
             <th>Device name</th>
-            <th>UID</th>
-            <th class="text-end">Actions</th>
+            <th style="width:220px;">UID</th>
+            <th style="width:220px;">Barcode</th>
+            <th class="text-end" style="width:220px;">Actions</th>
           </tr>
         </thead>
         <tbody id="devices-table-body">
-          <!-- Filas generadas por JS al leer tarjetas -->
+          <!-- Filas generadas por JS -->
         </tbody>
       </table>
     </div>
@@ -59,7 +77,7 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-  console.log("assignments bulk NFC JS cargado (auto-poll)");
+  console.log("assignments bulk NFC JS cargado (auto-poll) + manual lookup");
 
   const btn    = document.getElementById("btn-read-uid");
   const status = document.getElementById("uid-status");
@@ -68,15 +86,21 @@ document.addEventListener("DOMContentLoaded", function () {
   const submit = document.getElementById("submit-btn");
   const form   = document.getElementById("bulk-assign-form");
 
-  if (!btn || !status || !icon || !tbody || !submit || !form) {
-    console.warn("Elementos NFC (assignments bulk) no encontrados en el DOM");
+  const qInput  = document.getElementById("card-query-input");
+  const qStatus = document.getElementById("card-query-status");
+
+  if (!btn || !status || !icon || !tbody || !submit || !form || !qInput || !qStatus) {
+    console.warn("Elementos (assignments bulk) no encontrados en el DOM");
     return;
   }
 
-  // Para evitar duplicados
+  // Dedupe robusto: por device_id (siempre que lo tengamos)
+  const addedDeviceIds = new Set();
+  // fallback por UID si viene sin device_id (no debería, pero humans)
   const addedUids = new Set();
+
   let polling = true;
-  const POLL_DELAY_MS = 1000;  // 1s entre lecturas
+  const POLL_DELAY_MS = 1000;
 
   // Local agent endpoint (runs on each client PC)
   const AGENT_UID_URL = "http://127.0.0.1:8765/uid";
@@ -86,10 +110,70 @@ document.addEventListener("DOMContentLoaded", function () {
     submit.disabled = !anyChecked;
   }
 
-  function addRowFromUid(data) {
-    console.log("addRowFromUid data:", data);
+  function renumber() {
+    Array.from(tbody.rows).forEach((row, idx) => {
+      row.cells[0].textContent = idx + 1;
+    });
+  }
 
-    const uid = data.uid;
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function setQStatus(text, cls) {
+    qStatus.className = "text-muted";
+    if (cls) qStatus.classList.add(cls);
+    qStatus.textContent = text;
+  }
+
+  function addRowUnified({ device_id, device_name, uid, barcode }) {
+    const did = device_id ? String(device_id) : "";
+    const u = (uid || "").trim();
+
+    if (did && addedDeviceIds.has(did)) {
+      setQStatus("Card already added.", "text-warning");
+      return;
+    }
+    if (!did && u && addedUids.has(u)) {
+      setQStatus("UID already added.", "text-warning");
+      return;
+    }
+
+    if (did) addedDeviceIds.add(did);
+    if (u) addedUids.add(u);
+
+    const tr = document.createElement("tr");
+
+    tr.dataset.deviceId = did;
+    tr.dataset.uid = u;
+
+    tr.innerHTML = `
+      <td>0</td>
+      <td>${escapeHtml(device_name || (u ? ("Device for UID " + u) : "Device"))}</td>
+      <td class="text-muted"><span class="font-monospace">${escapeHtml(u || "-")}</span></td>
+      <td class="text-muted"><span class="font-monospace">${escapeHtml((barcode || "").trim() || "-")}</span></td>
+      <td class="text-end">
+        <input type="checkbox" class="form-check-input row-selector me-2" checked>
+        <button type="button" class="btn btn-sm btn-outline-danger btn-remove-device">
+          Remove
+        </button>
+        <input type="hidden" name="uids[]" value="${escapeHtml(u)}">
+        ${did ? `<input type="hidden" name="device_ids[]" value="${escapeHtml(did)}">` : ""}
+      </td>
+    `;
+
+    tbody.appendChild(tr);
+    renumber();
+    refreshSubmitState();
+  }
+
+  function addRowFromUid(data) {
+    const uid = (data.uid || "").trim();
     if (!uid) {
       status.classList.remove("text-success", "text-muted", "text-warning");
       status.classList.add("text-danger");
@@ -97,83 +181,148 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    if (addedUids.has(uid)) {
-      console.log("UID duplicado ignorado:", uid);
-      return;
-    }
-
-    addedUids.add(uid);
-
-    const rowIndex = tbody.rows.length + 1;
-    const tr = document.createElement("tr");
-
-    // Aquí va el nombre real del dispositivo si el backend lo manda en data.device_name
-    const deviceName = data.device_name || ("Device for UID " + uid);
-    const deviceId   = data.device_id || "";
-
-    tr.innerHTML = `
-      <td>${rowIndex}</td>
-      <td>${deviceName}</td>
-      <td>${uid}</td>
-      <td class="text-end">
-        <input type="checkbox" class="form-check-input row-selector me-2" checked>
-        <button type="button" class="btn btn-sm btn-outline-danger btn-remove-device">
-          Remove
-        </button>
-        <input type="hidden" name="uids[]" value="${uid}">
-        ${deviceId ? `<input type="hidden" name="device_ids[]" value="${deviceId}">` : ""}
-      </td>
-    `;
-
-    tbody.appendChild(tr);
-    refreshSubmitState();
+    // Backend users.read_uid_once ya intenta resolver device
+    addRowUnified({
+      device_id: data.device_id || "",
+      device_name: data.device_name || ("Device for UID " + uid),
+      uid: uid,
+      barcode: data.barcode || ""  // si tu backend no lo manda, queda "-"
+    });
 
     status.classList.remove("text-danger", "text-muted", "text-warning");
     status.classList.add("text-success");
     status.textContent = "Card added: " + uid;
   }
 
-  // Cambio en los checkboxes de selección
+  // Checkbox select
   tbody.addEventListener("change", function (ev) {
     if (!ev.target.classList.contains("row-selector")) return;
     refreshSubmitState();
   });
 
-  // Antes de enviar, deshabilitamos los inputs de las filas no seleccionadas
+  // Antes de submit: deshabilitar inputs de filas no seleccionadas
   form.addEventListener("submit", function () {
     const rows = tbody.querySelectorAll("tr");
     rows.forEach((row) => {
       const checkbox = row.querySelector("input.row-selector");
       const inputs = row.querySelectorAll('input[name="uids[]"], input[name="device_ids[]"]');
       const disabled = checkbox && !checkbox.checked;
-      inputs.forEach((inp) => {
-        inp.disabled = disabled;
-      });
+      inputs.forEach((inp) => inp.disabled = disabled);
     });
   });
 
-  // Delegación para los botones "Remove"
+  // Remove row
   tbody.addEventListener("click", function (ev) {
     if (!ev.target.classList.contains("btn-remove-device")) return;
 
     const tr = ev.target.closest("tr");
     if (!tr) return;
 
-    const uidInput = tr.querySelector('input[name="uids[]"]');
-    if (uidInput) {
-      addedUids.delete(uidInput.value);
-    }
+    const did = tr.dataset.deviceId || "";
+    const u = tr.dataset.uid || "";
+
+    if (did) addedDeviceIds.delete(did);
+    if (u) addedUids.delete(u);
 
     tr.remove();
-
-    // Renumerar filas
-    Array.from(tbody.rows).forEach((row, idx) => {
-      row.cells[0].textContent = idx + 1;
-    });
-
+    renumber();
     refreshSubmitState();
   });
 
+  // --- Manual lookup (UID / barcode / name) ---
+  const pendingQueries = new Set();
+  let debounceTimer = null;
+
+  async function lookupCardQuery(q) {
+    q = (q || "").trim();
+    if (!q) return;
+
+    if (pendingQueries.has(q)) return;
+    pendingQueries.add(q);
+
+    setQStatus("Looking up identifier…", "text-muted");
+
+    try {
+      const resp = await fetch("{{ url_for('courses.api_card_lookup') }}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest"
+        },
+        body: JSON.stringify({ q })
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok || !data.success) {
+        if (resp.status === 409 && data.matches && Array.isArray(data.matches) && data.matches.length) {
+          // Mostramos un resumen corto para que el humano sea más específico
+          const top = data.matches.slice(0, 3).map(m => {
+            const name = m.name || ("#" + m.id);
+            const uid = m.uid ? ("UID " + m.uid) : "";
+            const bar = m.barcode ? ("BAR " + m.barcode) : "";
+            return [name, uid, bar].filter(Boolean).join(" | ");
+          }).join(" / ");
+          const more = data.matches.length > 3 ? ` (+${data.matches.length - 3} more)` : "";
+          setQStatus("Multiple matches. Be more specific: " + top + more, "text-warning");
+          return;
+        }
+
+        setQStatus(data.error || "Not found.", "text-danger");
+        return;
+      }
+
+      // Esperamos payload: { success:true, card:{id,name,uid,barcode,...}, active_loan:... }
+      const card = data.card || data.device || null;
+      if (!card) {
+        setQStatus("Lookup returned no card/device.", "text-danger");
+        return;
+      }
+
+      addRowUnified({
+        device_id: card.id,
+        device_name: card.name || ("Device #" + card.id),
+        uid: card.uid || "",
+        barcode: card.barcode || ""
+      });
+
+      setQStatus("Card added: " + (card.uid || card.barcode || card.name || ("#" + card.id)), "text-success");
+    } catch (e) {
+      console.error(e);
+      setQStatus("Server communication error.", "text-danger");
+    } finally {
+      pendingQueries.delete(q);
+    }
+  }
+
+  function triggerFromManualInput() {
+    const raw = (qInput.value || "").trim();
+    if (!raw) return;
+    qInput.value = "";
+    qInput.focus();
+    lookupCardQuery(raw);
+  }
+
+  qInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = null;
+      triggerFromManualInput();
+    }
+  });
+
+  qInput.addEventListener("input", function () {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      const v = (qInput.value || "").trim();
+      if (v.length < 3) return;
+      triggerFromManualInput();
+    }, 400);
+  });
+
+  // --- NFC loop ---
   async function readOnce() {
     if (!polling) return;
 

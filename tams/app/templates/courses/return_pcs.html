@@ -7,16 +7,16 @@
   <form method="post" id="return-pcs-form">
 
     <div class="mb-3">
-      <label class="form-label">Scan PC barcode</label>
+      <label class="form-label">Scan PC identifier (Barcode / UID / Name)</label>
       <input
         type="text"
         id="barcode-input"
         class="form-control"
-        placeholder="Scan or type barcode…"
+        placeholder="Scan or type barcode / device_name…"
         autocomplete="off"
       >
-      <div class="form-text">
-        PCs will be added automatically when a valid barcode is detected.
+      <div class="form-text" id="barcode-status">
+        PCs will be added automatically when a valid identifier is detected.
       </div>
     </div>
 
@@ -56,92 +56,248 @@
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   const input  = document.getElementById("barcode-input");
+  const status = document.getElementById("barcode-status");
   const tbody  = document.getElementById("pcs-table-body");
   const submit = document.getElementById("submit-btn");
+  const form   = document.getElementById("return-pcs-form");
 
-  const added = new Set();
-  let pollTimer = null;
+  const addedDeviceIds = new Set();
+  const pendingQueries = new Set();
+  let debounceTimer = null;
+
+  function setStatus(text, cls) {
+    status.className = "form-text";
+    if (cls) status.classList.add(cls);
+    status.textContent = text;
+  }
 
   function refreshSubmit() {
     submit.disabled = !tbody.querySelector("input.row-selector:checked");
   }
 
-  function addRow(data) {
-    const d = data.device;
-    if (!d || added.has(d.id)) return;
-
-    added.add(d.id);
-    document.getElementById("empty-row")?.remove();
-
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${tbody.children.length + 1}</td>
-      <td>${d.name || "-"}</td>
-      <td>${d.barcode || "-"}</td>
-      <td>${d.status}</td>
-      <td>${data.assigned_course ? data.assigned_course.label : "-"}</td>
-      <td class="text-end">
-        <input type="checkbox" class="form-check-input row-selector me-2" checked>
-        <button type="button" class="btn btn-sm btn-outline-danger remove-btn">
-          Remove
-        </button>
-        <input type="hidden" name="device_ids[]" value="${d.id}">
-        <input type="hidden" name="barcodes[]" value="${d.barcode}">
-      </td>
-    `;
-    tbody.appendChild(tr);
-    refreshSubmit();
+  function renumber() {
+    const rows = Array.from(tbody.querySelectorAll("tr")).filter(r => r.id !== "empty-row");
+    rows.forEach((tr, idx) => {
+      const cell = tr.querySelector(".row-index");
+      if (cell) cell.textContent = idx + 1;
+    });
   }
 
-  async function pollBarcode() {
-    const barcode = input.value.trim();
-    if (!barcode) return;
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
 
-    try {
-      const resp = await fetch("{{ url_for('courses.api_pc_by_barcode') }}", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ barcode })
-      });
+  function badgeForDeviceStatus(s) {
+    const v = (s || "").toLowerCase();
+    if (v === "available") return "text-bg-success";
+    if (v === "assigned")  return "text-bg-warning";
+    if (v === "lost")      return "text-bg-danger";
+    return "text-bg-secondary";
+  }
 
-      if (!resp.ok) return;
+  function formatAssignedLabel(assigned) {
+    if (!assigned) return "-";
+    if (assigned.label) return assigned.label;
 
-      const data = await resp.json();
-      if (data.success) {
-        addRow(data);
-        input.value = "";
-      }
-    } catch (e) {
-      console.error("Barcode poll error", e);
+    const parts = [];
+    if (assigned.course) parts.push(assigned.course);
+    if (assigned.name) parts.push(assigned.name);
+    if (assigned.client) parts.push(assigned.client);
+    const txt = parts.filter(Boolean).join(" | ");
+    return txt || ("Course #" + (assigned.course_id || "?"));
+  }
+
+  function ensureEmptyRow() {
+    const rows = tbody.querySelectorAll("tr");
+    const hasDataRows = Array.from(rows).some(r => r.id !== "empty-row");
+    if (!hasDataRows) {
+      tbody.innerHTML = `
+        <tr id="empty-row">
+          <td colspan="6" class="text-center text-muted">
+            No PCs scanned yet.
+          </td>
+        </tr>
+      `;
     }
   }
 
-  input.addEventListener("input", function () {
-    clearTimeout(pollTimer);
-    pollTimer = setTimeout(pollBarcode, 600);
+  function addRow(data) {
+    const d = data.device;
+    const assigned = data.assigned_course;
+
+    if (!d || d.id == null) return;
+
+    const deviceId = String(d.id);
+    if (addedDeviceIds.has(deviceId)) {
+      setStatus("Device already added.", "text-warning");
+      return;
+    }
+    addedDeviceIds.add(deviceId);
+
+    document.getElementById("empty-row")?.remove();
+
+    const barcode = (d.barcode || "").trim();
+    const uid = (d.uid || "").trim();
+    const assignedText = formatAssignedLabel(assigned);
+
+    // Regla típica: devolver solo si está asignado
+    const canReturn = !!assigned;
+
+    const tr = document.createElement("tr");
+    tr.dataset.deviceId = deviceId;
+
+    tr.innerHTML = `
+      <td class="row-index">0</td>
+      <td>
+        <div class="fw-semibold">${escapeHtml(d.name || ("Device #" + d.id))}</div>
+        <div class="text-muted small">
+          ${escapeHtml(d.asset_type_code || "")}
+          ${uid ? ` | UID: <span class="font-monospace">${escapeHtml(uid)}</span>` : ""}
+        </div>
+      </td>
+      <td class="text-muted">${barcode ? `<span class="font-monospace">${escapeHtml(barcode)}</span>` : "-"}</td>
+      <td>
+        <span class="badge ${badgeForDeviceStatus(d.status)}">${escapeHtml(d.status || "-")}</span>
+      </td>
+      <td class="${assigned ? 'text-warning' : 'text-muted'}">
+        ${escapeHtml(assignedText)}
+      </td>
+      <td class="text-end">
+        <input type="checkbox" class="form-check-input row-selector me-2" ${canReturn ? "checked" : ""} ${canReturn ? "" : "disabled"}>
+        <button type="button" class="btn btn-sm btn-outline-danger remove-btn">
+          Remove
+        </button>
+        <input type="hidden" name="device_ids[]" value="${escapeHtml(d.id)}">
+        <input type="hidden" name="barcodes[]" value="${escapeHtml(d.barcode || '')}">
+      </td>
+    `;
+
+    tbody.appendChild(tr);
+    renumber();
+    refreshSubmit();
+
+    if (canReturn) {
+      setStatus("PC added for return: " + (barcode || uid || d.name || ("#" + d.id)), "text-success");
+    } else {
+      setStatus("PC added but cannot be returned (not currently assigned).", "text-warning");
+    }
+  }
+
+  function summarizeMatches(matches) {
+    const top = (matches || []).slice(0, 3).map(m => {
+      const name = m.name || ("#" + m.id);
+      const uid = m.uid ? ("UID " + m.uid) : "";
+      const bar = m.barcode ? ("BAR " + m.barcode) : "";
+      return [name, uid, bar].filter(Boolean).join(" | ");
+    });
+    const more = (matches && matches.length > 3) ? ` (+${matches.length - 3} more)` : "";
+    return top.join(" / ") + more;
+  }
+
+  async function lookupQuery(q) {
+    q = (q || "").trim();
+    if (!q) return;
+
+    if (pendingQueries.has(q)) return;
+    pendingQueries.add(q);
+
+    setStatus("Looking up identifier…", "text-muted");
+
+    try {
+      const resp = await fetch("{{ url_for('courses.api_pc_lookup') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+        body: JSON.stringify({ q })
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok || !data.success) {
+        if (resp.status === 409 && data.matches && Array.isArray(data.matches) && data.matches.length) {
+          setStatus("Multiple matches. Be more specific: " + summarizeMatches(data.matches), "text-warning");
+          return;
+        }
+        setStatus(data.error || "Not found.", "text-danger");
+        return;
+      }
+
+      addRow(data);
+    } catch (e) {
+      console.error("Lookup error", e);
+      setStatus("Server communication error.", "text-danger");
+    } finally {
+      pendingQueries.delete(q);
+    }
+  }
+
+  function triggerFromInput() {
+    const raw = (input.value || "").trim();
+    if (!raw) return;
+
+    input.value = "";
+    input.focus();
+
+    lookupQuery(raw);
+  }
+
+  // ENTER -> lookup inmediato
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = null;
+      triggerFromInput();
+    }
   });
 
+  // Debounce para humanos / lectores sin enter
+  input.addEventListener("input", function () {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      const v = (input.value || "").trim();
+      if (v.length < 3) return;
+      triggerFromInput();
+    }, 600);
+  });
+
+  // Remove
   tbody.addEventListener("click", function (e) {
     if (e.target.classList.contains("remove-btn")) {
       const tr = e.target.closest("tr");
-      const id = tr.querySelector('input[name="device_ids[]"]').value;
-      added.delete(Number(id));
-      tr.remove();
+      if (!tr) return;
 
-      if (!tbody.children.length) {
-        tbody.innerHTML = `
-          <tr id="empty-row">
-            <td colspan="6" class="text-center text-muted">
-              No PCs scanned yet.
-            </td>
-          </tr>
-        `;
-      }
+      const deviceId = tr.dataset.deviceId;
+      if (deviceId) addedDeviceIds.delete(deviceId);
+
+      tr.remove();
+      ensureEmptyRow();
+      renumber();
       refreshSubmit();
     }
   });
 
+  // Checkbox change
   tbody.addEventListener("change", refreshSubmit);
+
+  // Antes de submit: disable device_ids[] de filas no marcadas
+  form.addEventListener("submit", function () {
+    const rows = tbody.querySelectorAll("tr");
+    rows.forEach((row) => {
+      if (row.id === "empty-row") return;
+      const checkbox = row.querySelector("input.row-selector");
+      const hidden = row.querySelectorAll('input[name="device_ids[]"], input[name="barcodes[]"]');
+      const disable = checkbox && !checkbox.checked;
+      hidden.forEach((inp) => inp.disabled = disable);
+    });
+  });
+
+  refreshSubmit();
 });
 </script>
 {% endblock %}

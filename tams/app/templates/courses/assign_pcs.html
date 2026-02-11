@@ -18,16 +18,16 @@
       <input type="hidden" name="course_id" value="{{ course.id }}">
     </div>
 
-    <!-- Input barcode -->
+    <!-- Input query -->
     <div class="mb-3">
-      <label class="form-label">Scan / enter PC barcode</label>
+      <label class="form-label">Scan / enter PC identifier (Barcode / UID / Name)</label>
         <div class="d-flex gap-2">
         <input type="text" id="barcode-input" class="form-control"
-                placeholder="e.g. ITC-PC-000123"
+                placeholder="e.g. ITC-015678 or G137"
                 autocomplete="off">
         </div>
       <small id="barcode-status" class="text-muted">
-        Enter a barcode and press Enter. The PC details will be filled automatically.
+        Enter an identifier and press Enter. The PC details will be filled automatically.
       </small>
     </div>
 
@@ -69,8 +69,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const submit = document.getElementById("submit-btn");
   const form   = document.getElementById("assign-pcs-form");
 
-  const addedBarcodes = new Set();
-  const pendingBarcodes = new Set(); // para evitar dobles llamadas
+  const addedDeviceIds = new Set();
+  const pendingQueries = new Set(); // evita dobles llamadas
   let debounceTimer = null;
 
   function setStatus(text, cls) {
@@ -98,40 +98,72 @@ document.addEventListener("DOMContentLoaded", function () {
     return "text-bg-secondary";
   }
 
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function formatAssignedLabel(assigned) {
+    // Espera assigned.label si tu API lo devuelve.
+    // Si no, intenta algo razonable.
+    if (!assigned) return "-";
+    if (assigned.label) return assigned.label;
+
+    const parts = [];
+    if (assigned.course) parts.push(assigned.course);
+    if (assigned.name) parts.push(assigned.name);
+    if (assigned.client) parts.push(assigned.client);
+    const txt = parts.filter(Boolean).join(" | ");
+    return txt || ("Course #" + (assigned.course_id || "?"));
+  }
+
   function addRow(data) {
     const device = data.device;
     const assigned = data.assigned_course;
 
-    const barcode = (device.barcode || "").trim();
-    if (!barcode) return;
+    if (!device || device.id == null) return;
 
-    if (addedBarcodes.has(barcode)) {
-      setStatus("Barcode already added: " + barcode, "text-warning");
+    const deviceId = String(device.id);
+
+    if (addedDeviceIds.has(deviceId)) {
+      setStatus("Device already added: " + (device.barcode || device.uid || device.name || ("#" + device.id)), "text-warning");
       return;
     }
-    addedBarcodes.add(barcode);
+    addedDeviceIds.add(deviceId);
 
-    const assignedText = assigned ? assigned.label : "-";
+    const barcode = (device.barcode || "").trim();
+    const uid = (device.uid || "").trim();
+
+    const assignedText = formatAssignedLabel(assigned);
     const canAssign = (device.status || "").toLowerCase() === "available" && !assigned;
 
     const tr = document.createElement("tr");
+    tr.dataset.deviceId = deviceId;
+
     tr.innerHTML = `
       <td class="row-index">0</td>
       <td>
-        <div class="fw-semibold">${device.name || device.uid || ("Device #" + device.id)}</div>
-        <div class="text-muted small">${device.asset_type_code || ""}</div>
+        <div class="fw-semibold">${escapeHtml(device.name || ("Device #" + device.id))}</div>
+        <div class="text-muted small">
+          ${escapeHtml(device.asset_type_code || "")}
+          ${uid ? ` | UID: <span class="font-monospace">${escapeHtml(uid)}</span>` : ""}
+        </div>
       </td>
-      <td class="text-muted">${barcode}</td>
+      <td class="text-muted">${barcode ? `<span class="font-monospace">${escapeHtml(barcode)}</span>` : "-"}</td>
       <td>
-        <span class="badge ${badgeForDeviceStatus(device.status)}">${device.status || "-"}</span>
+        <span class="badge ${badgeForDeviceStatus(device.status)}">${escapeHtml(device.status || "-")}</span>
       </td>
       <td class="${assigned ? 'text-warning' : 'text-muted'}">
-        ${assignedText}
+        ${escapeHtml(assignedText)}
       </td>
       <td class="text-end">
         <input type="checkbox" class="form-check-input row-selector me-2" ${canAssign ? "checked" : ""} ${canAssign ? "" : "disabled"}>
         <button type="button" class="btn btn-sm btn-outline-danger btn-remove">Remove</button>
-        <input type="hidden" name="device_ids[]" value="${device.id}">
+        <input type="hidden" name="device_ids[]" value="${escapeHtml(device.id)}">
       </td>
     `;
 
@@ -140,42 +172,57 @@ document.addEventListener("DOMContentLoaded", function () {
     refreshSubmitState();
 
     if (canAssign) {
-      setStatus("PC added: " + barcode, "text-success");
+      setStatus("PC added: " + (barcode || uid || device.name || ("#" + device.id)), "text-success");
     } else {
       setStatus("PC added but cannot be assigned (not available or already assigned).", "text-warning");
     }
   }
 
-  async function lookupBarcode(barcode) {
-    barcode = (barcode || "").trim();
-    if (!barcode) return;
+  function summarizeMatches(matches) {
+    // Muestra 3 opciones para que el humano no se pierda en el vacío
+    const top = (matches || []).slice(0, 3).map(m => {
+      const name = m.name || ("#" + m.id);
+      const uid = m.uid ? ("UID " + m.uid) : "";
+      const bar = m.barcode ? ("BAR " + m.barcode) : "";
+      return [name, uid, bar].filter(Boolean).join(" | ");
+    });
+    const more = (matches && matches.length > 3) ? ` (+${matches.length - 3} more)` : "";
+    return top.join(" / ") + more;
+  }
 
-    if (addedBarcodes.has(barcode)) {
-      setStatus("Barcode already added: " + barcode, "text-warning");
-      return;
-    }
+  async function lookupQuery(q) {
+    q = (q || "").trim();
+    if (!q) return;
 
-    if (pendingBarcodes.has(barcode)) {
-      return;
-    }
-    pendingBarcodes.add(barcode);
+    // Evita duplicadas por la misma cadena enviada
+    if (pendingQueries.has(q)) return;
+    pendingQueries.add(q);
 
-    setStatus("Looking up barcode…", "text-muted");
+    setStatus("Looking up identifier…", "text-muted");
 
     try {
-      const resp = await fetch("{{ url_for('courses.api_pc_by_barcode') }}", {
+      const resp = await fetch("{{ url_for('courses.api_pc_lookup') }}", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Requested-With": "XMLHttpRequest",
         },
-        body: JSON.stringify({ barcode })
+        body: JSON.stringify({ q })
       });
 
       const data = await resp.json().catch(() => ({}));
 
       if (!resp.ok || !data.success) {
-        setStatus(data.error || "Barcode not found.", "text-danger");
+        // Caso: múltiples coincidencias (backend recomendado: 409 + matches[])
+        if (resp.status === 409 && data.matches && Array.isArray(data.matches) && data.matches.length) {
+          setStatus(
+            "Multiple matches. Be more specific: " + summarizeMatches(data.matches),
+            "text-warning"
+          );
+          return;
+        }
+
+        setStatus(data.error || "Not found.", "text-danger");
         return;
       }
 
@@ -184,7 +231,7 @@ document.addEventListener("DOMContentLoaded", function () {
       console.error(e);
       setStatus("Server communication error.", "text-danger");
     } finally {
-      pendingBarcodes.delete(barcode);
+      pendingQueries.delete(q);
     }
   }
 
@@ -196,7 +243,7 @@ document.addEventListener("DOMContentLoaded", function () {
     input.value = "";
     input.focus();
 
-    lookupBarcode(raw);
+    lookupQuery(raw);
   }
 
   // 1) Lector típico: termina con ENTER
@@ -215,7 +262,6 @@ document.addEventListener("DOMContentLoaded", function () {
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
 
-      // Si el usuario se quedó a medias, no dispares con cosas muy cortas
       const v = (input.value || "").trim();
       if (v.length < 3) return;
 
@@ -238,9 +284,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const tr = btn.closest("tr");
     if (!tr) return;
 
-    const barcodeCell = tr.cells[2];
-    const barcode = (barcodeCell ? barcodeCell.textContent : "").trim();
-    if (barcode) addedBarcodes.delete(barcode);
+    const deviceId = tr.dataset.deviceId;
+    if (deviceId) addedDeviceIds.delete(deviceId);
 
     tr.remove();
     renumber();
