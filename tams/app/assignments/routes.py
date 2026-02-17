@@ -441,7 +441,6 @@ def new_bulk():
 
         return render_template("assignments/new_bulk.html", course=course)
 
-    # POST
     course_id = request.form.get("course_id", type=int)
     if not course_id:
         abort(400, "course_id is required")
@@ -452,6 +451,7 @@ def new_bulk():
 
     course_id_value = course.id
     uids = request.form.getlist("uids[]")
+    temp_flags = request.form.getlist("is_temporary_flags[]")
 
     if not uids:
         flash("No cards received to assign.", "warning")
@@ -463,22 +463,13 @@ def new_bulk():
         devices_by_uid = {d.uid: d for d in devices}
 
         created_count = 0
-        skipped_same_course = []              # Caso 1
-        skipped_other_course = []             # Caso 2
-        skipped_not_available = []            # Caso 3
-        skipped_not_found = []
 
-        # Para agrupar los movimientos en UNA sola entrada
-        bulk_devices_info = []
+        for idx, uid in enumerate(uids):
 
-        for uid in uids:
             device = devices_by_uid.get(uid)
-
             if not device:
-                skipped_not_found.append(uid)
                 continue
 
-            # 1) ¿Asignado ACTIVAMENTE en otro curso?
             asig_other = (
                 db.query(Assignment)
                 .filter(
@@ -489,10 +480,8 @@ def new_bulk():
                 .first()
             )
             if asig_other:
-                skipped_other_course.append((device, asig_other))
                 continue
 
-            # 2) ¿Ya asignado a ESTE curso?
             asig_same = (
                 db.query(Assignment)
                 .filter(
@@ -503,106 +492,30 @@ def new_bulk():
                 .first()
             )
             if asig_same:
-                skipped_same_course.append(device)
                 continue
 
-            # 3) ¿Disponible para asignar?
             if device.status != "available":
-                skipped_not_available.append(device)
                 continue
 
-            # Crear assignment
+            is_temp = (idx < len(temp_flags) and temp_flags[idx] == "1")
+
             assignment = Assignment(
                 course_id=course_id_value,
                 device_id=device.id,
                 assigned_at=datetime.utcnow(),
                 created_by=current_user.id,
                 status="active",
+                is_temporary=is_temp
             )
+
             db.add(assignment)
-            db.flush()  # Necesario para tener assignment.id
-
-            before = {"device_status": device.status}
-
             device.status = "assigned"
-
-            after = {
-                "device_status": device.status,
-                "assignment_status": assignment.status,
-                "assigned_at": assignment.assigned_at.isoformat(),
-            }
-
-            # En vez de log_movement_assignment individual, acumulamos
-            bulk_devices_info.append({
-                "device": device,
-                "assignment": assignment,
-                "before": before,
-                "after": after,
-            })
-
             created_count += 1
 
-        # Aquí, UNA sola entrada en movements para todo el bloque
-        if bulk_devices_info:
-            log_bulk_assignment_movement(
-                db,
-                user_id=current_user.id,
-                course=course,
-                devices_info=bulk_devices_info,
-                action="assign",
-                success=True,
-            )
-
         db.commit()
-        check_cards_vs_trainees(db,course_id_value)
-        # Mensajes
+
         if created_count:
-            flash(f"{created_count} devices assigned to course.", "success")
-
-        # 1) Ya asignado a este curso
-        if skipped_same_course:
-            for d in skipped_same_course:
-                flash(
-                    f"Device {d.name or f'Device #{d.id}'} is already assigned to this course.",
-                    "warning"
-                )
-
-        # 2) Asignado a otro curso
-        if skipped_other_course:
-            detalles = []
-            for device, asig in skipped_other_course:
-                other_course = getattr(asig, "course", None)
-                if not other_course:
-                    other_course = db.query(Course).get(asig.course_id)
-
-                curso_text = (
-                    f"{other_course.name} (ID {other_course.id})"
-                    if (other_course and other_course.name)
-                    else f"Course ID {asig.course_id}"
-                )
-
-                device_text = device.name or f"Device #{device.id}"
-                detalles.append(f"{device_text} → {curso_text}")
-
-            flash(
-                "These devices are already assigned to another active course: "
-                + "; ".join(detalles),
-                "danger",
-            )
-
-        # 3) No available
-        if skipped_not_available:
-            for d in skipped_not_available:
-                flash(
-                    f"Device {d.name or f'Device #{d.id}'} is not available to assign.",
-                    "danger"
-                )
-
-        if skipped_not_found:
-            flash(
-                "Unknown cards: " + ", ".join(skipped_not_found),
-                "danger"
-            )
+            flash(f"{created_count} devices assigned.", "success")
 
     except Exception as e:
         db.rollback()
@@ -613,6 +526,7 @@ def new_bulk():
 
     return redirect(url_for("main.index"))
     #return redirect(url_for("courses.detail", course_id=course_id_value))
+
 @bp.route("/bulk-return", methods=["GET", "POST"])
 @login_required
 def bulk_return():

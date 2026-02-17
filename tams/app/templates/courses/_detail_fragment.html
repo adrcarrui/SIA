@@ -161,3 +161,233 @@
     </table>
   </div>
 </div>
+<!--
+<hr class="my-4">
+
+<div class="d-flex align-items-center mb-2">
+  <h6 class="mb-0">TEMPORARY CARD LOANS</h6>
+  <div class="ms-auto">
+    <button class="btn btn-sm btn-outline-secondary" type="button" id="tcl-refresh">
+      Refresh
+    </button>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form id="tcl-create-form" class="row g-2">
+      {% if csrf_token is defined %}
+        {{ csrf_token() }}
+      {% endif %}
+
+      <input type="hidden" name="course_id" value="{{ course.id }}">
+
+      <div class="col-md-2">
+        <select class="form-select form-select-sm" name="borrower_type" required>
+          <option value="student" selected>student</option>
+          <option value="instructor">instructor</option>
+        </select>
+      </div>
+
+      <div class="col-md-2">
+        <select class="form-select form-select-sm" name="card_scope" required>
+          <option value="vending" selected>vending</option>
+          <option value="canteen">canteen</option>
+          <option value="instructor">instructor</option>
+          <option value="other">other</option>
+        </select>
+      </div>
+
+      <div class="col-md-3">
+        <input class="form-control form-control-sm" name="borrower_ref" placeholder="Borrower ref (non-PII)">
+      </div>
+
+      <div class="col-md-3">
+        <input class="form-control form-control-sm" name="borrower_name" placeholder="Borrower name (optional)">
+      </div>
+
+      <div class="col-md-2">
+        <input class="form-control form-control-sm" name="temp_card_device_id" placeholder="Temp device ID" required>
+      </div>
+
+      <div class="col-md-3">
+        <input class="form-control form-control-sm" name="original_card_device_id" placeholder="Original device ID (optional)">
+      </div>
+
+      <div class="col-md-3">
+        <input class="form-control form-control-sm" name="due_at" placeholder="Due at (ISO, UTC)" required>
+        <div class="form-text">Example: 2026-02-20T12:00:00+00:00</div>
+      </div>
+
+      <div class="col-md-3">
+        <input class="form-control form-control-sm" name="reason" placeholder="reason (loss/damage/operational/other)">
+      </div>
+
+      <div class="col-md-12">
+        <input class="form-control form-control-sm" name="notes" placeholder="notes">
+      </div>
+
+      <div class="col-md-12 d-grid">
+        <button class="btn btn-sm btn-primary" type="submit">Create temporary loan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-sm align-middle mb-0" id="tcl-table">
+    <thead>
+      <tr>
+        <th class="text-center">Loan Nº</th>
+        <th class="text-center">Status</th>
+        <th class="text-center">Scope</th>
+        <th class="text-center">Borrower</th>
+        <th class="text-center">Temp device</th>
+        <th class="text-center">Due</th>
+        <th class="text-center">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td colspan="7" class="text-center text-muted">Loading…</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+(function () {
+  const courseId = {{ course.id }};
+  const listUrl = `/temporary-loans/course/${courseId}`;
+  const createUrl = `/temporary-loans/create`;
+
+  const tableBody = document.querySelector("#tcl-table tbody");
+  const form = document.querySelector("#tcl-create-form");
+  const btnRefresh = document.querySelector("#tcl-refresh");
+
+  function badge(status) {
+    if (status === "overdue") return '<span class="badge bg-danger">overdue</span>';
+    if (status === "active") return '<span class="badge bg-success">active</span>';
+    if (status === "returned") return '<span class="badge bg-secondary">returned</span>';
+    if (status === "lost") return '<span class="badge bg-warning text-dark">lost</span>';
+    if (status === "cancelled") return '<span class="badge bg-dark">cancelled</span>';
+    return `<span class="badge bg-light text-dark">${status}</span>`;
+  }
+
+  function esc(s) {
+    return (s ?? "").toString()
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  async function loadLoans() {
+    const r = await fetch(listUrl, { headers: { "Accept": "application/json" } });
+    const data = await r.json();
+
+    if (!Array.isArray(data) || data.length === 0) {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="7" class="text-center text-muted">
+            There are no temporary loans for this course.
+          </td>
+        </tr>`;
+      return;
+    }
+
+    tableBody.innerHTML = data.map(l => {
+      const borrower = esc(l.borrower_ref || l.borrower_name || "—");
+      const due = esc(l.due_at || "—");
+      const status = l.status;
+
+      const disableReturn = (status === "returned" || status === "cancelled");
+      const disableLost   = (status === "returned" || status === "lost" || status === "cancelled");
+
+      return `
+        <tr>
+          <td class="text-center">#${l.id}</td>
+          <td class="text-center">${badge(status)}</td>
+          <td class="text-center"><small>${esc(l.card_scope)}</small></td>
+          <td class="text-center"><small>${esc(l.borrower_type)}: ${borrower}</small></td>
+          <td class="text-center"><small>${esc(l.temp_card_device_id)}</small></td>
+          <td class="text-center"><small>${due}</small></td>
+          <td class="text-center">
+            <div class="d-flex justify-content-center gap-2">
+              <button class="btn btn-sm btn-outline-success"
+                      data-action="return"
+                      data-id="${l.id}"
+                      ${disableReturn ? "disabled" : ""}>
+                Return
+              </button>
+              <button class="btn btn-sm btn-outline-warning"
+                      data-action="lost"
+                      data-id="${l.id}"
+                      ${disableLost ? "disabled" : ""}>
+                Lost
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  async function postJson(url, payload) {
+    const headers = { "Content-Type": "application/json", "Accept": "application/json" };
+    return fetch(url, { method: "POST", headers, body: JSON.stringify(payload) });
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const payload = Object.fromEntries(fd.entries());
+
+    payload.course_id = parseInt(payload.course_id, 10);
+    payload.temp_card_device_id = parseInt(payload.temp_card_device_id, 10);
+
+    if (payload.original_card_device_id) {
+      payload.original_card_device_id = parseInt(payload.original_card_device_id, 10);
+    } else {
+      delete payload.original_card_device_id;
+    }
+
+    const r = await postJson(createUrl, payload);
+    const j = await r.json();
+
+    if (!r.ok) {
+      alert(j.error || "Error creating temporary loan");
+      return;
+    }
+
+    form.reset();
+    form.querySelector('input[name="course_id"]').value = courseId;
+    await loadLoans();
+  });
+
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-action]");
+    if (!btn) return;
+
+    const loanId = btn.getAttribute("data-id");
+    const action = btn.getAttribute("data-action");
+    const url = `/temporary-loans/${loanId}/${action}`;
+
+    const r = await fetch(url, { method: "POST", headers: { "Accept": "application/json" } });
+    const j = await r.json();
+
+    if (!r.ok) {
+      alert(j.error || `Error: ${action}`);
+      return;
+    }
+
+    await loadLoans();
+  });
+
+  btnRefresh.addEventListener("click", loadLoans);
+
+  loadLoans();
+})();
+</script>-->
+

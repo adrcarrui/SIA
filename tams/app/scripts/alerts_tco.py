@@ -54,6 +54,22 @@ def get_tco_alerts(db):
     # Tipos de tarjeta válidos
     card_ids = card_asset_type_ids(db)
 
+    def active_missing_window_days(sd: date, ed: date | None) -> int:
+        """
+        Ventana (en días) durante la cual, con el curso activo, avisamos de faltan tarjetas.
+        Es el 25% de la duración (floor). Forzamos mínimo 1 para que cursos cortos no queden mudos.
+        Si ed es None (curso sin fecha fin), usamos 1 día por defecto.
+        """
+        if not sd or not ed:
+            return 1
+
+        duration = (ed - sd).days + 1  # inclusivo
+        if duration <= 0:
+            return 1
+
+        w = int(duration * 0.25)  # floor
+        return max(1, w)
+
     def required_cards_for_course(course: Course) -> int:
         """
         Requeridas = suma de requirements cuyo asset_type_id está en card_ids.
@@ -81,15 +97,17 @@ def get_tco_alerts(db):
         trainees = int(getattr(course, "trainees", 0) or 0)
         return req if req > 0 else trainees
 
-    def linked_cards_for_course(course_id: int) -> int:
+    def linked_cards_for_course_split(course_id: int) -> tuple[int, int]:
         """
-        Cuenta tarjetas enlazadas vivas (released_at IS NULL).
+        Cuenta tarjetas enlazadas vivas (released_at IS NULL), separando:
+        - permanentes (is_temporary = False)
+        - temporales  (is_temporary = True)
         """
         if not card_ids:
-            return 0
+            return (0, 0)
 
         try:
-            n = (
+            base = (
                 db.query(func.count(func.distinct(Assignment.device_id)))
                 .join(Device, Device.id == Assignment.device_id)
                 .filter(
@@ -97,14 +115,17 @@ def get_tco_alerts(db):
                     Assignment.released_at.is_(None),
                     Device.asset_type_id.in_(card_ids),
                 )
-                .scalar()
             )
-            return int(n or 0)
+
+            linked_perm = base.filter(Assignment.is_temporary.is_(False)).scalar() or 0
+            linked_temp = base.filter(Assignment.is_temporary.is_(True)).scalar() or 0
+
+            return (int(linked_perm), int(linked_temp))
         except Exception:
             current_app.logger.exception(
-                "linked_cards_for_course failed (course_id=%s)", course_id
+                "linked_cards_for_course_split failed (course_id=%s)", course_id
             )
-            return 0
+            return (0, 0)
 
     def bump_severity(cur: str | None, new: str) -> str:
         if not cur:
@@ -120,7 +141,10 @@ def get_tco_alerts(db):
             continue
 
         req = required_cards_for_course(c)
-        linked = linked_cards_for_course(c.id)
+
+        linked_perm, linked_temp = linked_cards_for_course_split(c.id)
+        linked = linked_perm                  # <- IMPORTANT: planned/active usan SOLO permanentes
+        linked_total = linked_perm + linked_temp  # <- finished usa total
 
         days_to_start = (sd - today).days
 
@@ -130,25 +154,29 @@ def get_tco_alerts(db):
         course_planned = sd > today
         planned_within_3_days = course_planned and (0 <= days_to_start <= 3)
 
+        # Días desde inicio (0 = día de inicio)
+        days_since_start = (today - sd).days
+
+        # Ventana 25% inicial (floor, min 1)
+        miss_window = active_missing_window_days(sd, ed)
+        missing_window_open = course_active and (0 <= days_since_start < miss_window)
+
         reasons = []
         severity = None
 
         # ------------------------------------------------------------------
-        # 1) Cards mismatch UNIFICADO
+        # 1) Faltan tarjetas requeridas
+        #    - Planned (0..3): SOLO missing (contra permanentes)
+        #    - Active: SOLO missing y SOLO en el 25% inicial (contra permanentes)
         # ------------------------------------------------------------------
-        should_alert_mismatch = (not course_finished) and (
-            course_active or planned_within_3_days
-        )
+        if req > 0 and not course_finished:
 
-        if should_alert_mismatch and req > 0 and linked != req:
-            diff = linked - req
+            # PLANNED: faltan (solo permanentes vs requeridas)
+            if planned_within_3_days and linked < req:
+                diff = linked - req  # negativo
+                size_sev = "warning" if abs(diff) <= 2 else "critical"
 
-            # Severidad por tamaño del desajuste
-            size_sev = "warning" if abs(diff) <= 2 else "critical"
-
-            if planned_within_3_days:
-                # Severidad por proximidad al inicio
-                time_sev = (
+                '''time_sev = (
                     "notice"
                     if days_to_start == 3
                     else ("warning" if days_to_start == 2 else "critical")
@@ -157,53 +185,80 @@ def get_tco_alerts(db):
                     time_sev
                     if SEV_RANK.get(time_sev, 0) >= SEV_RANK.get(size_sev, 0)
                     else size_sev
+                )'''
+                sev = (
+                    "notice"
+                    if days_to_start == 3
+                    else ("warning" if days_to_start == 2 else "critical")
                 )
 
                 if linked == 0:
                     text = (
                         f"Course starts in {days_to_start} day(s) "
-                        f"and has 0 cards linked (required {req})."
+                        f"and has 0 permanent cards linked (required {req}). "
+                        f"(temp linked: {linked_temp})"
                     )
                     legacy_keys = ["tco_start_soon_no_cards"]
-                elif linked < req:
+                else:
                     text = (
                         f"Course starts in {days_to_start} day(s) "
-                        f"and is missing cards ({linked}/{req})."
+                        f"and is missing permanent cards ({linked}/{req}). "
+                        f"(temp linked: {linked_temp})"
                     )
                     legacy_keys = ["tco_start_soon_missing_cards"]
-                else:
-                    text = (
-                        f"Course starts in {days_to_start} day(s) "
-                        f"and has extra cards linked ({linked}/{req})."
-                    )
-                    legacy_keys = []
-            else:
-                sev = size_sev
-                if linked < req:
-                    text = f"Missing cards: linked {linked}/{req}. Diff={diff}."
-                else:
-                    text = f"Extra cards: linked {linked}/{req}. Diff={diff}."
-                legacy_keys = []
 
-            severity = bump_severity(severity, sev)
-            reasons.append(
-                {
-                    "key": "tco_cards_mismatch",
-                    "text": text,
-                    "legacy_keys": legacy_keys,
-                    "extra": {
-                        "diff": diff,
-                        "required": req,
-                        "linked": linked,
-                        "days_to_start": days_to_start,
-                    },
-                }
-            )
+                severity = bump_severity(severity, sev)
+                reasons.append(
+                    {
+                        "key": "tco_cards_mismatch",
+                        "text": text,
+                        "legacy_keys": legacy_keys,
+                        "extra": {
+                            "diff": diff,
+                            "required": req,
+                            "linked": linked,  # permanentes
+                            "linked_permanent": linked_perm,
+                            "linked_temporary": linked_temp,
+                            "linked_total": linked_total,
+                            "days_to_start": days_to_start,
+                        },
+                    }
+                )
+
+            # ACTIVE: faltan (solo permanentes vs requeridas) SOLO en ventana 25%
+            elif missing_window_open and linked < req:
+                diff = linked - req  # negativo
+                sev = "warning" if abs(diff) <= 2 else "critical"
+
+                text = (
+                    f"Missing permanent cards: linked {linked}/{req}. "
+                    f"(temp linked: {linked_temp}). "
+                    f"(Day {days_since_start + 1}, window {miss_window} day(s))."
+                )
+
+                severity = bump_severity(severity, sev)
+                reasons.append(
+                    {
+                        "key": "tco_cards_mismatch",
+                        "text": text,
+                        "legacy_keys": [],
+                        "extra": {
+                            "diff": diff,
+                            "required": req,
+                            "linked": linked,  # permanentes
+                            "linked_permanent": linked_perm,
+                            "linked_temporary": linked_temp,
+                            "linked_total": linked_total,
+                            "days_since_start": days_since_start,
+                            "missing_window_days": miss_window,
+                        },
+                    }
+                )
 
         # ------------------------------------------------------------------
-        # 2) Curso finalizado con tarjetas aún enlazadas
+        # 2) Curso finalizado con tarjetas aún enlazadas (permanentes y/o temporales)
         # ------------------------------------------------------------------
-        if ed and linked > 0:
+        if ed and ed < today and linked_total > 0:
             days_since_end = (today - ed).days
             if 1 <= days_since_end <= 7:
                 severity = bump_severity(severity, "warning")
@@ -212,8 +267,15 @@ def get_tco_alerts(db):
                         "key": "tco_course_ended_recent",
                         "text": (
                             f"Course ended {days_since_end} day(s) ago "
-                            f"and still has {linked} cards linked."
+                            f"and still has {linked_total} cards linked "
+                            f"({linked_perm} permanent, {linked_temp} temporary)."
                         ),
+                        "extra": {
+                            "linked_total": linked_total,
+                            "linked_permanent": linked_perm,
+                            "linked_temporary": linked_temp,
+                            "days_since_end": days_since_end,
+                        },
                     }
                 )
             elif days_since_end > 7:
@@ -223,20 +285,26 @@ def get_tco_alerts(db):
                         "key": "tco_course_ended_old",
                         "text": (
                             f"Course ended {days_since_end} day(s) ago "
-                            f"and still has {linked} cards linked."
+                            f"and still has {linked_total} cards linked "
+                            f"({linked_perm} permanent, {linked_temp} temporary)."
                         ),
+                        "extra": {
+                            "linked_total": linked_total,
+                            "linked_permanent": linked_perm,
+                            "linked_temporary": linked_temp,
+                            "days_since_end": days_since_end,
+                        },
                     }
                 )
 
         if reasons:
-            # keys = key principal + legacy_keys (compatibilidad)
             keys = []
             for r in reasons:
                 if r.get("key"):
                     keys.append(r["key"])
                 for lk in (r.get("legacy_keys") or []):
                     keys.append(lk)
-            keys = list(dict.fromkeys(keys))  # únicos, mantiene orden
+            keys = list(dict.fromkeys(keys))
 
             message = "\n".join(f"- {r['text']}" for r in reasons)
 
@@ -252,7 +320,10 @@ def get_tco_alerts(db):
                     "keys": keys,
                     "extra": {
                         "required": req,
-                        "linked": linked,
+                        "linked": linked,  # permanentes (planned/active)
+                        "linked_permanent": linked_perm,
+                        "linked_temporary": linked_temp,
+                        "linked_total": linked_total,
                         "days_to_start": days_to_start,
                     },
                 }

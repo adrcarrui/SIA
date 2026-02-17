@@ -32,6 +32,7 @@ def get_cards_vs_trainees_alerts(db, managed_by: str | None = None):
             (Assignment.course_id == Course.id)
             & (Assignment.released_at.is_(None))
             & (func.lower(Assignment.status) == "active")
+            & (Assignment.is_temporary.is_(False))
         )
         .outerjoin(Device, Assignment.device_id == Device.id)
         .outerjoin(AssetType, Device.asset_type_id == AssetType.id)

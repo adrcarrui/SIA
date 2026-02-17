@@ -256,7 +256,7 @@ class Assignment(db.Model):
     # Relaciones
     device = relationship("Device", back_populates="assignments")
     course = relationship("Course", back_populates="assignments")
-
+    is_temporary = db.Column(db.Boolean, nullable=False, default=False, server_default="false")
     # usuario que creó el assignment
     creator = relationship(
         "User",
@@ -418,3 +418,58 @@ class AlertState(db.Model):
             f"<AlertState id={self.id} scope={self.scope} course_id={self.course_id} "
             f"alert_key={self.alert_key!r} status={self.status} snooze_until={self.snooze_until}>"
         )
+
+class TemporaryCardLoan(db.Model):
+    __tablename__ = "temporary_card_loans"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    course_id = db.Column(
+        db.Integer, db.ForeignKey("courses.id", ondelete="RESTRICT"), nullable=False
+    )
+
+    borrower_type = db.Column(db.String(20), nullable=False)   # student|instructor
+    borrower_name = db.Column(db.String(120), nullable=True)   # nullable por PD
+    borrower_ref  = db.Column(db.String(120), nullable=True)   # identificador técnico no personal
+
+    card_scope = db.Column(db.String(20), nullable=False)      # vending|canteen|instructor|other
+
+    temp_card_device_id = db.Column(
+        db.Integer, db.ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False
+    )
+    original_card_device_id = db.Column(
+        db.Integer, db.ForeignKey("devices.id", ondelete="SET NULL"), nullable=True
+    )
+
+    start_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
+    due_at   = db.Column(db.DateTime(timezone=True), nullable=False)
+
+    status = db.Column(db.String(20), nullable=False, server_default="active")
+
+    reason = db.Column(db.String(50), nullable=True)
+    notes  = db.Column(db.Text, nullable=True)
+
+    created_by_user_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    returned_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    lost_at     = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    replaced_by_loan_id = db.Column(
+        db.Integer, db.ForeignKey("temporary_card_loans.id", ondelete="SET NULL"), nullable=True
+    )
+
+    course       = db.relationship("Course", foreign_keys=[course_id], lazy="joined")
+    temp_card    = db.relationship("Device", foreign_keys=[temp_card_device_id], lazy="joined")
+    original_card = db.relationship("Device", foreign_keys=[original_card_device_id], lazy="joined")
+    created_by   = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+    replaced_by  = db.relationship("TemporaryCardLoan", remote_side=[id], foreign_keys=[replaced_by_loan_id], lazy="joined")
+
+    def __repr__(self):
+        return f"<TemporaryCardLoan id={self.id} course_id={self.course_id} status={self.status}>"
+

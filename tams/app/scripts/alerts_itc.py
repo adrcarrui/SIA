@@ -24,6 +24,21 @@ def _severity_for_days_left(days_left: int) -> str | None:
     return None
 
 
+def _active_missing_window_days(sd: date, ed: date | None) -> int:
+    """
+    Ventana (en días) durante la cual, con el curso activo, avisamos de faltan laptops.
+    Es el 25% de la duración (floor). Forzamos mínimo 1 para que cursos cortos no queden mudos.
+    Si ed es None (curso sin fecha fin), usamos 1 día por defecto.
+    """
+    if not sd or not ed:
+        return 1
+    duration = (ed - sd).days + 1  # inclusivo
+    if duration <= 0:
+        return 1
+    w = int(duration * 0.25)  # floor
+    return max(1, w)
+
+
 def _required_itc_by_course(db, course_ids: list[int]) -> dict[int, dict]:
     """
     required_laptops, required_pendrives por curso (requirements activos).
@@ -109,6 +124,20 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
     required = _required_itc_by_course(db, ids)
     assigned_laptops = _assigned_laptops_by_course(db, ids)
 
+    # --- ACTIVE (curso activo hoy)
+    active = (
+        db.query(Course)
+        .filter(
+            Course.start_date.isnot(None),
+            Course.start_date <= today,
+            func.coalesce(Course.end_date, today) >= today,  # incluye end_date None
+        )
+        .all()
+    )
+    active_ids = [c.id for c in active]
+    required_active = _required_itc_by_course(db, active_ids)
+    assigned_active_laptops = _assigned_laptops_by_course(db, active_ids)
+
     # --- OVERDUE base (curso acabado)
     finished = (
         db.query(Course)
@@ -185,21 +214,11 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
 
         bucket = ensure_course_bucket(c)
 
-        # 1) aviso proximidad (lo dejamos tal cual)
-        #add_reason(
-        #    bucket,
-        #    "itc_start_soon",
-        #    f"{cname} starts in {days_left} day(s).",
-        #    sev=sev,
-        #    extra={"days_left": days_left}
-        #)
-
-        # 2) laptops: UNIFICAMOS mismatch start_soon + today
+        # 2) laptops mismatch (unificado)
         if req_l > 0:
             asg_l = assigned_laptops.get(c.id, 0)
 
             if asg_l != req_l and days_left in (3, 2, 1, 0):
-                # Severidad: usa regla de días, pero hoy siempre crítico
                 sev_m = "critical" if days_left == 0 else sev
 
                 if days_left == 0:
@@ -221,7 +240,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
             bucket["extra"]["required_laptops"] = req_l
             bucket["extra"]["assigned_laptops"] = asg_l
 
-        # 3) Día 0: status ITC no terminal (UNIFICAMOS laptops + pendrives)
+        # 3) Día 0: status ITC no terminal
         if days_left == 0 and not is_terminal and (req_l > 0 or req_p > 0):
             parts = []
             legacy = []
@@ -249,6 +268,74 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
 
         bucket["extra"]["days_left"] = days_left
         bucket["extra"]["status_itc"] = status_itc
+
+    # -------------------------
+    # ACTIVE rules (primer 25% del curso) - EXCLUYE día 0
+    # -------------------------
+    for c in active:
+        req_l = required_active.get(c.id, {}).get("LAPTOP", 0)
+        req_p = required_active.get(c.id, {}).get("PENDRIVE", 0)
+
+        if req_l <= 0 and req_p <= 0:
+            continue  # no relevante ITC
+
+        if not c.start_date:
+            continue
+
+        days_since_start = (today - c.start_date).days
+
+        # EXCLUIMOS el día 0 para no solapar con UPCOMING days_left == 0
+        if days_since_start == 0:
+            continue
+
+        miss_window = _active_missing_window_days(c.start_date, c.end_date)
+
+        # Solo durante el 25% inicial (floor, min 1)
+        if not (0 <= days_since_start < miss_window):
+            continue
+
+        cname = c.name or c.course or f"Course #{c.id}"
+        bucket = ensure_course_bucket(c)
+
+        # Laptops: solo missing (no extra)
+        if req_l > 0:
+            asg_l = assigned_active_laptops.get(c.id, 0)
+
+            if asg_l < req_l:
+                # Severidad progresiva dentro de la ventana
+                progress = (days_since_start + 1) / miss_window  # 0..1+
+                if progress <= 0.34:
+                    sev = "notice"
+                elif progress <= 0.67:
+                    sev = "warning"
+                else:
+                    sev = "critical"
+
+                add_reason(
+                    bucket,
+                    "itc_laptops_mismatch",
+                    (
+                        f"{cname} is active: laptops assigned {asg_l}/{req_l}. "
+                        f"(Day {days_since_start + 1}, window {miss_window} day(s))."
+                    ),
+                    sev=sev,
+                    extra={
+                        "days_since_start": days_since_start,
+                        "missing_window_days": miss_window,
+                        "assigned": asg_l,
+                        "required": req_l,
+                    },
+                    legacy_keys=[],
+                )
+
+            bucket["extra"]["required_laptops"] = req_l
+            bucket["extra"]["assigned_laptops"] = asg_l
+
+        if req_p > 0:
+            bucket["extra"]["required_pendrives"] = req_p
+
+        bucket["extra"]["days_since_start"] = days_since_start
+        bucket["extra"]["missing_window_days"] = miss_window
 
     # -------------------------
     # OVERDUE laptops (curso acabado y assignments vivos)

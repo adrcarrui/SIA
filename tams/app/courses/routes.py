@@ -1,5 +1,5 @@
 # courses/routes.py
-
+import re
 from math import ceil
 from io import StringIO, BytesIO
 import csv
@@ -1348,14 +1348,21 @@ def api_calendar_events():
         # Eventos de cursos (igual que antes) pero con title según perfil + sev filtrada
         # ------------------------------------------------------------
         courses = db.query(Course).all()
-
+        def css_slug(s: str) -> str:
+            s = (s or "").strip().lower()
+            s = re.sub(r"[^a-z0-9]+", "-", s)   # todo lo raro -> "-"
+            return s.strip("-")
         # ✅ Perfil para decidir title
         actor_role = (getattr(current_user, "role", "") or "").strip().lower()
-        actor_dept = (getattr(current_user, "department", "") or "").strip()
-        force_code_title = (actor_role == "admin") or (actor_dept == "ITC support")
+        actor_dept = (getattr(current_user, "department", "") or "").strip().lower()
+        force_code_title = (actor_role == "admin") or (actor_dept == "itc support")
 
+        is_itc_view = (actor_role == "admin") or (actor_dept == "itc support") or actor_role.startswith("itc")
         events = []
         for c in courses:
+            itc_raw = getattr(c, "status_itc", None) or ""
+            itc_key = css_slug(itc_raw)  # <- css safe
+            itc_class = f"fc-itc-{itc_key}" if itc_key else None
             if not c.start_date and not c.end_date:
                 continue
 
@@ -1392,6 +1399,8 @@ def api_calendar_events():
                 class_names = ["fc-course-start"]
                 if sev:
                     class_names.append(f"fc-sev-{sev}")
+                if is_itc_view and itc_class:
+                    class_names.append(itc_class)
                 events.append({
                     "id": f"{c.id}-start",
                     "title": title,

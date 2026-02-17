@@ -55,6 +55,7 @@
             <th>Device name</th>
             <th style="width:220px;">UID</th>
             <th style="width:220px;">Barcode</th>
+            <th style="width:120px;" class="text-center">Temporary</th>
             <th class="text-end" style="width:220px;">Actions</th>
           </tr>
         </thead>
@@ -131,47 +132,45 @@ document.addEventListener("DOMContentLoaded", function () {
     qStatus.textContent = text;
   }
 
-  function addRowUnified({ device_id, device_name, uid, barcode }) {
-    const did = device_id ? String(device_id) : "";
-    const u = (uid || "").trim();
+function addRowUnified({ device_id, device_name, uid, barcode }) {
 
-    if (did && addedDeviceIds.has(did)) {
-      setQStatus("Card already added.", "text-warning");
-      return;
-    }
-    if (!did && u && addedUids.has(u)) {
-      setQStatus("UID already added.", "text-warning");
-      return;
-    }
+  const did = device_id ? String(device_id) : "";
+  const u = (uid || "").trim();
 
-    if (did) addedDeviceIds.add(did);
-    if (u) addedUids.add(u);
+  if (did && addedDeviceIds.has(did)) return;
+  if (!did && u && addedUids.has(u)) return;
 
-    const tr = document.createElement("tr");
+  if (did) addedDeviceIds.add(did);
+  if (u) addedUids.add(u);
 
-    tr.dataset.deviceId = did;
-    tr.dataset.uid = u;
+  const tr = document.createElement("tr");
 
-    tr.innerHTML = `
-      <td>0</td>
-      <td>${escapeHtml(device_name || (u ? ("Device for UID " + u) : "Device"))}</td>
-      <td class="text-muted"><span class="font-monospace">${escapeHtml(u || "-")}</span></td>
-      <td class="text-muted"><span class="font-monospace">${escapeHtml((barcode || "").trim() || "-")}</span></td>
-      <td class="text-end">
-        <input type="checkbox" class="form-check-input row-selector me-2" checked>
-        <button type="button" class="btn btn-sm btn-outline-danger btn-remove-device">
-          Remove
-        </button>
-        <input type="hidden" name="uids[]" value="${escapeHtml(u)}">
-        ${did ? `<input type="hidden" name="device_ids[]" value="${escapeHtml(did)}">` : ""}
-      </td>
-    `;
+  tr.innerHTML = `
+    <td>0</td>
+    <td>${escapeHtml(device_name || "Device")}</td>
+    <td><span class="font-monospace">${escapeHtml(u || "-")}</span></td>
+    <td><span class="font-monospace">${escapeHtml(barcode || "-")}</span></td>
 
-    tbody.appendChild(tr);
-    renumber();
-    refreshSubmitState();
-  }
+    <td class="text-center">
+      <input type="checkbox" class="form-check-input temp-flag">
+      <input type="hidden" name="is_temporary_flags[]" value="0">
+    </td>
 
+    <td class="text-end">
+      <input type="checkbox" class="form-check-input row-selector me-2" checked>
+      <button type="button" class="btn btn-sm btn-outline-danger btn-remove-device">
+        Remove
+      </button>
+
+      <input type="hidden" name="uids[]" value="${escapeHtml(u)}">
+      ${did ? `<input type="hidden" name="device_ids[]" value="${escapeHtml(did)}">` : ""}
+    </td>
+  `;
+
+  tbody.appendChild(tr);
+  renumber();
+  refreshSubmitState();
+}
   function addRowFromUid(data) {
     const uid = (data.uid || "").trim();
     if (!uid) {
@@ -195,10 +194,18 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // Checkbox select
-  tbody.addEventListener("change", function (ev) {
-    if (!ev.target.classList.contains("row-selector")) return;
+tbody.addEventListener("change", function (ev) {
+
+  if (ev.target.classList.contains("row-selector")) {
     refreshSubmitState();
-  });
+  }
+
+  if (ev.target.classList.contains("temp-flag")) {
+    const tr = ev.target.closest("tr");
+    const hidden = tr.querySelector('input[name="is_temporary_flags[]"]');
+    hidden.value = ev.target.checked ? "1" : "0";
+  }
+});
 
   // Antes de submit: deshabilitar inputs de filas no seleccionadas
   form.addEventListener("submit", function () {

@@ -1080,3 +1080,81 @@ body.no-page-scroll { overflow: hidden; }
 .modal-backdrop.show {
   opacity: .5 !important;
 }
+.fc-course-start.fc-itc-start .fc-event-main {
+  background-color: #4dfc36 !important;  /* verde suave tipo "success" */
+  border-color: #2AFC98 !important;
+  color: #000000 !important;
+  font-weight: 700 !important;    
+}
+
+/* delivered */
+.fc-course-start.fc-itc-completed .fc-event-main {
+  background-color: #25bc1b !important;
+  border-color: #eeff00 !important;
+  color: #000 !important;
+  font-weight: 700 !important;
+}
+
+/* completed */
+.fc-course-start.fc-itc-delivered .fc-event-main {
+  background-color: #0de0fc !important;
+  border-color: #16C172 !important;
+  color: #000 !important;
+  font-weight: 700 !important;
+}
+
+/* cancel or error */
+.fc-course-start.fc-itc-cancel-or-error .fc-event-main {
+  background-color: #ff0217 !important;
+  border-color: #842029 !important;
+  color: #000 !important;
+  font-weight: 700 !important;
+}
+
+/* collected */
+.fc-course-start.fc-itc-collected .fc-event-main {
+  background-color: #e2e3e5 !important;
+  border-color: #41464b !important;
+  color: #000 !important;
+  font-weight: 700 !important;
+}
+
+/* RT delivered */
+.fc-course-start.fc-itc-rt-delivered .fc-event-main {
+  background-color: #c701fe !important;
+  border-color: #b10fc0 !important;
+  color: #000 !important;
+  font-weight: 700 !important;
+}
+
+/* loan */
+.fc-course-start.fc-itc-loan .fc-event-main {
+  background-color: #e8d614 !important;
+  border-color: #997404 !important;
+  color: #000 !important;
+  font-weight: 700 !important;
+}
+
+/* MSN loaded */
+.fc-course-start.fc-itc-msn-loaded .fc-event-main {
+  background-color: #cff4fc !important;
+  border-color: #055160 !important;
+  color: #000 !important;
+  font-weight: 700 !important;
+}
+
+/* MSN delivered */
+.fc-course-start.fc-itc-msn-delivered .fc-event-main {
+  background-color: #94fbab !important;
+  border-color: #0f5132 !important;
+  color: #000 !important;
+  font-weight: 700 !important;
+}
+
+/* end */
+.fc-course-start.fc-itc-end .fc-event-main {
+  background-color: #dee2e6 !important;
+  border-color: #6c757d !important;
+  color: #000 !important;
+  font-weight: 700 !important;
+}
