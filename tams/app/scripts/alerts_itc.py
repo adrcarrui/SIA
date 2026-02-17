@@ -208,7 +208,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
         if sev is None:
             continue  # fuera de ventana (por si acaso)
 
-        cname = c.name or c.course or f"Course #{c.id}"
+        cname = c.course or c.name or f"Course #{c.id}"
         status_itc = (c.status_itc or "").strip().lower()
         is_terminal = status_itc in ITC_TERMINAL
 
@@ -294,7 +294,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
         if not (0 <= days_since_start < miss_window):
             continue
 
-        cname = c.name or c.course or f"Course #{c.id}"
+        cname = c.course or c.name or f"Course #{c.id}"
         bucket = ensure_course_bucket(c)
 
         # Laptops: solo missing (no extra)
@@ -347,7 +347,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
 
         days_late = (today - c.end_date).days
         sev_overdue = "warning" if days_late < 3 else "critical"
-        cname = c.name or c.course or f"Course #{c.id}"
+        cname = c.course or c.name or f"Course #{c.id}"
 
         bucket = ensure_course_bucket(c)
         add_reason(
@@ -379,7 +379,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
             for lk in (r.get("legacy_keys") or []):
                 keys.append(lk)
         keys = list(dict.fromkeys(keys))
-
+        course_label = (b["course"].course or b["course"].name or f"Course #{b['course_id']}").strip()
         alerts.append({
             "type": "course_agg",
             "severity": b["severity"] or "notice",
@@ -387,6 +387,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
             "message": message,
             "course": b["course"],
             "course_id": b["course_id"],
+            "course_label": course_label,
             "reasons": b["reasons"],
             "keys": keys,
             "extra": b["extra"],
