@@ -1081,48 +1081,48 @@ body.no-page-scroll { overflow: hidden; }
   opacity: .5 !important;
 }
 .fc-course-start.fc-itc-start .fc-event-main {
-  background-color: #4dfc36 !important;  /* verde suave tipo "success" */
-  border-color: #2AFC98 !important;
+  background-color: #c3ff7f !important;  /* verde suave tipo "success" */
+  border-color: #c3ff7f !important;
   color: #000000 !important;
   font-weight: 700 !important;    
 }
 
 /* delivered */
 .fc-course-start.fc-itc-completed .fc-event-main {
-  background-color: #25bc1b !important;
-  border-color: #eeff00 !important;
+  background-color: #119b07 !important;
+  border-color: #119b07 !important;
   color: #000 !important;
   font-weight: 700 !important;
 }
 
 /* completed */
 .fc-course-start.fc-itc-delivered .fc-event-main {
-  background-color: #0de0fc !important;
-  border-color: #16C172 !important;
-  color: #000 !important;
+  background-color: #03683e !important;
+  border-color: #329685 !important;
+  color: #b6b5b5 !important;
   font-weight: 700 !important;
 }
 
 /* cancel or error */
 .fc-course-start.fc-itc-cancel-or-error .fc-event-main {
   background-color: #ff0217 !important;
-  border-color: #842029 !important;
+  border-color: #ff0217 !important;
   color: #000 !important;
   font-weight: 700 !important;
 }
 
 /* collected */
 .fc-course-start.fc-itc-collected .fc-event-main {
-  background-color: #e2e3e5 !important;
-  border-color: #41464b !important;
+  background-color: #032e83 !important;
+  border-color: #032e83 !important;
   color: #000 !important;
   font-weight: 700 !important;
 }
 
 /* RT delivered */
 .fc-course-start.fc-itc-rt-delivered .fc-event-main {
-  background-color: #c701fe !important;
-  border-color: #b10fc0 !important;
+  background-color: #ff6601 !important;
+  border-color: #ff6601 !important;
   color: #000 !important;
   font-weight: 700 !important;
 }
@@ -1130,7 +1130,7 @@ body.no-page-scroll { overflow: hidden; }
 /* loan */
 .fc-course-start.fc-itc-loan .fc-event-main {
   background-color: #e8d614 !important;
-  border-color: #997404 !important;
+  border-color: #e8d614 !important;
   color: #000 !important;
   font-weight: 700 !important;
 }
@@ -1158,3 +1158,30 @@ body.no-page-scroll { overflow: hidden; }
   color: #000 !important;
   font-weight: 700 !important;
 }
+
+.legend-chip{
+  display:inline-block;
+  width:20px;
+  height:20px;
+  border-radius:4px;
+  vertical-align:-2px;
+  border:1px solid rgba(0,0,0,.15);
+}
+
+/* ✅ Fin de curso: override SOLO en vista ITC */
+.fc-course-end.fc-itc-view .fc-event-main {
+  background-color: #f0f0f0 !important;  /* pon el color que quieras */
+  border-color: #f0f0f0 !important;
+  color: #000000 !important;
+  font-weight: 700 !important;
+}
+
+/* Fallbacks por si tus fc-itc-* no pintan el chip directamente */
+.legend-chip.fc-itc-start { background: var(--fc-itc-start, #c3ff7f); }
+.legend-chip.fc-itc-completed { background: var(--fc-itc-completed, #119b07); }
+.legend-chip.fc-itc-delivered { background: var(--fc-itc-delivered, #03683e); }
+.legend-chip.fc-itc-collected { background: var(--fc-itc-collected, #032e83); }
+.legend-chip.fc-course-end-itc { background-color: #f0f0f0; border-color: #f0f0f0;}
+.legend-chip.fc-itc-rt-delivered { background: var(--fc-itc-rt-delivered, #ff6601); }
+.legend-chip.fc-itc-loan { background: var(--fc-itc-loan, #e8d614); }
+.legend-chip.fc-itc-cancel-or-error { background: var(--fc-itc-cancel-or-error, #ff0217); }

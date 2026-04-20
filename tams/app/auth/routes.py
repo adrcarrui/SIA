@@ -144,18 +144,18 @@ def nfc_login():
         # movement log (best effort)
         try:
             db.flush()
-            log_movement(
-                db,
-                user_id=user.id,
-                entity_type="user",
-                entity_id=user.id,
-                action="login",
-                before_data=None,
-                after_data=None,
-                description=f"User {user.username} logged in via NFC (client UID) from {request.remote_addr}",
-                success=True,
-                user_agent=request.user_agent.string,
-            )
+            #log_movement(
+            #    db,
+            #    user_id=user.id,
+            #    entity_type="user",
+            #    entity_id=user.id,
+            #    action="login",
+            #    before_data=None,
+            #    after_data=None,
+            #    description=f"User {user.username} logged in via NFC (client UID) from {request.remote_addr}",
+            #    success=True,
+            #    user_agent=request.user_agent.string,
+            #)
             db.commit()
         except Exception:
             db.rollback()

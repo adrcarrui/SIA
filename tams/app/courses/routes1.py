@@ -50,7 +50,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet
 
 from app.scripts.notification_severity import NOTIFICATION_SEVERITY_MAP
-from app.scripts.notifications_rules import course_has_itc_assets, course_is_usb_only
+from app.scripts.notifications_rules import course_has_itc_assets
 from app.scripts.notifications_rules import build_changes, format_changes, format_requirements_map
 
 
@@ -447,8 +447,6 @@ def edit_course(course_id):
                     message=(f"Updated by: {who} ({dept})\n\n" + "\n\n".join(parts)),
                 )
 
-            sync_usb_only_course_notification(db, c, current_user)
-
             log_movement(
                 db,
                 user_id=getattr(current_user, "id", None),
@@ -557,86 +555,6 @@ def create_notification_for_itc(db, course, created_by_user, notif_type, title, 
     )
     db.add(n)
     return n
-
-
-def upsert_course_notification_for_itc(db, course, created_by_user, notif_type, title, message, severity=None):
-    sev = severity or NOTIFICATION_SEVERITY_MAP.get(notif_type, "notice")
-
-    existing = (
-        db.query(models.Notification)
-        .filter(
-            models.Notification.active.is_(True),
-            models.Notification.department_target == "ITC support",
-            models.Notification.course_id == getattr(course, "id", None),
-            models.Notification.type == notif_type,
-            models.Notification.status.notin_(["done", "dismissed"]),
-        )
-        .order_by(models.Notification.id.desc())
-        .first()
-    )
-
-    if existing:
-        existing.title = title
-        existing.message = message
-        existing.severity = sev
-        existing.status = "open"
-        existing.read_at = None
-        existing.read_by_user_id = None
-        existing.updated_at = datetime.now(timezone.utc)
-        return existing
-
-    return create_notification_for_itc(
-        db=db,
-        course=course,
-        created_by_user=created_by_user,
-        notif_type=notif_type,
-        title=title,
-        message=message,
-        severity=sev,
-    )
-
-
-def dismiss_course_notification_for_itc(db, course_id: int, notif_type: str):
-    db.query(models.Notification).filter(
-        models.Notification.active.is_(True),
-        models.Notification.department_target == "ITC support",
-        models.Notification.course_id == course_id,
-        models.Notification.type == notif_type,
-        models.Notification.status.notin_(["done", "dismissed"]),
-    ).update(
-        {
-            models.Notification.status: "dismissed",
-            models.Notification.updated_at: datetime.now(timezone.utc),
-        },
-        synchronize_session=False,
-    )
-
-
-def sync_usb_only_course_notification(db, course, created_by_user):
-    if not course or getattr(course, "id", None) is None:
-        return
-
-    if not course_is_usb_only(db, course.id):
-        dismiss_course_notification_for_itc(db, course.id, "course_usb_only")
-        return
-
-    cname = (course.course or course.name or f"Course #{course.id}").strip()
-    req_map = _load_req_map_for_course(db, course.id)
-
-    upsert_course_notification_for_itc(
-        db=db,
-        course=course,
-        created_by_user=created_by_user,
-        notif_type="course_usb_only",
-        title="USB-only course",
-        message=(
-            f"The course {cname} currently requires only USB assets.\n"
-            f"Client: {course.client or '-'} | Trainees: {course.trainees or '-'}\n"
-            f"Dates: {course.start_date or '-'} -> {course.end_date or '-'}\n\n"
-            f"Requirements:\n{format_requirements_map(db, req_map)}"
-        ),
-        severity="warning",
-    )
 
 
 def normalize_field(value: str):
@@ -1084,8 +1002,6 @@ def new_course():
                     ),
                 )
 
-            sync_usb_only_course_notification(db, new_c, current_user)
-
             log_movement(
                 db,
                 user_id=getattr(current_user, "id", None),
@@ -1184,8 +1100,6 @@ def delete_course(course_id):
                 severity="warning",
             )
 
-        dismiss_course_notification_for_itc(db, c.id, "course_usb_only")
-
         db.delete(c)
         db.flush()
 
@@ -1257,11 +1171,7 @@ def calendar_data():
                     "status_tco": c.status_tco,
                     "status_itc": c.status_itc,
                     "trainees": c.trainees,
-                    "detail_url": url_for(
-                        "courses.detail_fragment",
-                        course_id=c.id,
-                        modal_context="calendar",
-                    ),
+                    "detail_url": url_for("courses.detail_fragment", course_id=c.id),
                 }
             )
 
@@ -1300,9 +1210,6 @@ def detail(course_id):
 @login_required
 def detail_fragment(course_id):
     db = SessionLocal()
-    modal_context = (request.args.get("modal_context") or "").strip().lower()
-    actor_dept = (getattr(current_user, "department", "") or "").strip().lower()
-
     course = (
         db.query(Course)
         .options(joinedload(Course.assignments).joinedload(Assignment.device))
@@ -1322,10 +1229,6 @@ def detail_fragment(course_id):
         "courses/_detail_fragment.html",
         course=course,
         active_assignments=active_assignments,
-        course_itc_statuses=COURSE_ITC_STATUSES,
-        show_calendar_itc_status_editor=(
-            modal_context == "calendar" and actor_dept == "itc support"
-        ),
     )
 
 
@@ -1475,11 +1378,7 @@ def api_calendar_events():
             #else:
             #    title = name or code or f"Course #{c.id}"
 
-            detail_url = url_for(
-                "courses.detail_fragment",
-                course_id=c.id,
-                modal_context="calendar",
-            )
+            detail_url = url_for("courses.detail_fragment", course_id=c.id)
 
             sev = severity_by_course.get(c.id)  # <- ahora solo si hay OPEN
 
@@ -1694,48 +1593,6 @@ def export_courses():
     else:
         return Response("Unsupported format", status=400)
 
-PICKUP_NOTIFICATION_TYPES = {
-    "devices": "pickup_needed_devices",
-    "forms": "pickup_needed_forms",
-}
-
-
-def _normalize_pickup_type(value: str | None) -> str:
-    v = (value or "").strip().lower()
-    return v if v in PICKUP_NOTIFICATION_TYPES else "devices"
-
-
-def _build_pickup_notification_payload(*, pickup_type: str, actor_name: str, note: str, now):
-    pickup_type = _normalize_pickup_type(pickup_type)
-    cfg = {
-        "devices": {
-            "title": "Device pickup needed (ITC)",
-            "label": "device pickup",
-            "description": "TCO notified ITC about device pickup needed",
-        },
-        "forms": {
-            "title": "Form pickup needed (ITC)",
-            "label": "form pickup",
-            "description": "TCO notified ITC about form pickup needed",
-        },
-    }[pickup_type]
-
-    message = (
-        f"TCO requests ITC {cfg['label']}.\n"
-        f"Requested by: {actor_name} (TCO)\n"
-        f"When: {now.isoformat()}\n"
-    )
-    if note:
-        message += f"\nNote:\n{note}"
-
-    return {
-        "pickup_type": pickup_type,
-        "notification_type": PICKUP_NOTIFICATION_TYPES[pickup_type],
-        "title": cfg["title"],
-        "message": message,
-        "description": cfg["description"],
-    }
-
 @bp.route("/notify-itc-pickup", methods=["POST"])
 @login_required
 def notify_itc_pickup():
@@ -1749,17 +1606,18 @@ def notify_itc_pickup():
             abort(403)
 
         note = (request.form.get("pickup_note") or "").strip()
-        pickup_type = _normalize_pickup_type(request.form.get("pickup_type"))
 
         who = f"{getattr(current_user, 'name', '')} {getattr(current_user, 'surname', '')}".strip() or "Unknown user"
         now = datetime.now(timezone.utc)
 
-        payload = _build_pickup_notification_payload(
-            pickup_type=pickup_type,
-            actor_name=who,
-            note=note,
-            now=now,
+        title = "Pickup needed (ITC)"
+        message = (
+            f"TCO requests ITC pickup.\n"
+            f"Requested by: {who} (TCO)\n"
+            f"When: {now.isoformat()}\n"
         )
+        if note:
+            message += f"\nNote:\n{note}"
 
         # Buscar notificación global abierta existente
         existing = (
@@ -1767,7 +1625,7 @@ def notify_itc_pickup():
               .filter(
                   models.Notification.active.is_(True),
                   models.Notification.department_target == "ITC support",
-                  models.Notification.type == payload["notification_type"],
+                  models.Notification.type == "pickup_needed",
                   models.Notification.status.notin_(["done", "dismissed"]),
               )
               .order_by(models.Notification.id.desc())
@@ -1776,29 +1634,27 @@ def notify_itc_pickup():
 
         if existing:
             # Actualiza y “reanuda”
-            existing.title = payload["title"]
-            existing.message = payload["message"]
+            existing.title = title
+            existing.message = message
             existing.severity = "notice"
             existing.status = "open"
             existing.updated_at = now
             existing.read_at = None  # para que vuelva a contar como unread (si usas unread_count)
-            target_notification = existing
         else:
             n = models.Notification(
                 created_by_user_id=getattr(current_user, "id", None),
                 department_target="ITC support",
-                type=payload["notification_type"],
+                type="pickup_needed",
                 severity="notice",
                 status="open",
-                title=payload["title"],
-                message=payload["message"],
+                title=title,
+                message=message,
                 course_id=None,  # ✅ global
                 created_at=now,
                 updated_at=now,
                 active=True,
             )
             db.add(n)
-            target_notification = n
 
         db.flush()
 
@@ -1806,17 +1662,17 @@ def notify_itc_pickup():
             db,
             user_id=getattr(current_user, "id", None),
             entity_type="notification",
-            entity_id=getattr(target_notification, "id", None),
+            entity_id=getattr(existing, "id", None),
             action="pickup_notify",
             before_data=None,
-            after_data={"note": note, "pickup_type": pickup_type},
-            description=payload["description"],
+            after_data={"note": note},
+            description="TCO notified ITC about pickup needed",
             success=True,
             user_agent=request.user_agent.string,
         )
 
         db.commit()
-        flash(f"ITC notified for {pickup_type} pickup.", "success")
+        flash("ITC notified for pickup.", "success")
         return redirect(url_for("main.index"))
     finally:
         db.close()
@@ -2441,18 +2297,16 @@ def _find_active_loan_for_card(db, card_device_id: int):
         return None
 
     a, c = row
-
-    course_code = (c.course or "").strip()
-    parts = [course_code, (c.name or "").strip(), (c.client or "").strip()]
+    parts = [(c.course or "").strip(), (c.name or "").strip(), (c.client or "").strip()]
     label = " | ".join([p for p in parts if p]) or (f"Course #{c.id}")
 
     return {
         "assignment_id": a.id,
         "course_id": c.id,
-        "course_code": course_code,   # <-- NUEVO (lo que necesita el JS)
         "label": label,
         "status": a.status,
     }
+
 
 @bp.route("/api/card-lookup", methods=["POST"])
 @login_required

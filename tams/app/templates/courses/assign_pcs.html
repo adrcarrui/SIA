@@ -73,6 +73,17 @@ document.addEventListener("DOMContentLoaded", function () {
   const pendingQueries = new Set(); // evita dobles llamadas
   let debounceTimer = null;
 
+  function focusInput() {
+    if (!input) return;
+    window.requestAnimationFrame(() => {
+      input.focus({ preventScroll: true });
+    });
+  }
+
+  function normalizeIdentifier(value) {
+    return String(value ?? "").toUpperCase();
+  }
+
   function setStatus(text, cls) {
     status.className = "text-muted";
     if (cls) status.classList.add(cls);
@@ -191,7 +202,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   async function lookupQuery(q) {
-    q = (q || "").trim();
+    q = normalizeIdentifier((q || "").trim());
     if (!q) return;
 
     // Evita duplicadas por la misma cadena enviada
@@ -236,12 +247,12 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function triggerFromInput() {
-    const raw = (input.value || "").trim();
+    const raw = normalizeIdentifier((input.value || "").trim());
     if (!raw) return;
 
     // Limpia y reenfoca para el siguiente escaneo
     input.value = "";
-    input.focus();
+    focusInput();
 
     lookupQuery(raw);
   }
@@ -258,11 +269,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // 2) Humano escribiendo (o lector sin Enter): debounce
   input.addEventListener("input", function () {
+    const upper = normalizeIdentifier(input.value);
+    if (input.value !== upper) {
+      const pos = input.selectionStart;
+      input.value = upper;
+      if (pos != null) input.setSelectionRange(pos, pos);
+    }
+
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
 
-      const v = (input.value || "").trim();
+      const v = normalizeIdentifier((input.value || "").trim());
       if (v.length < 3) return;
 
       triggerFromInput();
@@ -290,6 +308,7 @@ document.addEventListener("DOMContentLoaded", function () {
     tr.remove();
     renumber();
     refreshSubmitState();
+    focusInput();
   });
 
   // Antes de submit: disable device_ids[] de filas no marcadas
@@ -303,7 +322,13 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 
-  input.focus();
+  window.addEventListener("focus", focusInput);
+  window.addEventListener("pageshow", focusInput);
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) focusInput();
+  });
+
+  focusInput();
   refreshSubmitState();
 });
 </script>

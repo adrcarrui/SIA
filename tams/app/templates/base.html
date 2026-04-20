@@ -549,7 +549,7 @@
       el.style.display = (val > 0) ? "" : "none";
     }
 
-    async function tick() {
+    async function refreshSidebarCounters() {
       try {
         const r = await fetch("{{ url_for('api.counters') }}", { credentials: "same-origin" });
         if (!r.ok) return;
@@ -557,11 +557,17 @@
         setBadge(badgeAlerts, data.alerts);
         setBadge(badgeNotifs, data.notifications);
       } catch (e) {}
-      finally {
+    }
+
+    async function tick() {
+      try {
+        await refreshSidebarCounters();
+      } finally {
         setTimeout(tick, document.hidden ? 60000 : BASE_INTERVAL);
       }
     }
 
+    window.refreshSidebarCounters = refreshSidebarCounters;
     tick();
   })();
   </script>

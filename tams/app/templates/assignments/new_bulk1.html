@@ -55,8 +55,6 @@
             <th>Device name</th>
             <th style="width:220px;">UID</th>
             <th style="width:220px;">Barcode</th>
-            <th style="width:140px;">Card status</th>
-            <th style="width:180px;">Linked course</th>
             <th style="width:120px;" class="text-center">Temporary</th>
             <th class="text-end" style="width:220px;">Actions</th>
           </tr>
@@ -91,8 +89,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
   const qInput  = document.getElementById("card-query-input");
   const qStatus = document.getElementById("card-query-status");
-
-  const currentCourseId = String(document.querySelector('input[name="course_id"]')?.value || "");
 
   if (!btn || !status || !icon || !tbody || !submit || !form || !qInput || !qStatus) {
     console.warn("Elementos (assignments bulk) no encontrados en el DOM");
@@ -136,84 +132,45 @@ document.addEventListener("DOMContentLoaded", function () {
     qStatus.textContent = text;
   }
 
-  function isCardFromCodes(code, parentCode) {
-    const c = String(code || "").toUpperCase().trim();
-    const p = String(parentCode || "").toUpperCase().trim();
-    return (c === "CARD" || p === "CARD");
-  }
+function addRowUnified({ device_id, device_name, uid, barcode }) {
 
-  function addRowUnified({
-    device_id,
-    device_name,
-    uid,
-    barcode,
-    card_status = "",
-    is_card = false,
-    linked_course_code = "",
-    selected = true,
-    rowClass = ""
-  }) {
-    const did = device_id ? String(device_id) : "";
-    const u = (uid || "").trim();
+  const did = device_id ? String(device_id) : "";
+  const u = (uid || "").trim();
 
-    if (did && addedDeviceIds.has(did)) return;
-    if (!did && u && addedUids.has(u)) return;
+  if (did && addedDeviceIds.has(did)) return;
+  if (!did && u && addedUids.has(u)) return;
 
-    if (did) addedDeviceIds.add(did);
-    if (u) addedUids.add(u);
+  if (did) addedDeviceIds.add(did);
+  if (u) addedUids.add(u);
 
-    const tr = document.createElement("tr");
-    if (did) tr.dataset.deviceId = did;
-    if (u) tr.dataset.uid = u;
-    if (rowClass) tr.classList.add(rowClass);
+  const tr = document.createElement("tr");
 
-    // Solo mostrar status si es CARD
-    const normalizedStatus = String(card_status || "").toLowerCase().trim();
+  tr.innerHTML = `
+    <td>0</td>
+    <td>${escapeHtml(device_name || "Device")}</td>
+    <td><span class="font-monospace">${escapeHtml(u || "-")}</span></td>
+    <td><span class="font-monospace">${escapeHtml(barcode || "-")}</span></td>
 
-const statusColorMap = {
-  "available": "success",   // verde
-  "assigned": "primary",    // azul
-  "cancelled": "secondary", // gris
-  "lost": "danger"          // rojo
-};
+    <td class="text-center">
+      <input type="checkbox" class="form-check-input temp-flag">
+      <input type="hidden" name="is_temporary_flags[]" value="0">
+    </td>
 
-const badgeColor = statusColorMap[normalizedStatus] || "secondary";
-const statusCell = normalizedStatus ? normalizedStatus : "-";
+    <td class="text-end">
+      <input type="checkbox" class="form-check-input row-selector me-2" checked>
+      <button type="button" class="btn btn-sm btn-outline-danger btn-remove-device">
+        Remove
+      </button>
 
-    tr.innerHTML = `
-      <td>0</td>
-      <td>${escapeHtml(device_name || "Device")}</td>
-      <td><span class="font-monospace">${escapeHtml(u || "-")}</span></td>
-      <td><span class="font-monospace">${escapeHtml(barcode || "-")}</span></td>
-      <td>
-        ${normalizedStatus
-          ? `<span class="badge bg-${badgeColor}">${escapeHtml(statusCell)}</span>`
-          : `<span class="badge bg-secondary">-</span>`
-        }
-      </td>
-      <td><span class="font-monospace">${escapeHtml(linked_course_code || "-")}</span></td>
+      <input type="hidden" name="uids[]" value="${escapeHtml(u)}">
+      ${did ? `<input type="hidden" name="device_ids[]" value="${escapeHtml(did)}">` : ""}
+    </td>
+  `;
 
-      <td class="text-center">
-        <input type="checkbox" class="form-check-input temp-flag">
-        <input type="hidden" name="is_temporary_flags[]" value="0">
-      </td>
-
-      <td class="text-end">
-        <input type="checkbox" class="form-check-input row-selector me-2" ${selected ? "checked" : ""}>
-        <button type="button" class="btn btn-sm btn-outline-danger btn-remove-device">
-          Remove
-        </button>
-
-        <input type="hidden" name="uids[]" value="${escapeHtml(u)}">
-        ${did ? `<input type="hidden" name="device_ids[]" value="${escapeHtml(did)}">` : ""}
-      </td>
-    `;
-
-    tbody.appendChild(tr);
-    renumber();
-    refreshSubmitState();
-  }
-
+  tbody.appendChild(tr);
+  renumber();
+  refreshSubmitState();
+}
   function addRowFromUid(data) {
     const uid = (data.uid || "").trim();
     if (!uid) {
@@ -223,50 +180,12 @@ const statusCell = normalizedStatus ? normalizedStatus : "-";
       return;
     }
 
-    const is_card = isCardFromCodes(data.asset_type_code, data.asset_type_parent_code);
-    // ✅ status REAL del device (no inventado por active_loan)
-    const card_status = (data.device_status || "");
-
-    const loan = data.active_loan;
-    if (loan && loan.course_id) {
-      const loanCourseId = String(loan.course_id);
-      const code = loan.course_code || ("#" + loanCourseId);
-
-      if (loanCourseId === currentCourseId) {
-        status.classList.remove("text-danger", "text-muted", "text-warning");
-        status.classList.add("text-success");
-        status.textContent = "Card already associated to this course: " + code;
-        return;
-      }
-
-      // Asociada a OTRO curso: se añade pero desmarcada + mostramos el curso
-      addRowUnified({
-        device_id: data.device_id || "",
-        device_name: data.device_name || ("Device for UID " + uid),
-        uid: uid,
-        barcode: data.barcode || "",
-        card_status,
-        is_card,
-        linked_course_code: code,
-        selected: false,
-        rowClass: "table-warning",
-      });
-
-      status.classList.remove("text-danger", "text-muted", "text-success");
-      status.classList.add("text-warning");
-      status.textContent = "Card already associated to course: " + code + " (left unchecked)";
-      return;
-    }
-
-    // Caso normal: no está asociada
+    // Backend users.read_uid_once ya intenta resolver device
     addRowUnified({
       device_id: data.device_id || "",
       device_name: data.device_name || ("Device for UID " + uid),
       uid: uid,
-      barcode: data.barcode || "",
-      card_status,
-      is_card,
-      linked_course_code: ""
+      barcode: data.barcode || ""  // si tu backend no lo manda, queda "-"
     });
 
     status.classList.remove("text-danger", "text-muted", "text-warning");
@@ -274,18 +193,19 @@ const statusCell = normalizedStatus ? normalizedStatus : "-";
     status.textContent = "Card added: " + uid;
   }
 
-  // Checkbox select + temp flag
-  tbody.addEventListener("change", function (ev) {
-    if (ev.target.classList.contains("row-selector")) {
-      refreshSubmitState();
-    }
+  // Checkbox select
+tbody.addEventListener("change", function (ev) {
 
-    if (ev.target.classList.contains("temp-flag")) {
-      const tr = ev.target.closest("tr");
-      const hidden = tr.querySelector('input[name="is_temporary_flags[]"]');
-      hidden.value = ev.target.checked ? "1" : "0";
-    }
-  });
+  if (ev.target.classList.contains("row-selector")) {
+    refreshSubmitState();
+  }
+
+  if (ev.target.classList.contains("temp-flag")) {
+    const tr = ev.target.closest("tr");
+    const hidden = tr.querySelector('input[name="is_temporary_flags[]"]');
+    hidden.value = ev.target.checked ? "1" : "0";
+  }
+});
 
   // Antes de submit: deshabilitar inputs de filas no seleccionadas
   form.addEventListener("submit", function () {
@@ -343,6 +263,7 @@ const statusCell = normalizedStatus ? normalizedStatus : "-";
 
       if (!resp.ok || !data.success) {
         if (resp.status === 409 && data.matches && Array.isArray(data.matches) && data.matches.length) {
+          // Mostramos un resumen corto para que el humano sea más específico
           const top = data.matches.slice(0, 3).map(m => {
             const name = m.name || ("#" + m.id);
             const uid = m.uid ? ("UID " + m.uid) : "";
@@ -358,39 +279,10 @@ const statusCell = normalizedStatus ? normalizedStatus : "-";
         return;
       }
 
+      // Esperamos payload: { success:true, card:{id,name,uid,barcode,...}, active_loan:... }
       const card = data.card || data.device || null;
       if (!card) {
         setQStatus("Lookup returned no card/device.", "text-danger");
-        return;
-      }
-
-      const is_card = String(card.asset_type_code || "").toUpperCase().trim() === "CARD";
-      // api_card_lookup ya devuelve el status del device en card.status
-      const card_status = card.status || "";
-
-      const loan = data.active_loan;
-      if (loan && loan.course_id) {
-        const loanCourseId = String(loan.course_id);
-        const code = loan.course_code || ("#" + loanCourseId);
-
-        if (loanCourseId === currentCourseId) {
-          setQStatus("Card already associated to this course: " + code, "text-success");
-          return;
-        }
-
-        addRowUnified({
-          device_id: card.id,
-          device_name: card.name || ("Device #" + card.id),
-          uid: card.uid || "",
-          barcode: card.barcode || "",
-          card_status,
-          is_card,
-          linked_course_code: code,
-          selected: false,
-          rowClass: "table-warning",
-        });
-
-        setQStatus("Card already associated to course: " + code + " (left unchecked)", "text-warning");
         return;
       }
 
@@ -398,10 +290,7 @@ const statusCell = normalizedStatus ? normalizedStatus : "-";
         device_id: card.id,
         device_name: card.name || ("Device #" + card.id),
         uid: card.uid || "",
-        barcode: card.barcode || "",
-        card_status,
-        is_card,
-        linked_course_code: ""
+        barcode: card.barcode || ""
       });
 
       setQStatus("Card added: " + (card.uid || card.barcode || card.name || ("#" + card.id)), "text-success");

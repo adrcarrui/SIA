@@ -69,7 +69,7 @@
         <div class="accordion" id="devicesAccordion">
           <div class="accordion-item">
             <h2 class="accordion-header">
-              <button class="accordion-button bg-devices"
+              <button class="accordion-button bg-devices fw-semibold"
                       data-bs-toggle="collapse"
                       data-bs-target="#devicesCollapse">
                 Devices
@@ -135,6 +135,83 @@
         </div>
       </div>
 
+{# ================================
+   ITC Support: Courses color legend
+   Pegar debajo del accordion de Alerts
+   ================================ #}
+
+{% set actor_dept = (current_user.department or '')|lower|trim %}
+{% if actor_dept == 'itc support' %}
+
+  {% set legend_rows = [
+    {'kind':'class', 'cls':'fc-itc-start', 'info':'Course start'},
+    {'kind':'class', 'cls':'fc-itc-completed', 'info':'Course completed'},
+    {'kind':'class', 'cls':'fc-itc-delivered', 'info':'Devices delivered'},
+    {'kind':'class', 'cls':'fc-itc-collected', 'info':'Devices collected'},
+    {'kind':'class', 'cls':'fc-course-end-itc', 'info':'Course finished'},
+    {'kind':'class', 'cls':'fc-itc-rt-delivered', 'info':'RT delivered'},
+    {'kind':'class', 'cls':'fc-itc-loan', 'info':'Loan'},
+    {'kind':'class', 'cls':'fc-itc-cancel-or-error', 'info':'Cancelled / error'}
+  ] %}
+
+  <div class="col-8 mb-3">
+    <div class="accordion" id="coursesLegendAccordion">
+      <div class="accordion-item">
+        <h2 class="accordion-header" id="coursesLegendHeader">
+          <button class="accordion-button bg-devices fw-semibold"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#coursesLegendCollapse"
+                  aria-expanded="true"
+                  aria-controls="coursesLegendCollapse">
+            Courses legend
+          </button>
+        </h2>
+
+        <div id="coursesLegendCollapse"
+             class="accordion-collapse collapse show"
+             aria-labelledby="coursesLegendHeader"
+             data-bs-parent="#coursesLegendAccordion">
+          <div class="accordion-body">
+
+            <div class="table-responsive">
+              <table class="table table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th class="text-center" style="width:100px;">Color</th>
+                    <th class="text-center">Info</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in legend_rows %}
+                    <tr>
+                      <td class="align-middle text-center">
+                        {% if row.kind == 'var' %}
+                          <span class="text-center legend-chip d-block mx-auto"
+                                style="background: var({{ row.var }});">
+                          </span>
+                        {% else %}
+                          <span class="text-center legend-chip {{ row.cls }} d-block mx-auto"></span>
+                        {% endif %}
+                      </td>
+
+                      <td class="text-center align-middle text-muted fw-semibold">
+                        <span class="fw-semibold">{{ row.label }}</span>
+                        <div>{{ row.info }}</div>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+{% endif %}
       <!-- ITC PICKUP -->
       {% if (current_user.department or '')|trim == 'TCO' %}
       <div class="col-8 mb-3">
@@ -154,9 +231,20 @@
                          class="form-control form-control-sm"
                          name="pickup_note"
                          placeholder="Equipment ready for pickup">
-                  <button class="btn btn-sm btn-primary mt-3 w-100">
-                    Notify ITC
-                  </button>
+                  <div class="d-flex gap-2 mt-3">
+                    <button class="btn btn-sm btn-primary flex-fill"
+                            type="submit"
+                            name="pickup_type"
+                            value="devices">
+                      💻 Device pickup
+                    </button>
+                    <button class="btn btn-sm btn-primary flex-fill"
+                            type="submit"
+                            name="pickup_type"
+                            value="forms">
+                      📄 Form pickup
+                    </button>
+                  </div>
                 </form>
               </div>
             </div>
@@ -184,6 +272,162 @@ function loadCourseDetail(url) {
         document.getElementById("courseModal")
       ).show();
     });
+}
+
+function setCourseModalItcMsg(selectEl, text, isError = false) {
+  const courseId = selectEl?.dataset?.courseId;
+  if (!courseId) return;
+
+  const msgEl = document.querySelector(
+    '#courseModalBody .itc-status-msg[data-course-id="' + courseId + '"]'
+  );
+  if (!msgEl) return;
+
+  msgEl.textContent = text || "";
+  msgEl.classList.toggle("text-danger", !!isError);
+  msgEl.classList.toggle("text-muted", !isError);
+}
+
+function cssSlug(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getItcStatusClass(status) {
+  const slug = cssSlug(status);
+  return slug ? `fc-itc-${slug}` : "";
+}
+
+function buildCalendarEventClassNames(event, newStatus) {
+  const kind = event.extendedProps?.kind || "";
+  const severity = event.extendedProps?.severity || "";
+  const classNames = [];
+
+  if (kind === "end") {
+    classNames.push("fc-course-end", "fc-itc-view");
+  } else {
+    classNames.push("fc-course-start");
+    const itcClass = getItcStatusClass(newStatus);
+    if (itcClass) classNames.push(itcClass);
+  }
+
+  if (severity) {
+    classNames.push(`fc-sev-${severity}`);
+  }
+
+  return classNames;
+}
+
+function applyItcStatusUi(courseId, newStatus) {
+  const normalizedCourseId = String(courseId);
+  const modalBody = document.getElementById("courseModalBody");
+
+  modalBody
+    ?.querySelectorAll(`.itc-status-select[data-course-id="${normalizedCourseId}"]`)
+    .forEach((sel) => {
+      sel.value = newStatus;
+      sel.dataset.oldValue = newStatus;
+    });
+
+  if (!window.dashboardCalendar) return;
+
+  window.dashboardCalendar.getEvents().forEach((event) => {
+    if (String(event.extendedProps?.course_id) !== normalizedCourseId) return;
+
+    event.setExtendedProp("status_itc", newStatus);
+    event.setProp("classNames", buildCalendarEventClassNames(event, newStatus));
+  });
+}
+
+const pickupReminderManager = (() => {
+  const soundUrl = "{{ url_for('static', filename='sounds/device-pickup.wav') }}";
+  const audio = new Audio(soundUrl);
+  audio.preload = "auto";
+
+  let intervalId = null;
+  let pendingAutoplayRetry = false;
+  let retryHooksInstalled = false;
+
+  async function playReminderAudio() {
+    try {
+      audio.currentTime = 0;
+      await audio.play();
+      pendingAutoplayRetry = false;
+    } catch (err) {
+      pendingAutoplayRetry = true;
+      console.warn("Pickup sound autoplay blocked or failed:", err);
+    }
+  }
+
+  function ensureInteractionRetryHooks() {
+    if (retryHooksInstalled) return;
+    retryHooksInstalled = true;
+
+    const retry = () => {
+      if (!pendingAutoplayRetry || intervalId === null) return;
+      playReminderAudio();
+    };
+
+    ["click", "keydown", "touchstart"].forEach((eventName) => {
+      document.addEventListener(eventName, retry, { passive: true });
+    });
+  }
+
+  function hasVisibleActivePickups(notifications) {
+    return Array.isArray(notifications) && notifications.length > 0;
+  }
+
+  function startGlobalPickupReminder() {
+    if (intervalId !== null) return;
+    ensureInteractionRetryHooks();
+    playReminderAudio();
+    intervalId = window.setInterval(() => {
+      playReminderAudio();
+    }, 10000);
+  }
+
+  function stopGlobalPickupReminder() {
+    if (intervalId === null) return;
+    window.clearInterval(intervalId);
+    intervalId = null;
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+    } catch (err) {
+      console.warn("Failed to stop global pickup reminder:", err);
+    }
+    pendingAutoplayRetry = false;
+  }
+
+  function syncGlobalPickupReminder(visibleNotifications) {
+    if (hasVisibleActivePickups(visibleNotifications)) {
+      startGlobalPickupReminder();
+    } else {
+      stopGlobalPickupReminder();
+    }
+  }
+
+  return {
+    startGlobalPickupReminder,
+    stopGlobalPickupReminder,
+    syncGlobalPickupReminder,
+  };
+})();
+
+function collectActivePickupNotifications() {
+  return Array.from(
+    document.querySelectorAll("#itc-pickup-container [data-pickup-notification='1']")
+  ).map((node) => ({
+    notificationId: node.dataset.notificationId,
+    pickupType: node.dataset.pickupType,
+  }));
+}
+
+function syncPickupSoundsFromDom() {
+  pickupReminderManager.syncGlobalPickupReminder(collectActivePickupNotifications());
 }
 
 /* ================= CALENDAR ================= */
@@ -222,7 +466,64 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
+  window.dashboardCalendar = calendar;
   calendar.render();
+});
+
+document.addEventListener("change", async function (e) {
+  const sel = e.target.closest("#courseModalBody .itc-status-select");
+  if (!sel) return;
+
+  const courseId = sel.dataset.courseId;
+  const newVal = sel.value;
+  const oldVal = sel.dataset.oldValue || "";
+
+  if (!courseId) return;
+
+  if (sel.dataset.saving === "1") {
+    sel.value = oldVal;
+    return;
+  }
+
+  if (newVal === oldVal) {
+    setCourseModalItcMsg(sel, "");
+    return;
+  }
+
+  sel.dataset.saving = "1";
+  sel.disabled = true;
+  setCourseModalItcMsg(sel, "Saving...");
+
+  try {
+    const resp = await fetch(`/courses/api/course/${courseId}/itc-status`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: JSON.stringify({ status_itc: newVal })
+    });
+
+    const data = await resp.json().catch(() => ({}));
+
+    if (!resp.ok || !data.success) {
+      const err = (data && data.error) ? data.error : "Error";
+      setCourseModalItcMsg(sel, err, true);
+      sel.value = oldVal;
+      return;
+    }
+
+    const confirmedStatus = (data && data.status_itc) ? data.status_itc : newVal;
+    applyItcStatusUi(courseId, confirmedStatus);
+    setCourseModalItcMsg(sel, "Saved");
+    setTimeout(() => setCourseModalItcMsg(sel, ""), 1200);
+  } catch (err) {
+    setCourseModalItcMsg(sel, "Network error", true);
+    sel.value = oldVal;
+  } finally {
+    sel.disabled = false;
+    sel.dataset.saving = "0";
+  }
 });
 
 /* ================= AUTO REFRESH ================= */
@@ -284,15 +585,80 @@ document.addEventListener('DOMContentLoaded', function () {
         { credentials: "same-origin" });
       if (r.ok) {
         const html = await r.text();
-        if (!html.includes("<html")) el.innerHTML = html;
+        if (!html.includes("<html")) {
+          el.innerHTML = html;
+          syncPickupSoundsFromDom();
+        }
+      } else {
+        syncPickupSoundsFromDom();
       }
     } finally {
       setTimeout(tick, document.hidden ? 60000 : 20000);
     }
   }
 
+  syncPickupSoundsFromDom();
   tick();
 })();
+
+document.addEventListener("submit", async function (e) {
+  const form = e.target.closest("#itc-pickup-container form[data-pickup-done-form='1']");
+  if (!form) return;
+
+  e.preventDefault();
+
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const notificationId = form.dataset.notificationId;
+  const card = form.closest("[data-pickup-notification='1']");
+  const originalText = submitBtn ? submitBtn.textContent : "";
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Saving...";
+  }
+
+  try {
+    const resp = await fetch(form.action, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "X-Requested-With": "XMLHttpRequest"
+      }
+    });
+
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.success) {
+      throw new Error(data.error || "Error marking pickup as done");
+    }
+
+    if (card) {
+      card.remove();
+      syncPickupSoundsFromDom();
+    }
+
+    if (typeof window.refreshSidebarCounters === "function") {
+      window.refreshSidebarCounters();
+    }
+  } catch (err) {
+    console.error(err);
+    if (submitBtn) {
+      submitBtn.textContent = "Error";
+      setTimeout(() => {
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+      }, 1200);
+    }
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.textContent = "Done";
+  }
+});
+
+window.addEventListener("beforeunload", function () {
+  pickupReminderManager.syncGlobalPickupReminder([]);
+});
 </script>
 
 {% endblock %}

@@ -701,48 +701,14 @@ def read_uid_once():
     db = SessionLocal()
     try:
         device = db.query(models.Device).filter(models.Device.uid == uid).first()
-        active_loan = None
-        if device:
-            a = (
-                db.query(models.Assignment)
-                .join(models.Course, models.Assignment.course_id == models.Course.id)
-                .filter(
-                    models.Assignment.device_id == device.id,
-                    models.Assignment.status == "active",
-                    models.Assignment.released_at.is_(None),
-                )
-                .order_by(models.Assignment.assigned_at.desc())
-                .first()
-            )
-
-            if a:
-                # “course code” = campo Course.course (en tu modelo)
-                active_loan = {
-                    "assignment_id": a.id,
-                    "course_id": a.course_id,
-                    "course_code": (a.course.course or "").strip() if a.course else "",
-                }
-
-        asset_type_code = None
-        parent_code = None
-        if device and device.asset_type:
-            asset_type_code = device.asset_type.code
-            parent_code = device.asset_type.parent.code if device.asset_type.parent else None
-        print("UID", uid, "device", device.id if device else None,
-            "asset_type_id", getattr(device, "asset_type_id", None) if device else None,
-            "asset_type_code", asset_type_code, "parent_code", parent_code,
-            "status", device.status if device else None)
-        return jsonify({
-            "success": True,
-            "uid": uid,
-            "device_id": device.id if device else None,
-            "device_name": device.name if device else None,
-            "barcode": device.barcode if device else None,
-            "device_status": device.status if device else None,          # <-- NUEVO
-            "asset_type_code": asset_type_code,                          # <-- NUEVO
-            "asset_type_parent_code": parent_code,                       # <-- NUEVO (por si CARD está en el parent)
-            "active_loan": active_loan,
-        })
+        return jsonify(
+            {
+                "success": True,
+                "uid": uid,
+                "device_id": device.id if device else None,
+                "device_name": device.name if device else None,
+            }
+        )
     finally:
         db.close()
 

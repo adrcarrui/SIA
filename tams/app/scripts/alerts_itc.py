@@ -379,7 +379,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
             for lk in (r.get("legacy_keys") or []):
                 keys.append(lk)
         keys = list(dict.fromkeys(keys))
-        course_label = (b["course"].course or b["course"].name or f"Course #{b['course_id']}").strip()
+
         alerts.append({
             "type": "course_agg",
             "severity": b["severity"] or "notice",
@@ -387,7 +387,6 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
             "message": message,
             "course": b["course"],
             "course_id": b["course_id"],
-            "course_label": course_label,
             "reasons": b["reasons"],
             "keys": keys,
             "extra": b["extra"],

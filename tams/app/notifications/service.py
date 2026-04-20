@@ -1,6 +1,12 @@
 from app.models import Notification
 from sqlalchemy import and_
 
+PICKUP_NOTIFICATION_TYPES = (
+    "pickup_needed",
+    "pickup_needed_devices",
+    "pickup_needed_forms",
+)
+
 
 def get_itc_pickup_notifications(db, user):
     """
@@ -22,6 +28,7 @@ def get_itc_pickup_notifications(db, user):
         q.filter(
             Notification.active.is_(True),
             Notification.status == "open",
+            Notification.type.in_(PICKUP_NOTIFICATION_TYPES),
         )
         .order_by(Notification.created_at.desc())
         .all()

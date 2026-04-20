@@ -1,5 +1,6 @@
 ﻿from flask import render_template, session, request, redirect, url_for, flash
 from flask_login import login_required, current_user
+from flask import jsonify
 from . import bp
 from app.extensions import db
 from app.db import SessionLocal
@@ -15,6 +16,19 @@ from app.scripts.alert_filters import reason_counts_for_calendar
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from app.notifications.service import get_itc_pickup_notifications
+
+PICKUP_NOTIFICATION_TYPES = (
+    "pickup_needed",
+    "pickup_needed_devices",
+    "pickup_needed_forms",
+)
+
+
+def _pickup_type_from_notification_type(notification_type: str | None) -> str:
+    ntype = (notification_type or "").strip().lower()
+    if ntype == "pickup_needed_forms":
+        return "forms"
+    return "devices"
 
 def _notif_scope_for_user():
     role = (getattr(current_user, "role", "") or "").strip().lower()
@@ -345,47 +359,33 @@ def index():
         # =====================================================
         # ITC: aviso rápido de "pickup needed" (si existe)
         # =====================================================
-        pickup_notif = None
+        pickup_cards = []
         if is_itc or is_admin:
-            pickup_notif = (
+            pickup_notifs = (
                 db.query(models.Notification)
                 .filter(models.Notification.active.is_(True))
                 .filter(models.Notification.department_target == "ITC support")
                 .filter(models.Notification.status == "open")
-                .filter(models.Notification.type == "pickup_needed")
+                .filter(models.Notification.type.in_(PICKUP_NOTIFICATION_TYPES))
                 .order_by(models.Notification.created_at.desc())
-                .first()
-            )    
+                .all()
+            )
 
-        pickup_message_display = None
+            for pickup_notif in pickup_notifs:
+                note = None
+                raw_msg = pickup_notif.message or ""
+                if "Note:" in raw_msg:
+                    note = raw_msg.split("Note:", 1)[1].strip()
 
-        if pickup_notif:
-            # Hora local bien formateada
-            local_when = None
-            if pickup_notif.created_at:
-                dt = pickup_notif.created_at
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                local_dt = dt.astimezone(ZoneInfo("Europe/Madrid"))
-                local_when = local_dt.strftime("%d/%m/%Y %H:%M")
+                parts = []
+                if note:
+                    parts.append(f"Note: {note}")
 
-            # Extraer nota si existe (sin jugar a regex extremo)
-            note = None
-            raw_msg = pickup_notif.message or ""
-            if "Note:" in raw_msg:
-                note = raw_msg.split("Note:", 1)[1].strip()
-
-            # Construir mensaje final
-            parts = []
-            #parts.append("TCO requests ITC pickup.")
-
-            #if local_when:
-            #    parts.append(f"When: {local_when}")
-
-            if note:
-                parts.append(f"Note: {note}")
-
-            pickup_message_display = "\n".join(parts)   
+                pickup_cards.append({
+                    "notif": pickup_notif,
+                    "pickup_type": _pickup_type_from_notification_type(getattr(pickup_notif, "type", None)),
+                    "message_display": "\n".join(parts),
+                })
         # =====================================================
         # Render
         # =====================================================
@@ -400,8 +400,7 @@ def index():
             device_stats=device_stats,
             alerts=alerts,
             alerts_summary=alerts_summary,
-            pickup_notif=pickup_notif,
-            pickup_message_display=pickup_message_display,
+            pickup_cards=pickup_cards,
         )
 
     finally:
@@ -542,31 +541,36 @@ def mark_pickup_done(notif_id):
         is_itc = (actor_dept == "itc support") or actor_role.startswith("itc")
 
         if not (is_admin or is_itc):
+            if (request.headers.get("X-Requested-With") or "") == "XMLHttpRequest":
+                return jsonify({"success": False, "error": "Not allowed"}), 403
             flash("Not allowed.", "danger")
             return redirect(url_for("main.index"))
 
         n = db.query(Notification).get(notif_id)
         if not n or not (n.active is True):
+            if (request.headers.get("X-Requested-With") or "") == "XMLHttpRequest":
+                return jsonify({"success": False, "error": "Notification not found"}), 404
             flash("Notification not found.", "warning")
             return redirect(url_for("main.index"))
 
         # Asegura que no puedan cerrar “cualquier cosa”
-        if (n.type or "") != "pickup_needed" or (n.department_target or "") != "ITC support":
+        if (n.type or "") not in PICKUP_NOTIFICATION_TYPES or (n.department_target or "") != "ITC support":
+            if (request.headers.get("X-Requested-With") or "") == "XMLHttpRequest":
+                return jsonify({"success": False, "error": "Not allowed"}), 403
             flash("Not allowed.", "danger")
             return redirect(url_for("main.index"))
 
         n.status = "done"
-        # opcional: marcar como leído también
-        try:
-            n.read = True
-        except Exception:
-            pass
+        n.read_at = datetime.now(timezone.utc)
+        n.read_by_user_id = getattr(current_user, "id", None)
 
         # opcional: si tienes campos de auditoría
         if hasattr(n, "updated_at"):
             n.updated_at = datetime.now(timezone.utc)
 
         db.commit()
+        if (request.headers.get("X-Requested-With") or "") == "XMLHttpRequest":
+            return jsonify({"success": True, "notif_id": n.id, "status": n.status})
         flash("Pickup marked as done.", "success")
         return redirect(url_for("main.index"))
 
@@ -586,44 +590,38 @@ def dashboard_itc_pickup_fragment():
         is_admin = ("admin" in actor_role)
         is_itc = (actor_dept == "itc support") or actor_role.startswith("itc")
 
-        pickup_notif = None
+        pickup_notifs = []
         if is_itc or is_admin:
-            pickup_notif = (
+            pickup_notifs = (
                 db.query(models.Notification)
                 .filter(models.Notification.active.is_(True))
                 .filter(models.Notification.department_target == "ITC support")
                 .filter(models.Notification.status == "open")
-                .filter(models.Notification.type == "pickup_needed")
+                .filter(models.Notification.type.in_(PICKUP_NOTIFICATION_TYPES))
                 .order_by(models.Notification.created_at.desc())
-                .first()
+                .all()
             )
 
-        pickup_message_display = None
-        if pickup_notif:
-            local_when = None
-            if pickup_notif.created_at:
-                dt = pickup_notif.created_at
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                local_dt = dt.astimezone(ZoneInfo("Europe/Madrid"))
-                local_when = local_dt.strftime("%d/%m/%Y %H:%M")
-
+        pickup_cards = []
+        for pickup_notif in pickup_notifs:
             note = None
             raw_msg = pickup_notif.message or ""
             if "Note:" in raw_msg:
                 note = raw_msg.split("Note:", 1)[1].strip()
 
             parts = []
-            # if local_when: parts.append(f"When: {local_when}")
             if note:
                 parts.append(f"Note: {note}")
 
-            pickup_message_display = "\n".join(parts)
+            pickup_cards.append({
+                "notif": pickup_notif,
+                "pickup_type": _pickup_type_from_notification_type(getattr(pickup_notif, "type", None)),
+                "message_display": "\n".join(parts),
+            })
 
         return render_template(
             "dashboard/_itc_pickup_fragment.html",
-            pickup_notif=pickup_notif,
-            pickup_message_display=pickup_message_display,
+            pickup_cards=pickup_cards,
         )
     finally:
         db.close()

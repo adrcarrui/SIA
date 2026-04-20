@@ -23,26 +23,6 @@ DEVICE_TYPES = ["vending", "canteen", "instructor", "guest"]
 DEVICE_STATUSES = ["assigned", "available", "lost", "annulled"]
 
 
-def _norm(v: str | None) -> str | None:
-    v = (v or "").strip()
-    return v if v else None
-
-def _find_device_by_uid_or_barcode(db, uid: str | None, barcode: str | None, exclude_id: int | None = None):
-    clauses = []
-    if uid:
-        clauses.append(models.Device.uid == uid)
-    if barcode:
-        clauses.append(models.Device.barcode == barcode)
-
-    if not clauses:
-        return None
-
-    q = db.query(models.Device).filter(or_(*clauses))
-    if exclude_id is not None:
-        q = q.filter(models.Device.id != exclude_id)
-
-    return q.first()
-
 def _notif_dept_scope():
     role = (getattr(current_user, "role", "") or "").strip().lower()
     dept = (getattr(current_user, "department", "") or "").strip()
@@ -449,14 +429,17 @@ def new_device():
         if request.method == "POST":
             page_title = "New device"
 
-            name    = _norm(request.form.get("name"))
-            uid     = _norm(request.form.get("uid"))
-            notes   = _norm(request.form.get("notes"))
-            barcode = _norm(request.form.get("barcode"))
+            name   = (request.form.get("name") or "").strip()
+            uid    = (request.form.get("uid") or "").strip()
+
+            notes  = (request.form.get("notes") or "").strip()
+            barcode = (request.form.get("barcode") or "").strip() or None
+
             asset_type_id_raw = (request.form.get("asset_type_id") or "").strip()
 
             role = (getattr(current_user, "role", "") or "").strip().lower()
             dept = (getattr(current_user, "department", "") or "").strip().lower()
+            is_admin = ("admin" in role)
             is_itc = (dept == "itc support") or role.startswith("itc")
             is_tco = (dept == "tco")
 
@@ -472,6 +455,7 @@ def new_device():
             else:
                 active_val = request.form.get("active")
                 active = True if active_val is None else (active_val in ("on", "1", "true", "True"))
+
 
             if status not in DEVICE_STATUSES:
                 flash("Estado inválido. Se usará 'available'.", "warning")
@@ -492,10 +476,12 @@ def new_device():
                     selected_child_id=None,
                 )
 
+            # Si es subtipo -> root = parent_id, child = at.id
+            # Si es root sin hijos -> root = at.id, child = None
             selected_root_id = at.parent_id if at.parent_id else at.id
             selected_child_id = at.id if at.parent_id else None
 
-            # ✅ Reglas por flags
+            # ✅ Reglas por flags (si no existen en root, da igual, queda False)
             if getattr(at, "requires_rfid", False) and not uid:
                 flash("UID es obligatorio para este tipo de asset.", "danger")
                 return render_template(
@@ -536,53 +522,15 @@ def new_device():
                 flash("Debes indicar UID o Barcode.", "danger")
                 return redirect(url_for("devices.new_device"))
 
-            # ✅ PRE-CHECK: UID/Barcode únicos (ANTES de insertar)
-            dup = _find_device_by_uid_or_barcode(db, uid, barcode)
-            if dup:
-
-                # Detectar si el tipo es COMPUTER
-                root_code = None
-                type_code = None
-                if at:
-                    type_code = (at.code or "").strip().upper()
-                    if at.parent:
-                        root_code = (at.parent.code or "").strip().upper()
-
-                is_computer = (root_code == "COMPUTER" or type_code == "COMPUTER")
-
-                bits = []
-
-                # Si es COMPUTER → solo mostrar barcode
-                if is_computer:
-                    if barcode and dup.barcode == barcode:
-                        bits.append(f"Barcode '{barcode}'")
-
-                # Si NO es computer → comportamiento normal
-                else:
-                    if uid and dup.uid == uid:
-                        bits.append(f"UID '{uid}'")
-                    if barcode and dup.barcode == barcode:
-                        bits.append(f"Barcode '{barcode}'")
-
-                msg = "Device not created. Already exists: " + " and ".join(bits)
-
-                if dup.name:
-                    msg += f" (device name: {dup.name})"
-                else:
-                    msg += f" (device #{dup.id})"
-
-                flash(msg, "modal_error")
-                return redirect(url_for("devices.index"))
-
             dtype = legacy_type_from_asset_code(at.code)
 
             d = models.Device(
                 uid=uid,
-                name=name,
+                name=name or None,
                 type=dtype,  # legacy
                 status=status,
                 active=active,
-                notes=notes,
+                notes=notes or None,
                 asset_type_id=at.id,
                 barcode=barcode,
                 updated_at=datetime.now(timezone.utc),
@@ -617,10 +565,18 @@ def new_device():
             try:
                 db.commit()
             except IntegrityError:
-                # race condition fallback
                 db.rollback()
-                flash("UID or BARCODE already exists, can't create device.", "modal_error")
-                return redirect(url_for("devices.index"))
+                flash("No se pudo crear el dispositivo. Revisa UID y valores únicos.", "danger")
+                return render_template(
+                    "devices/form.html",
+                    page_title=page_title,
+                    device=None,
+                    DEVICE_STATUSES=DEVICE_STATUSES,
+                    roots=roots,
+                    children_map=children_map,
+                    selected_root_id=selected_root_id,
+                    selected_child_id=selected_child_id,
+                )
 
             flash("Device creado.", "success")
             return redirect(url_for("devices.index"))
@@ -1059,4 +1015,3 @@ def _export_devices_pdf(devices):
         as_attachment=True,
         download_name="devices.pdf",
     )
-

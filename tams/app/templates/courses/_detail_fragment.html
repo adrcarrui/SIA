@@ -24,8 +24,25 @@
   {% set itc_color = 'primary' %}
 {% endif %}
       {% set dept_l = (current_user.department or '')|lower %}
-    {% if dept_l != 'tco' %}Status ITC: 
-      <span class="badge text-bg-{{ itc_color }}">{{ course.status_itc or 'start' }}</span>
+    {% if dept_l != 'tco' %}
+      Status ITC:
+      {% set current_itc = (course.status_itc if course.status_itc in (course_itc_statuses or []) else 'start') %}
+      {% if show_calendar_itc_status_editor %}
+        <span class="d-inline-flex align-items-center gap-2 ms-1">
+          <select class="form-select form-select-sm itc-status-select"
+                  data-course-id="{{ course.id }}"
+                  data-old-value="{{ current_itc }}"
+                  data-saving="0"
+                  style="min-width: 160px;">
+            {% for st in (course_itc_statuses or []) %}
+              <option value="{{ st }}" {% if current_itc == st %}selected{% endif %}>{{ st }}</option>
+            {% endfor %}
+          </select>
+          <span class="small text-muted itc-status-msg" data-course-id="{{ course.id }}"></span>
+        </span>
+      {% else %}
+        <span class="badge text-bg-{{ itc_color }}">{{ course.status_itc or 'start' }}</span>
+      {% endif %}
     {% endif %}
     </h5>
 
