@@ -1,7 +1,7 @@
 {# templates/partials/_alerts_accordion.html #}
 
       {# Alerts resumen #}
-      <div class="col-8 mb-3">
+      <div class="mb-3">
         <div class="accordion" id="alertsAccordion">
           <div class="accordion-item">
 
@@ -29,7 +29,7 @@
                 {# NEW: envolvemos los badges en un contenedor para actualizarlos #}
                 <div id="alerts-summary-badges">
                   {% if alerts_summary %}
-                    <div class="mt-2 small d-flex flex-wrap">
+                    <div class="mt-2 small d-flex flex-wrap gap-2 justify-content-center">
                       <span class="badge btn-notice-primary text-dark fs-6 px-3 py-2">
                         Notice: {{ alerts_summary.notice or 0 }}
                       </span>

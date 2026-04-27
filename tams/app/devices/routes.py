@@ -22,6 +22,9 @@ from app.scripts import log_movement
 DEVICE_TYPES = ["vending", "canteen", "instructor", "guest"]
 DEVICE_STATUSES = ["assigned", "available", "lost", "annulled"]
 
+def _norm_upper(v: str | None) -> str | None:
+    v = (v or "").strip().upper()
+    return v if v else None
 
 def _norm(v: str | None) -> str | None:
     v = (v or "").strip()
@@ -450,9 +453,9 @@ def new_device():
             page_title = "New device"
 
             name    = _norm(request.form.get("name"))
-            uid     = _norm(request.form.get("uid"))
+            uid     = _norm_upper(request.form.get("uid"))
             notes   = _norm(request.form.get("notes"))
-            barcode = _norm(request.form.get("barcode"))
+            barcode = _norm_upper(request.form.get("barcode"))
             asset_type_id_raw = (request.form.get("asset_type_id") or "").strip()
 
             role = (getattr(current_user, "role", "") or "").strip().lower()
@@ -674,11 +677,11 @@ def edit_device(device_id):
                 "notes": d.notes,
             }
 
-            uid    = (request.form.get("uid") or "").strip()
+            uid    = _norm_upper(request.form.get("uid"))
             name   = (request.form.get("name") or "").strip()
             status = (request.form.get("status") or "available").strip() or "available"
             notes  = (request.form.get("notes") or "").strip()
-            barcode = (request.form.get("barcode") or "").strip() or None
+            barcode = _norm_upper(request.form.get("barcode"))
             active_val = request.form.get("active")
 
             asset_type_id_raw = (request.form.get("asset_type_id") or "").strip()

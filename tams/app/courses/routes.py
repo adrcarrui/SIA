@@ -236,7 +236,7 @@ def _load_req_map_for_course(db, course_id: int) -> dict:
 def edit_course(course_id):
     db = SessionLocal()
     try:
-        c = db.query(models.Course).get(course_id)
+        c = db.get(models.Course, course_id)
         if not c:
             flash("Course not found.", "danger")
             return redirect(url_for("courses.index"))
@@ -301,16 +301,33 @@ def edit_course(course_id):
             except ValueError:
                 trainees_val = None
 
-            # ============================
-            # ✅ NUEVO: validación fechas (igual que new_course) SIN CAMBIAR NADA MÁS
-            # ============================
+            # Validación fechas
             if not start_date:
                 flash("Invalid start date", "danger")
+
+                c.name = name or None
+                c.client = client or None
+                c.notes = notes or None
+                c.status_itc = status_itc
+                c.status_tco = status_tco
+                c.start_date = None
+                c.end_date = end_date
+                c.trainees = trainees_val
+
                 return _render_course_form(db, "Edit course", c)
 
-            # end_date solo se valida si el usuario ha escrito algo
             if end_str and not end_date:
                 flash("Invalid end date", "danger")
+
+                c.name = name or None
+                c.client = client or None
+                c.notes = notes or None
+                c.status_itc = status_itc
+                c.status_tco = status_tco
+                c.start_date = start_date
+                c.end_date = None
+                c.trainees = trainees_val
+
                 return _render_course_form(db, "Edit course", c)
 
             MIN_YEAR = 2025
@@ -322,6 +339,16 @@ def edit_course(course_id):
                     f"Year must be between {MIN_YEAR} and {MAX_YEAR}.",
                     "danger",
                 )
+
+                c.name = name or None
+                c.client = client or None
+                c.notes = notes or None
+                c.status_itc = status_itc
+                c.status_tco = status_tco
+                c.start_date = start_date
+                c.end_date = end_date
+                c.trainees = trainees_val
+
                 return _render_course_form(db, "Edit course", c)
 
             if end_date and not (MIN_YEAR <= end_date.year <= MAX_YEAR):
@@ -330,19 +357,62 @@ def edit_course(course_id):
                     f"Year must be between {MIN_YEAR} and {MAX_YEAR}.",
                     "danger",
                 )
+
+                c.name = name or None
+                c.client = client or None
+                c.notes = notes or None
+                c.status_itc = status_itc
+                c.status_tco = status_tco
+                c.start_date = start_date
+                c.end_date = end_date
+                c.trainees = trainees_val
+
                 return _render_course_form(db, "Edit course", c)
 
             if end_date and end_date < start_date:
                 flash("End date cannot be earlier than start date.", "danger")
-                return _render_course_form(db, "Edit course", c)
-            # ============================
 
-            # ❌ ELIMINADA la regla "Course o Name"
-            # ✅ En edición: Course es obligatorio y NO se puede borrar
+                c.name = name or None
+                c.client = client or None
+                c.notes = notes or None
+                c.status_itc = status_itc
+                c.status_tco = status_tco
+                c.start_date = start_date
+                c.end_date = end_date
+                c.trainees = trainees_val
+
+                return _render_course_form(db, "Edit course", c)
+
+            # Course obligatorio
             if not course_code:
                 flash("Course code is required and cannot be removed.", "warning")
 
-                # Repoblar SIN tocar c.course
+                # Repoblar sin tocar c.course original
+                c.name = name or None
+                c.client = client or None
+                c.notes = notes or None
+                c.status_itc = status_itc
+                c.status_tco = status_tco
+                c.start_date = start_date
+                c.end_date = end_date
+                c.trainees = trainees_val
+
+                return _render_course_form(db, "Edit course", c)
+
+            # Validar duplicado antes de aplicar cambios
+            existing_course = (
+                db.query(models.Course)
+                .filter(
+                    models.Course.course == course_code,
+                    models.Course.id != c.id,
+                )
+                .first()
+            )
+
+            if existing_course:
+                flash(f"Course code '{course_code}' already exists.", "danger")
+
+                # Repoblar sin tocar c.course original
                 c.name = name or None
                 c.client = client or None
                 c.notes = notes or None
@@ -365,7 +435,6 @@ def edit_course(course_id):
             c.status_itc = status_itc
             c.notes = notes or None
 
-
             # Responsible
             resp_raw = (request.form.get("responsible_id") or "").strip()
             if resp_raw:
@@ -375,7 +444,7 @@ def edit_course(course_id):
                     candidate_id = None
 
                 if candidate_id:
-                    resp_user = db.query(models.User).get(candidate_id)
+                    resp_user = db.get(models.User, candidate_id)
                     if (
                         resp_user
                         and resp_user.active
@@ -415,14 +484,11 @@ def edit_course(course_id):
             itc_fields = {"course", "name", "client", "start_date", "end_date", "status_itc", "trainees", "notes"}
             changes = build_changes(before_data, after_data, allow_fields=itc_fields)
 
-            # ✅ Notificación ITC: incluye BEFORE/AFTER legible
+            # Notificación ITC
             actor_dept = (getattr(current_user, "department", "") or "").strip()
             actor_role = (getattr(current_user, "role", "") or "").strip().lower()
             is_tco_actor = (actor_dept.upper() == "TCO") and ("admin" not in actor_role)
 
-            # ✅ Notificación ITC:
-            # - Si lo edita TCO: notificar (si hay cambios/req_changed y el curso tiene ITC assets)
-            # - Si lo edita ITC/Admin: mantener tu comportamiento actual (también notifica con cambios)
             should_notify_itc = (changes or req_changed) and course_has_itc_assets(db, c.id) and (is_tco_actor or True)
 
             if should_notify_itc:
@@ -447,7 +513,7 @@ def edit_course(course_id):
                     message=(f"Updated by: {who} ({dept})\n\n" + "\n\n".join(parts)),
                 )
 
-            sync_usb_only_course_notification(db, c, current_user)
+            # sync_usb_only_course_notification(db, c, current_user)
 
             log_movement(
                 db,
@@ -466,7 +532,23 @@ def edit_course(course_id):
                 db.commit()
             except IntegrityError:
                 db.rollback()
-                flash("Course could not be updated. Check unique constraints.", "danger")
+                flash(
+                    f"Course code '{course_code}' already exists or violates a unique constraint.",
+                    "danger",
+                )
+
+                # Rehidratar valores visibles sin tocar el valor persistido original tras rollback
+                c = db.get(models.Course, course_id)
+                if c:
+                    c.name = name or None
+                    c.client = client or None
+                    c.notes = notes or None
+                    c.status_itc = status_itc
+                    c.status_tco = status_tco
+                    c.start_date = start_date
+                    c.end_date = end_date
+                    c.trainees = trainees_val
+
                 return _render_course_form(db, "Edit course", c)
 
             flash("Course updated.", "success")
@@ -476,7 +558,6 @@ def edit_course(course_id):
 
     finally:
         db.close()
-
 
 def _course_form_context(db, c):
     responsibles = (
@@ -1084,7 +1165,7 @@ def new_course():
                     ),
                 )
 
-            sync_usb_only_course_notification(db, new_c, current_user)
+            #sync_usb_only_course_notification(db, new_c, current_user)
 
             log_movement(
                 db,
@@ -1455,8 +1536,25 @@ def api_calendar_events():
         force_code_title = (actor_role == "admin") or (actor_dept == "itc support")
 
         is_itc_view = (actor_role == "admin") or (actor_dept == "itc support") or actor_role.startswith("itc")
+
+        valid_itc_course_ids = set()
+        if actor_dept == "itc support":
+            rows = (
+                db.query(CourseAssetRequirement.course_id)
+                .filter(
+                    CourseAssetRequirement.active.is_(True),
+                    CourseAssetRequirement.asset_type_id.in_([13, 15]),
+                    CourseAssetRequirement.quantity > 0,
+                )
+                .distinct()
+                .all()
+            )
+            valid_itc_course_ids = {row[0] for row in rows}
+
         events = []
         for c in courses:
+            if actor_dept == "itc support" and c.id not in valid_itc_course_ids:
+                continue
             itc_raw = getattr(c, "status_itc", None) or ""
             itc_key = css_slug(itc_raw)  # <- css safe
             itc_class = f"fc-itc-{itc_key}" if itc_key else None

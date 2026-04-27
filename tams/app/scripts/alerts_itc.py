@@ -6,6 +6,9 @@ from app.models import Course, Assignment, Device, AssetType, CourseAssetRequire
 ITC_DEPT = "ITC support"
 ITC_CODES = {"LAPTOP", "PENDRIVE"}
 
+USB_PENDING_STATUSES = {"start", "completed"}
+USB_READY_STATUSES = {"delivered", "end"}
+
 ITC_TERMINAL = {
     "delivered", "rt delivered", "msn delivered",
     "completed", "end", "collected",
@@ -98,6 +101,33 @@ def _assigned_laptops_by_course(db, course_ids: list[int]) -> dict[int, int]:
         out[cid] = int(cnt or 0)
     return out
 
+def _assigned_pendrives_by_course(db, course_ids: list[int]) -> dict[int, int]:
+    if not course_ids:
+        return {}
+
+    rows = (
+        db.query(
+            Assignment.course_id,
+            func.count(Assignment.id).label("cnt"),
+        )
+        .join(Device, Device.id == Assignment.device_id)
+        .join(AssetType, AssetType.id == Device.asset_type_id)
+        .filter(
+            Assignment.course_id.in_(course_ids),
+            Assignment.released_at.is_(None),
+            func.lower(Assignment.status) == "active",
+            AssetType.active.is_(True),
+            AssetType.managed_by_department == ITC_DEPT,
+            AssetType.code == "PENDRIVE",
+        )
+        .group_by(Assignment.course_id)
+        .all()
+    )
+
+    out = {cid: 0 for cid in course_ids}
+    for cid, cnt in rows:
+        out[cid] = int(cnt or 0)
+    return out
 
 def _bump_sev(cur: str | None, new: str) -> str:
     if not cur:
@@ -123,6 +153,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
     ids = [c.id for c in upcoming]
     required = _required_itc_by_course(db, ids)
     assigned_laptops = _assigned_laptops_by_course(db, ids)
+    assigned_pendrives = _assigned_pendrives_by_course(db, ids)
 
     # --- ACTIVE (curso activo hoy)
     active = (
@@ -137,6 +168,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
     active_ids = [c.id for c in active]
     required_active = _required_itc_by_course(db, active_ids)
     assigned_active_laptops = _assigned_laptops_by_course(db, active_ids)
+    assigned_active_pendrives = _assigned_pendrives_by_course(db, active_ids)
 
     # --- OVERDUE base (curso acabado)
     finished = (
@@ -163,8 +195,8 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
             by_course[c.id] = {
                 "course": c,
                 "course_id": c.id,
-                "reasons": [],       # list[{"key","text","extra","legacy_keys"}]
-                "keys_set": set(),   # dedup por key principal (no por legacy)
+                "reasons": [],
+                "keys_set": set(),
                 "severity": None,
                 "extra": {},
             }
@@ -178,7 +210,6 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
         extra: dict | None = None,
         legacy_keys: list[str] | None = None,
     ):
-        # dedup SOLO por key principal
         if key in bucket["keys_set"]:
             return
         bucket["keys_set"].add(key)
@@ -206,7 +237,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
         days_left = (c.start_date - today).days
         sev = _severity_for_days_left(days_left)
         if sev is None:
-            continue  # fuera de ventana (por si acaso)
+            continue
 
         cname = c.course or c.name or f"Course #{c.id}"
         status_itc = (c.status_itc or "").strip().lower()
@@ -214,7 +245,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
 
         bucket = ensure_course_bucket(c)
 
-        # 2) laptops mismatch (unificado)
+        # Laptops mismatch
         if req_l > 0:
             asg_l = assigned_laptops.get(c.id, 0)
 
@@ -234,37 +265,67 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
                     text,
                     sev=sev_m,
                     extra={"days_left": days_left, "assigned": asg_l, "required": req_l},
-                    legacy_keys=legacy
+                    legacy_keys=legacy,
                 )
 
             bucket["extra"]["required_laptops"] = req_l
             bucket["extra"]["assigned_laptops"] = asg_l
 
-        # 3) Día 0: status ITC no terminal
-        if days_left == 0 and not is_terminal and (req_l > 0 or req_p > 0):
-            parts = []
-            legacy = []
+        # USB / Pendrives preparation
+        # Los USB no se asignan como devices. Se controlan por status_itc.
+        if req_p > 0:
+            usb_status_relevant = status_itc in USB_PENDING_STATUSES
 
-            if req_l > 0:
-                parts.append(f"laptops required ({req_l})")
-                legacy.append("itc_laptops_not_terminal_today")
-            if req_p > 0:
-                parts.append(f"pendrives required ({req_p})")
-                legacy.append("itc_pendrives_not_terminal_today")
+            if usb_status_relevant and days_left in (3, 2, 1, 0):
+                sev_p = _severity_for_days_left(days_left)
 
-            need_txt = " and ".join(parts)
+                if days_left == 0:
+                    text = (
+                        f"{cname} starts today: USB/pendrives required ({req_p}) "
+                        f"but ITC status is '{status_itc}' instead of 'delivered' or 'end'."
+                    )
+                    legacy = ["itc_pendrives_status_not_ready_today"]
+                else:
+                    text = (
+                        f"{cname} starts in {days_left} day(s): USB/pendrives required ({req_p}) "
+                        f"but ITC status is '{status_itc}' instead of 'delivered' or 'end'."
+                    )
+                    legacy = ["itc_pendrives_status_not_ready_start_soon"]
 
+                add_reason(
+                    bucket,
+                    "itc_pendrives_status_not_ready",
+                    text,
+                    sev=sev_p,
+                    extra={
+                        "days_left": days_left,
+                        "required_pendrives": req_p,
+                        "status_itc": status_itc,
+                        "expected_statuses": sorted(USB_READY_STATUSES),
+                    },
+                    legacy_keys=legacy,
+                )
+
+            bucket["extra"]["required_pendrives"] = req_p
+            bucket["extra"]["status_itc"] = status_itc
+        # Día 0: status ITC no terminal
+        # Día 0: laptops requeridos y status ITC no terminal
+        # USB/pendrives se validan con su propia regla basada en delivered/end.
+        if days_left == 0 and req_l > 0 and not is_terminal:
             add_reason(
                 bucket,
-                "itc_assets_not_terminal_today",
-                f"{cname} starts today: {need_txt} but ITC status is '{status_itc}' (expected terminal).",
+                "itc_laptops_not_terminal_today",
+                (
+                    f"{cname} starts today: laptops required ({req_l}) "
+                    f"but ITC status is '{status_itc}' (expected terminal)."
+                ),
                 sev="critical",
-                extra={"required_laptops": req_l, "required_pendrives": req_p, "status_itc": status_itc},
-                legacy_keys=legacy
+                extra={
+                    "required_laptops": req_l,
+                    "status_itc": status_itc,
+                },
+                legacy_keys=["itc_laptops_not_terminal_today"],
             )
-
-        if req_p > 0:
-            bucket["extra"]["required_pendrives"] = req_p
 
         bucket["extra"]["days_left"] = days_left
         bucket["extra"]["status_itc"] = status_itc
@@ -277,7 +338,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
         req_p = required_active.get(c.id, {}).get("PENDRIVE", 0)
 
         if req_l <= 0 and req_p <= 0:
-            continue  # no relevante ITC
+            continue
 
         if not c.start_date:
             continue
@@ -290,20 +351,18 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
 
         miss_window = _active_missing_window_days(c.start_date, c.end_date)
 
-        # Solo durante el 25% inicial (floor, min 1)
         if not (0 <= days_since_start < miss_window):
             continue
 
         cname = c.course or c.name or f"Course #{c.id}"
         bucket = ensure_course_bucket(c)
 
-        # Laptops: solo missing (no extra)
+        # Laptops mismatch activo
         if req_l > 0:
             asg_l = assigned_active_laptops.get(c.id, 0)
 
             if asg_l < req_l:
-                # Severidad progresiva dentro de la ventana
-                progress = (days_since_start + 1) / miss_window  # 0..1+
+                progress = (days_since_start + 1) / miss_window
                 if progress <= 0.34:
                     sev = "notice"
                 elif progress <= 0.67:
@@ -331,6 +390,8 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
             bucket["extra"]["required_laptops"] = req_l
             bucket["extra"]["assigned_laptops"] = asg_l
 
+        # USB/pendrives activo:
+        # No se valida por assignments porque los USB no existen como devices asignables.
         if req_p > 0:
             bucket["extra"]["required_pendrives"] = req_p
 
@@ -355,7 +416,7 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
             "itc_laptops_overdue_return",
             f"{cname} ended {days_late} day(s) ago: {alive_cnt} laptops still assigned (not returned).",
             sev=sev_overdue,
-            extra={"days_late": days_late, "alive_laptops": alive_cnt}
+            extra={"days_late": days_late, "alive_laptops": alive_cnt},
         )
         bucket["extra"]["days_late"] = days_late
         bucket["extra"]["alive_laptops"] = alive_cnt
@@ -370,7 +431,6 @@ def get_itc_upcoming_and_overdue_alerts(db) -> list[dict]:
 
         message = "\n".join([f"- {r['text']}" for r in b["reasons"]])
 
-        # keys = key principal + legacy_keys (compatibilidad con alert_states antiguos)
         keys = []
         for r in b["reasons"]:
             k = r.get("key")

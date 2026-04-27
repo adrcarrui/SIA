@@ -238,7 +238,7 @@ button[data-bs-toggle="dropdown"]::before {
   background-color: #6399ae;
 }
 
-.bg-courses {
+.bg-search {
   background-color: #ff9820;
 }
 .bg-alerts {
@@ -1185,3 +1185,35 @@ body.no-page-scroll { overflow: hidden; }
 .legend-chip.fc-itc-rt-delivered { background: var(--fc-itc-rt-delivered, #ff6601); }
 .legend-chip.fc-itc-loan { background: var(--fc-itc-loan, #e8d614); }
 .legend-chip.fc-itc-cancel-or-error { background: var(--fc-itc-cancel-or-error, #ff0217); }
+
+main.bg-content > section {
+  flex: 1 1 auto;
+  overflow: auto; /* 👈 CAMBIAR de overflow-y a overflow */
+}
+
+.calendar-container {
+  overflow-x: auto;
+}
+
+.dashboard-side-card,
+.dashboard-side-card .accordion,
+.dashboard-side-card .accordion-item,
+.dashboard-side-card .accordion-collapse,
+.dashboard-side-card .accordion-body {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dashboard-side-card .accordion-item {
+  overflow: hidden;
+}
+
+#lookupAccordion .accordion-button.collapsed {
+  background-color: #ff9820;
+  color: #000;
+}
+
+/* cerrado */
+#pickupAccordion .accordion-button.collapsed {
+  background-color: #688E26;
+}

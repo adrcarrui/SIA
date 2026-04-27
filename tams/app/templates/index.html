@@ -62,10 +62,68 @@
     </div>
 
     <!-- ================= RIGHT COLUMN ================= -->
-    <div class="col-lg-4 mb-3">
+    <div class="col-lg-3 mb-3">
 
-      <!-- DEVICES (sin auto-refresh) -->
-      <div class="col-8 mb-3">
+<!-- CARD / BARCODE LOOKUP -->
+ {% if actor_dept != 'itc support' %}
+<div class="mb-3 dashboard-side-card">
+  <div class="accordion" id="lookupAccordion">
+    <div class="accordion-item">
+      <h2 class="accordion-header">
+        <button class="accordion-button bg-devices fw-semibold"
+                data-bs-toggle="collapse"
+                data-bs-target="#lookupCollapse">
+          Card / barcode lookup
+        </button>
+      </h2>
+
+      <div id="lookupCollapse" class="accordion-collapse collapse show">
+        <div class="accordion-body">
+
+          <!-- input + read -->
+          <div class="input-group input-group-sm mb-2">
+            <input
+              type="text"
+              id="card-course-code"
+              class="form-control"
+              placeholder="Scan UID or barcode"
+              autocomplete="off"
+            >
+
+            <button
+              class="btn btn-outline-primary"
+              type="button"
+              id="btn-read-card-dashboard">
+              <span id="btn-read-card-dashboard-icon">📡</span>
+              Read card
+            </button>
+          </div>
+
+          <!-- search -->
+          <button
+            type="button"
+            class="btn btn-sm btn-primary mb-2"
+            id="btn-card-course-lookup">
+            Search
+          </button>
+
+          <!-- info -->
+          <div id="card-course-status" class="form-text text-muted">
+            Bring the card close and press <strong>Read card</strong>, or scan/type a barcode and press <strong>Enter</strong>.
+          </div>
+
+          <!-- result -->
+          <div id="card-course-result" class="mt-3"></div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+      <!-- DEVICES -->
+      <div class="mb-3 dashboard-side-card">
         <div class="accordion" id="devicesAccordion">
           <div class="accordion-item">
             <h2 class="accordion-header">
@@ -91,25 +149,32 @@
                       <tbody>
                         {% for row in device_stats %}
                           {% set raw = row.type or "unknown" %}
-                          {% set label = {
-                            'card_canteen': 'Canteen',
-                            'card_guest': 'Guest',
-                            'card_instructor': 'Instructor',
-                            'card_vending': 'Vending',
-                            'laptop': 'Laptop'
-                          }.get(raw, raw|capitalize) %}
-                          {% set color = {
-                            'card_canteen': 'success',
-                            'card_guest': 'secondary',
-                            'card_instructor': 'warning',
-                            'card_vending': 'primary',
-                            'laptop': 'info'
-                          }.get(raw, 'light') %}
-                          <tr>
-                            <td><span class="badge text-bg-{{ color }}">{{ label }}</span></td>
-                            <td class="text-center">{{ row.assigned }}/{{ row.total }}</td>
-                            <td class="text-center">{{ row.ratio|round(0) }}%</td>
-                          </tr>
+
+                          {% if raw not in ['card_instructor', 'card_guest'] %}
+
+                            {% set label = {
+                              'card_canteen': 'Canteen',
+                              'card_guest': 'Guest',
+                              'card_instructor': 'Instructor',
+                              'card_vending': 'Vending',
+                              'laptop': 'Laptop'
+                            }.get(raw, raw|capitalize) %}
+
+                            {% set color = {
+                              'card_canteen': 'success',
+                              'card_guest': 'secondary',
+                              'card_instructor': 'warning',
+                              'card_vending': 'primary',
+                              'laptop': 'info'
+                            }.get(raw, 'light') %}
+
+                            <tr>
+                              <td><span class="badge text-bg-{{ color }}">{{ label }}</span></td>
+                              <td class="text-center">{{ row.assigned }}/{{ row.total }}</td>
+                              <td class="text-center">{{ row.ratio|round(0) }}%</td>
+                            </tr>
+
+                          {% endif %}
                         {% endfor %}
                       </tbody>
                     </table>
@@ -128,97 +193,93 @@
         </div>
       </div>
 
-      <!-- ALERTS (AUTO-REFRESHED) -->
-      <div class="col-12 mb-3">
+      <!-- ALERTS -->
+      <div class="mb-3 dashboard-side-card">
         <div id="alerts-accordion-container">
           {% include "partials/_alerts_accordion.html" %}
         </div>
       </div>
 
-{# ================================
-   ITC Support: Courses color legend
-   Pegar debajo del accordion de Alerts
-   ================================ #}
+      {% set actor_dept = (current_user.department or '')|lower|trim %}
+      {% if actor_dept == 'itc support' %}
 
-{% set actor_dept = (current_user.department or '')|lower|trim %}
-{% if actor_dept == 'itc support' %}
+        {% set legend_rows = [
+          {'kind':'class', 'cls':'fc-itc-start', 'info':'Course start'},
+          {'kind':'class', 'cls':'fc-itc-completed', 'info':'Course completed'},
+          {'kind':'class', 'cls':'fc-itc-delivered', 'info':'Devices delivered'},
+          {'kind':'class', 'cls':'fc-itc-collected', 'info':'Devices collected'},
+          {'kind':'class', 'cls':'fc-course-end-itc', 'info':'Course finished'},
+          {'kind':'class', 'cls':'fc-itc-rt-delivered', 'info':'RT delivered'},
+          {'kind':'class', 'cls':'fc-itc-loan', 'info':'Loan'},
+          {'kind':'class', 'cls':'fc-itc-cancel-or-error', 'info':'Cancelled / error'}
+        ] %}
 
-  {% set legend_rows = [
-    {'kind':'class', 'cls':'fc-itc-start', 'info':'Course start'},
-    {'kind':'class', 'cls':'fc-itc-completed', 'info':'Course completed'},
-    {'kind':'class', 'cls':'fc-itc-delivered', 'info':'Devices delivered'},
-    {'kind':'class', 'cls':'fc-itc-collected', 'info':'Devices collected'},
-    {'kind':'class', 'cls':'fc-course-end-itc', 'info':'Course finished'},
-    {'kind':'class', 'cls':'fc-itc-rt-delivered', 'info':'RT delivered'},
-    {'kind':'class', 'cls':'fc-itc-loan', 'info':'Loan'},
-    {'kind':'class', 'cls':'fc-itc-cancel-or-error', 'info':'Cancelled / error'}
-  ] %}
+        <div class="mb-3">
+          <div class="accordion" id="coursesLegendAccordion">
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="coursesLegendHeader">
+                <button class="accordion-button bg-devices fw-semibold"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#coursesLegendCollapse"
+                        aria-expanded="true"
+                        aria-controls="coursesLegendCollapse">
+                  Courses legend
+                </button>
+              </h2>
 
-  <div class="col-8 mb-3">
-    <div class="accordion" id="coursesLegendAccordion">
-      <div class="accordion-item">
-        <h2 class="accordion-header" id="coursesLegendHeader">
-          <button class="accordion-button bg-devices fw-semibold"
-                  type="button"
-                  data-bs-toggle="collapse"
-                  data-bs-target="#coursesLegendCollapse"
-                  aria-expanded="true"
-                  aria-controls="coursesLegendCollapse">
-            Courses legend
-          </button>
-        </h2>
+              <div id="coursesLegendCollapse"
+                   class="accordion-collapse collapse show"
+                   aria-labelledby="coursesLegendHeader"
+                   data-bs-parent="#coursesLegendAccordion">
+                <div class="accordion-body">
 
-        <div id="coursesLegendCollapse"
-             class="accordion-collapse collapse show"
-             aria-labelledby="coursesLegendHeader"
-             data-bs-parent="#coursesLegendAccordion">
-          <div class="accordion-body">
+                  <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                      <thead>
+                        <tr>
+                          <th class="text-center" style="width:100px;">Color</th>
+                          <th class="text-center">Info</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for row in legend_rows %}
+                          <tr>
+                            <td class="align-middle text-center">
+                              {% if row.kind == 'var' %}
+                                <span class="text-center legend-chip d-block mx-auto"
+                                      style="background: var({{ row.var }});">
+                                </span>
+                              {% else %}
+                                <span class="text-center legend-chip {{ row.cls }} d-block mx-auto"></span>
+                              {% endif %}
+                            </td>
 
-            <div class="table-responsive">
-              <table class="table table-sm mb-0">
-                <thead>
-                  <tr>
-                    <th class="text-center" style="width:100px;">Color</th>
-                    <th class="text-center">Info</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for row in legend_rows %}
-                    <tr>
-                      <td class="align-middle text-center">
-                        {% if row.kind == 'var' %}
-                          <span class="text-center legend-chip d-block mx-auto"
-                                style="background: var({{ row.var }});">
-                          </span>
-                        {% else %}
-                          <span class="text-center legend-chip {{ row.cls }} d-block mx-auto"></span>
-                        {% endif %}
-                      </td>
+                            <td class="text-center align-middle text-muted fw-semibold">
+                              <span class="fw-semibold">{{ row.label }}</span>
+                              <div>{{ row.info }}</div>
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
 
-                      <td class="text-center align-middle text-muted fw-semibold">
-                        <span class="fw-semibold">{{ row.label }}</span>
-                        <div>{{ row.info }}</div>
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
+                </div>
+              </div>
             </div>
-
           </div>
         </div>
-      </div>
-    </div>
-  </div>
 
-{% endif %}
+      {% endif %}
+
       <!-- ITC PICKUP -->
       {% if (current_user.department or '')|trim == 'TCO' %}
-      <div class="col-8 mb-3">
+      <div class="mb-3">
         <div class="accordion" id="pickupAccordion">
           <div class="accordion-item">
             <h2 class="accordion-header">
-              <button class="accordion-button bg-alerts"
+              <button class="accordion-button bg-alerts fw-semibold"
                       data-bs-toggle="collapse"
                       data-bs-target="#pickupCollapse">
                 ITC pickup
@@ -430,6 +491,244 @@ function syncPickupSoundsFromDom() {
   pickupReminderManager.syncGlobalPickupReminder(collectActivePickupNotifications());
 }
 
+/* ================= CARD / BARCODE LOOKUP ================= */
+document.addEventListener("DOMContentLoaded", function () {
+  const input = document.getElementById("card-course-code");
+  const searchBtn = document.getElementById("btn-card-course-lookup");
+  const readBtn = document.getElementById("btn-read-card-dashboard");
+  const readIcon = document.getElementById("btn-read-card-dashboard-icon");
+  const statusEl = document.getElementById("card-course-status");
+  const result = document.getElementById("card-course-result");
+
+  const AGENT_UID_URL = "http://127.0.0.1:8765/uid";
+
+  if (!input || !searchBtn || !readBtn || !readIcon || !statusEl || !result) return;
+
+  function setLookupStatus(text, kind) {
+    statusEl.textContent = text || "";
+    statusEl.classList.remove("text-muted", "text-danger", "text-success");
+
+    if (kind === "danger") {
+      statusEl.classList.add("text-danger");
+    } else if (kind === "success") {
+      statusEl.classList.add("text-success");
+    } else {
+      statusEl.classList.add("text-muted");
+    }
+  }
+
+  function renderMessage(type, html) {
+    result.innerHTML = `<div class="alert alert-${type} mb-0">${html}</div>`;
+  }
+
+  async function lookupCardCourse() {
+    const value = (input.value || "").trim().toUpperCase();
+
+    if (!value) {
+      renderMessage("warning", "Please scan or enter a card UID or barcode.");
+      input.focus();
+      return;
+    }
+
+    result.innerHTML = `<div class="text-muted">Searching...</div>`;
+
+    try {
+      const response = await fetch(`/api/card-course-lookup?code=${encodeURIComponent(value)}`, {
+        credentials: "same-origin"
+      });
+
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw new Error(`Endpoint did not return JSON. HTTP ${response.status}`);
+      }
+
+      if (!response.ok) {
+        renderMessage("danger", data.message || "Lookup failed.");
+        return;
+      }
+
+      if (!data.found) {
+        renderMessage("warning", data.message || "Card or barcode not found.");
+        input.select();
+        return;
+      }
+
+      if (!data.assigned) {
+        renderMessage(
+          "info",
+          `
+            <div><strong>Device:</strong> ${data.device?.name || "-"}</div>
+            <div><strong>UID:</strong> ${data.device?.uid || "-"}</div>
+            <div><strong>Barcode:</strong> ${data.device?.barcode || "-"}</div>
+            <div><strong>Status:</strong> ${data.device?.status || "-"}</div>
+            <div class="mt-2">${data.message || "Device found, but it is not assigned to any active course."}</div>
+          `
+        );
+        input.select();
+        return;
+      }
+
+      renderMessage(
+        "success",
+        `
+          <div><strong>Course:</strong> ${data.course?.course || "-"}${data.course?.name ? " - " + data.course.name : ""}</div>
+          <div><strong>Client:</strong> ${data.course?.client || "-"}</div>
+          <div><strong>Dates:</strong> ${data.course?.start_date || "-"} → ${data.course?.end_date || "-"}</div>
+          <div><strong>TCO status:</strong> ${data.course?.status_tco || "-"}</div>
+          <div><strong>ITC status:</strong> ${data.course?.status_itc || "-"}</div>
+          <hr class="my-2">
+          <div><strong>Device:</strong> ${data.device?.name || "-"}</div>
+          <div><strong>UID:</strong> ${data.device?.uid || "-"}</div>
+          <div><strong>Barcode:</strong> ${data.device?.barcode || "-"}</div>
+        `
+      );
+
+      input.select();
+    } catch (error) {
+      console.error(error);
+      renderMessage("danger", error.message || "Unexpected error while searching.");
+    }
+  }
+
+  async function readCardIntoLookup() {
+    readBtn.disabled = true;
+    readIcon.textContent = "⌛";
+    setLookupStatus("Attempting to read card…", "muted");
+
+    try {
+      const aResp = await fetch(AGENT_UID_URL, {
+        method: "GET",
+        cache: "no-store"
+      });
+      const aData = await aResp.json().catch(() => ({}));
+
+      if (!aData || aData.success !== true || !aData.uid) {
+        if (aData && aData.reason === "no_card") {
+          setLookupStatus("No card detected. Bring it closer and try again.", "danger");
+        } else {
+          setLookupStatus(
+            (aData && aData.error) ? aData.error : "NFC agent not running on this PC (localhost:8765).",
+            "danger"
+          );
+        }
+        return;
+      }
+
+      const resp = await fetch("{{ url_for('users.read_uid_once') }}", {
+        method: "POST",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ uid: aData.uid })
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (!data.success || !data.uid) {
+        setLookupStatus(data.error || "Could not read card.", "danger");
+        return;
+      }
+
+      input.value = String(data.uid).toUpperCase();
+      setLookupStatus("UID read: " + data.uid + ". Searching…", "success");
+
+      await lookupCardCourse();
+
+    } catch (e) {
+      console.error(e);
+      setLookupStatus("Communication error.", "danger");
+    } finally {
+      readBtn.disabled = false;
+      readIcon.textContent = "📡";
+    }
+  }
+
+  readBtn.addEventListener("click", readCardIntoLookup);
+  searchBtn.addEventListener("click", lookupCardCourse);
+
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      lookupCardCourse();
+    }
+  });
+
+  input.addEventListener("input", function () {
+    input.value = input.value.toUpperCase();
+  });
+});
+/* ================= ITC STATUS IN DASHBOARD MODAL ================= */
+document.addEventListener("change", async function (e) {
+  const sel = e.target.closest("#courseModalBody .itc-status-select");
+  if (!sel) return;
+
+  const courseId = sel.dataset.courseId;
+  const newVal = sel.value;
+  const oldVal = sel.dataset.oldValue || "";
+
+  if (!courseId) return;
+
+  if (sel.dataset.saving === "1") {
+    sel.value = oldVal || sel.value;
+    return;
+  }
+
+  if (newVal === oldVal) {
+    setCourseModalItcMsg(sel, "");
+    return;
+  }
+
+  sel.dataset.saving = "1";
+  sel.disabled = true;
+  setCourseModalItcMsg(sel, "Saving...");
+
+  try {
+    const resp = await fetch(`/courses/api/course/${courseId}/itc-status`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({ status_itc: newVal })
+    });
+
+    const data = await resp.json().catch(() => ({}));
+
+    if (!resp.ok || !data.success) {
+      const err = data && data.error ? data.error : "Error";
+      setCourseModalItcMsg(sel, err, true);
+      sel.value = oldVal;
+      return;
+    }
+
+    sel.dataset.oldValue = newVal;
+    setCourseModalItcMsg(sel, "Saved");
+
+    applyItcStatusUi(courseId, newVal);
+
+    if (window.dashboardCalendar) {
+      window.dashboardCalendar.refetchEvents();
+    }
+
+    setTimeout(() => {
+      setCourseModalItcMsg(sel, "");
+    }, 1200);
+
+  } catch (err) {
+    console.error(err);
+    setCourseModalItcMsg(sel, "Network error", true);
+    sel.value = oldVal;
+  } finally {
+    sel.disabled = false;
+    sel.dataset.saving = "0";
+  }
+});
+
 /* ================= CALENDAR ================= */
 document.addEventListener('DOMContentLoaded', function () {
   const calendarEl = document.getElementById('calendar');
@@ -447,7 +746,6 @@ document.addEventListener('DOMContentLoaded', function () {
       right: 'dayGridMonth,timeGridWeek,listWeek'
     },
 
-    // opcional: nombres más humanos
     buttonText: {
       today: 'Today',
       month: 'Month',
@@ -468,61 +766,36 @@ document.addEventListener('DOMContentLoaded', function () {
 
   window.dashboardCalendar = calendar;
   calendar.render();
-});
 
-document.addEventListener("change", async function (e) {
-  const sel = e.target.closest("#courseModalBody .itc-status-select");
-  if (!sel) return;
-
-  const courseId = sel.dataset.courseId;
-  const newVal = sel.value;
-  const oldVal = sel.dataset.oldValue || "";
-
-  if (!courseId) return;
-
-  if (sel.dataset.saving === "1") {
-    sel.value = oldVal;
-    return;
+  function refreshCalendarSize() {
+    try {
+      calendar.updateSize();
+    } catch (e) {}
   }
 
-  if (newVal === oldVal) {
-    setCourseModalItcMsg(sel, "");
-    return;
-  }
+  setTimeout(refreshCalendarSize, 50);
+  setTimeout(refreshCalendarSize, 200);
+  setTimeout(refreshCalendarSize, 500);
 
-  sel.dataset.saving = "1";
-  sel.disabled = true;
-  setCourseModalItcMsg(sel, "Saving...");
+  window.addEventListener('resize', refreshCalendarSize);
 
-  try {
-    const resp = await fetch(`/courses/api/course/${courseId}/itc-status`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest"
-      },
-      body: JSON.stringify({ status_itc: newVal })
+  document.addEventListener('fullscreenchange', function () {
+    setTimeout(refreshCalendarSize, 50);
+    setTimeout(refreshCalendarSize, 200);
+    setTimeout(refreshCalendarSize, 500);
+  });
+
+  window.addEventListener('load', function () {
+    setTimeout(refreshCalendarSize, 50);
+    setTimeout(refreshCalendarSize, 200);
+  });
+
+  const calendarContainer = calendarEl.parentElement;
+  if (calendarContainer && typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(function () {
+      refreshCalendarSize();
     });
-
-    const data = await resp.json().catch(() => ({}));
-
-    if (!resp.ok || !data.success) {
-      const err = (data && data.error) ? data.error : "Error";
-      setCourseModalItcMsg(sel, err, true);
-      sel.value = oldVal;
-      return;
-    }
-
-    const confirmedStatus = (data && data.status_itc) ? data.status_itc : newVal;
-    applyItcStatusUi(courseId, confirmedStatus);
-    setCourseModalItcMsg(sel, "Saved");
-    setTimeout(() => setCourseModalItcMsg(sel, ""), 1200);
-  } catch (err) {
-    setCourseModalItcMsg(sel, "Network error", true);
-    sel.value = oldVal;
-  } finally {
-    sel.disabled = false;
-    sel.dataset.saving = "0";
+    ro.observe(calendarContainer);
   }
 });
 
@@ -608,7 +881,6 @@ document.addEventListener("submit", async function (e) {
   e.preventDefault();
 
   const submitBtn = form.querySelector('button[type="submit"]');
-  const notificationId = form.dataset.notificationId;
   const card = form.closest("[data-pickup-notification='1']");
   const originalText = submitBtn ? submitBtn.textContent : "";
 

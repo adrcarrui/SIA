@@ -1,11 +1,12 @@
 from . import bp
-from flask import jsonify
+from flask import jsonify, request
 from flask_login import login_required, current_user
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from app.db import SessionLocal
 from app import models
 from app.scripts.alerts_service import get_alerts_for_user
 from app.scripts.alert_filters import reason_counts_for_calendar
+
 
 
 def _notif_scope_for_user():
@@ -73,6 +74,94 @@ def counters():
         return jsonify({
             "alerts": alerts,
             "notifications": notifications
+        })
+    finally:
+        db.close()
+
+
+
+@bp.route("/card-course-lookup", methods=["GET"])
+@login_required
+def card_course_lookup():
+    code = (request.args.get("code") or "").strip().upper()
+
+    if not code:
+        return jsonify({
+            "found": False,
+            "message": "No code provided."
+        }), 400
+
+    db = SessionLocal()
+    try:
+        device = (
+            db.query(models.Device)
+            .filter(
+                or_(
+                    models.Device.uid == code,
+                    models.Device.barcode == code
+                )
+            )
+            .first()
+        )
+
+        if not device:
+            return jsonify({
+                "found": False,
+                "message": "Card or barcode not found."
+            })
+
+        assignment = (
+            db.query(models.Assignment)
+            .join(models.Course, models.Assignment.course_id == models.Course.id)
+            .filter(
+                models.Assignment.device_id == device.id,
+                models.Assignment.released_at.is_(None),
+                models.Assignment.status == "active",
+            )
+            .order_by(models.Assignment.id.desc())
+            .first()
+        )
+
+        if not assignment:
+            return jsonify({
+                "found": True,
+                "assigned": False,
+                "device": {
+                    "id": device.id,
+                    "name": device.name,
+                    "uid": device.uid,
+                    "barcode": getattr(device, "barcode", None),
+                    "status": device.status,
+                },
+                "message": "Device found, but it is not assigned to any active course."
+            })
+
+        course = assignment.course
+
+        return jsonify({
+            "found": True,
+            "assigned": True,
+            "device": {
+                "id": device.id,
+                "name": device.name,
+                "uid": device.uid,
+                "barcode": getattr(device, "barcode", None),
+                "status": device.status,
+            },
+            "assignment": {
+                "id": assignment.id,
+                "status": assignment.status,
+            },
+            "course": {
+                "id": course.id,
+                "course": course.course,
+                "name": course.name,
+                "client": course.client,
+                "start_date": course.start_date.isoformat() if course.start_date else None,
+                "end_date": course.end_date.isoformat() if course.end_date else None,
+                "status_tco": getattr(course, "status_tco", None),
+                "status_itc": getattr(course, "status_itc", None),
+            }
         })
     finally:
         db.close()

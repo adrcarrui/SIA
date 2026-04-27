@@ -43,13 +43,36 @@ def create_app():
 
     app.session_interface = DeptSessionInterface()
 
+    @app.context_processor
+    def inject_session_timeout_seconds():
+        if not current_user.is_authenticated:
+            return {"session_timeout_seconds": None}
+
+        dept = (getattr(current_user, "department", "") or "").strip().lower()
+
+        if dept == "tco":
+            timeout_seconds = 60 * 30
+        elif dept == "itc support":
+            timeout_seconds = 10 * 365 * 24 * 60 * 60
+        else:
+            timeout_seconds = 15 * 60
+
+        return {"session_timeout_seconds": timeout_seconds}
+
     @app.before_request
     def refresh_session_by_dept():
         if not current_user.is_authenticated:
             return
 
+        non_refresh_paths = (
+            "/api/counters",
+            "/dashboard/partials/alerts",
+            "/dashboard/itc-pickup-fragment",
+            "/courses/api/calendar-events",
+        )
+
         # No dejes que el polling mantenga viva la sesión
-        if request.path.startswith("/api/counters"):
+        if any(request.path.startswith(path) for path in non_refresh_paths):
             return
 
         # Renovar expiración en actividad real
@@ -66,6 +89,7 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+    app.config["SESSION_REFRESH_EACH_REQUEST"] = False
 
     # Inicializa extensiones (usa sqla_db, NO "db")
     sqla_db.init_app(app)

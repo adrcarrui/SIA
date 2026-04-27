@@ -573,6 +573,33 @@
   </script>
   
 {% endblock %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const sessionTimeoutSeconds = {{ session_timeout_seconds|tojson }};
+  const isAuthenticated = {{ (current_user.is_authenticated)|tojson }};
 
+  if (!isAuthenticated || !sessionTimeoutSeconds) {
+    return;
+  }
+
+  const loginUrl = "{{ url_for('auth.logout') }}";
+  let logoutTimer = null;
+
+  function goToLogin() {
+    window.location.href = loginUrl;
+  }
+
+  function resetLogoutTimer() {
+    clearTimeout(logoutTimer);
+    logoutTimer = setTimeout(goToLogin, sessionTimeoutSeconds * 1000);
+  }
+
+  ["click", "keydown"].forEach(function (eventName) {
+    document.addEventListener(eventName, resetLogoutTimer, { passive: true });
+  });
+
+  resetLogoutTimer();
+});
+</script>
 </body>
 </html>

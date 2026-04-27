@@ -91,7 +91,7 @@
                    value="{{ filter_description or '' }}">
           </div>
 
-          <!-- Buttons (in the last column so they stay at the end) -->
+          <!-- Buttons -->
           <div class="d-flex gap-2 justify-content-end">
             <button type="submit" class="btn btn-primary btn-sm">Filter</button>
             <a href="{{ url_for('movements.index') }}" class="btn btn-secondary btn-sm">Clear</a>
@@ -104,7 +104,6 @@
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0 movements-table-fixed">
 
-          <!-- Keep widths aligned with grid -->
           <colgroup>
             <col class="col-date">
             <col class="col-user">
@@ -312,57 +311,95 @@
       </div>
 
       <div class="modal-body">
-        <div class="row g-2 mb-3">
+        <!-- Resumen principal -->
+        <div class="row g-3 mb-3">
           <div class="col-md-4">
             <div class="small text-muted">Date</div>
             <div class="fw-semibold" id="md-date">-</div>
           </div>
+
           <div class="col-md-4">
             <div class="small text-muted">User</div>
             <div class="fw-semibold" id="md-user">-</div>
           </div>
+
           <div class="col-md-4">
+            <div class="small text-muted">Result</div>
+            <div class="fw-semibold" id="md-success">-</div>
+          </div>
+
+          <div class="col-md-6">
             <div class="small text-muted">Action</div>
             <div class="fw-semibold" id="md-action">-</div>
           </div>
 
           <div class="col-md-6">
-            <div class="small text-muted">Entity</div>
+            <div class="small text-muted">Item</div>
             <div class="fw-semibold" id="md-entity">-</div>
           </div>
-          <div class="col-md-3">
-            <div class="small text-muted">Success</div>
-            <div class="fw-semibold" id="md-success">-</div>
-          </div>
-          <div class="col-md-3">
-            <div class="small text-muted">Movement ID</div>
-            <div class="fw-semibold" id="md-id">-</div>
-          </div>
         </div>
 
+        <!-- Descripción principal -->
         <div class="mb-3">
           <div class="small text-muted">Description</div>
-          <div id="md-description" style="white-space: pre-line;">-</div>
+          <div id="md-description" class="border rounded bg-body-tertiary p-3" style="white-space: pre-line;">-</div>
         </div>
 
+        <!-- Lista de dispositivos si aplica -->
         <div class="mb-3 d-none" id="md-devices-wrap">
           <div class="small text-muted mb-1">Devices</div>
           <ul class="mb-0" id="md-devices"></ul>
         </div>
 
-        <div class="mb-3">
-          <div class="small text-muted">User agent</div>
-          <div class="font-monospace small" style="white-space: pre-wrap;" id="md-user-agent">-</div>
-        </div>
+        <!-- Detalle técnico plegable -->
+        <div class="mt-3">
+          <button
+            class="btn btn-outline-secondary btn-sm"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#md-technical"
+            aria-expanded="false"
+            aria-controls="md-technical"
+          >
+            Show technical details
+          </button>
 
-        <div class="row g-3">
-          <div class="col-md-6">
-            <div class="small text-muted mb-1">Before</div>
-            <pre class="bg-body-tertiary border rounded p-2 small mb-0" id="md-before" style="white-space: pre-wrap;">{}</pre>
-          </div>
-          <div class="col-md-6">
-            <div class="small text-muted mb-1">After</div>
-            <pre class="bg-body-tertiary border rounded p-2 small mb-0" id="md-after" style="white-space: pre-wrap;">{}</pre>
+          <div class="collapse mt-3" id="md-technical">
+            <div class="row g-3 mb-3">
+              <div class="col-md-4">
+                <div class="small text-muted">Movement ID</div>
+                <div class="fw-semibold" id="md-id">-</div>
+              </div>
+
+              <div class="col-md-4">
+                <div class="small text-muted">Entity type</div>
+                <div class="fw-semibold" id="md-entity-type">-</div>
+              </div>
+
+              <div class="col-md-4">
+                <div class="small text-muted">Entity ID</div>
+                <div class="fw-semibold" id="md-entity-id">-</div>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <div class="small text-muted">User agent</div>
+              <div class="font-monospace small border rounded bg-body-tertiary p-2"
+                   style="white-space: pre-wrap;"
+                   id="md-user-agent">-</div>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <div class="small text-muted mb-1">Before</div>
+                <div class="bg-body-tertiary border rounded p-3 small mb-0" id="md-before"></div>
+              </div>
+
+              <div class="col-md-6">
+                <div class="small text-muted mb-1">After</div>
+                <div class="bg-body-tertiary border rounded p-3 small mb-0" id="md-after"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -381,18 +418,189 @@ document.addEventListener("DOMContentLoaded", function () {
   const modal = document.getElementById("movementDetailModal");
   if (!modal) return;
 
-  function pretty(jsonStr) {
+  function safeParse(jsonStr) {
     try {
-      const obj = JSON.parse(jsonStr || "{}");
-      return JSON.stringify(obj, null, 2);
+      return JSON.parse(jsonStr || "{}");
     } catch (e) {
-      return (jsonStr || "{}");
+      return {};
     }
   }
 
-  function safeParse(jsonStr) {
-    try { return JSON.parse(jsonStr || "{}"); }
-    catch (e) { return {}; }
+  function humanizeAction(action) {
+    const map = {
+      create: "Created",
+      update: "Updated",
+      delete: "Deleted",
+      assign: "Assigned",
+      assign_pcs: "Assigned PCs",
+      pickup_notify: "Pickup notified",
+      update_itc_status: "Updated ITC status",
+      auto_lost: "Marked as lost",
+      bulk_return: "Bulk return"
+    };
+
+    return map[action] || action || "-";
+  }
+
+  function humanizeEntity(entityType, entityLabel, entityId) {
+    const typeMap = {
+      course: "Course",
+      device: "Device",
+      user: "User",
+      assignment: "Assignment",
+      asset_type: "Asset type",
+      notification: "Notification"
+    };
+
+    const typeText = typeMap[entityType] || entityType || "";
+
+    if (entityLabel) {
+      return typeText ? `${typeText} ${entityLabel}` : entityLabel;
+    }
+
+    if (entityId) {
+      return typeText ? `${typeText} #${entityId}` : `#${entityId}`;
+    }
+
+    return typeText || "-";
+  }
+
+  function prettyLabel(key) {
+    const map = {
+      id: "ID",
+      course: "Course code",
+      name: "Name",
+      client: "Client",
+      trainees: "Trainees",
+      start_date: "Start date",
+      end_date: "End date",
+      status_tco: "TCO status",
+      status_itc: "ITC status",
+      responsible_id: "Responsible user",
+      responsible: "Responsible",
+      notes: "Notes",
+      note: "Note",
+      pickup_type: "Pickup type",
+      device_name: "Device name",
+      barcode: "Barcode",
+      uid: "UID",
+      email: "Email",
+      username: "Username",
+      role: "Role",
+      department: "Department",
+      active: "Active",
+      success: "Success",
+      description: "Description",
+      entity_type: "Entity type",
+      entity_id: "Entity ID",
+      created_at: "Created at",
+      updated_at: "Updated at",
+      released_at: "Released at",
+      devices: "Devices"
+    };
+
+    if (map[key]) return map[key];
+
+    return String(key)
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
+  function formatDateString(value) {
+    if (typeof value !== "string") return null;
+
+    const isoLike = /^\d{4}-\d{2}-\d{2}/.test(value);
+    if (!isoLike) return null;
+
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return null;
+
+    return d.toLocaleString("en-GB", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+  }
+
+  function escapeHtml(text) {
+    return String(text)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function formatValue(value) {
+    if (value === null || value === undefined || value === "") {
+      return '<span class="text-muted">-</span>';
+    }
+
+    if (typeof value === "boolean") {
+      return value
+        ? '<span class="badge bg-success">Yes</span>'
+        : '<span class="badge bg-secondary">No</span>';
+    }
+
+    if (typeof value === "number") {
+      return String(value);
+    }
+
+    if (typeof value === "string") {
+      const formattedDate = formatDateString(value);
+      if (formattedDate) return formattedDate;
+      return escapeHtml(value);
+    }
+
+    if (Array.isArray(value)) {
+      if (!value.length) {
+        return '<span class="text-muted">-</span>';
+      }
+
+      const items = value.map(function (item) {
+        if (typeof item === "object" && item !== null) {
+          return `<li>${escapeHtml(JSON.stringify(item))}</li>`;
+        }
+        return `<li>${escapeHtml(String(item))}</li>`;
+      }).join("");
+
+      return `<ul class="mb-0 ps-3">${items}</ul>`;
+    }
+
+    if (typeof value === "object") {
+      return `<pre class="mb-0">${escapeHtml(JSON.stringify(value, null, 2))}</pre>`;
+    }
+
+    return escapeHtml(String(value));
+  }
+
+  function renderDataBlock(targetEl, dataObj) {
+    if (!targetEl) return;
+
+    const obj = (dataObj && typeof dataObj === "object" && !Array.isArray(dataObj))
+      ? dataObj
+      : {};
+
+    const entries = Object.entries(obj);
+
+    if (!entries.length) {
+      targetEl.innerHTML = '<span class="text-muted">No data</span>';
+      return;
+    }
+
+    const html = entries.map(function ([key, value]) {
+      return `
+        <div class="border-bottom py-2">
+          <div class="text-muted small">${prettyLabel(key)}</div>
+          <div>${formatValue(value)}</div>
+        </div>
+      `;
+    }).join("");
+
+    targetEl.innerHTML = html;
   }
 
   modal.addEventListener("show.bs.modal", function (ev) {
@@ -412,27 +620,35 @@ document.addEventListener("DOMContentLoaded", function () {
     const after = btn.getAttribute("data-after") || "{}";
     const desc = btn.getAttribute("data-description") || "";
 
+    const beforeObj = safeParse(before);
+    const afterObj = safeParse(after);
+
     modal.querySelector("#md-id").textContent = id || "-";
     modal.querySelector("#md-date").textContent = date || "-";
     modal.querySelector("#md-user").textContent = user || "-";
-    modal.querySelector("#md-action").textContent = action || "-";
-
-    const entityParts = [];
-    if (entityType) entityParts.push(entityType);
-    if (entityLabel) entityParts.push(entityLabel);
-    if (entityId) entityParts.push("#" + entityId);
-    modal.querySelector("#md-entity").textContent = entityParts.length ? entityParts.join(" ") : "-";
-
-    modal.querySelector("#md-success").textContent = success || "-";
+    modal.querySelector("#md-action").textContent = humanizeAction(action);
+    modal.querySelector("#md-entity").textContent = humanizeEntity(entityType, entityLabel, entityId);
+    modal.querySelector("#md-entity-type").textContent = entityType || "-";
+    modal.querySelector("#md-entity-id").textContent = entityId || "-";
     modal.querySelector("#md-user-agent").textContent = userAgent || "-";
     modal.querySelector("#md-description").textContent = desc || "-";
-    modal.querySelector("#md-before").textContent = pretty(before);
-    modal.querySelector("#md-after").textContent = pretty(after);
 
-    const afterObj = safeParse(after);
+    renderDataBlock(modal.querySelector("#md-before"), beforeObj);
+    renderDataBlock(modal.querySelector("#md-after"), afterObj);
+
+    const successEl = modal.querySelector("#md-success");
+    if (success === "Yes") {
+      successEl.innerHTML = '<span class="badge bg-success">Success</span>';
+    } else if (success === "No") {
+      successEl.innerHTML = '<span class="badge bg-danger">Failed</span>';
+    } else {
+      successEl.textContent = "-";
+    }
+
     const devWrap = modal.querySelector("#md-devices-wrap");
     const devUl = modal.querySelector("#md-devices");
     devUl.innerHTML = "";
+
     if (afterObj && Array.isArray(afterObj.devices) && afterObj.devices.length) {
       afterObj.devices.forEach((d) => {
         const li = document.createElement("li");
@@ -442,6 +658,14 @@ document.addEventListener("DOMContentLoaded", function () {
       devWrap.classList.remove("d-none");
     } else {
       devWrap.classList.add("d-none");
+    }
+
+    const techCollapseEl = modal.querySelector("#md-technical");
+    if (techCollapseEl && typeof bootstrap !== "undefined" && bootstrap.Collapse) {
+      const instance = bootstrap.Collapse.getOrCreateInstance(techCollapseEl, {
+        toggle: false
+      });
+      instance.hide();
     }
   });
 });

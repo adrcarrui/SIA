@@ -4,7 +4,6 @@ NOTIFICATION_SEVERITY_MAP = {
     # Cursos
     "course_created":   "notice",
     "course_updated":   "notice",
-    "course_usb_only":  "warning",
 
     # Requests / acciones operativas
     "pickup_request":   "warning",
