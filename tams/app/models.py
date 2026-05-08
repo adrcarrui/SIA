@@ -152,6 +152,12 @@ class Course(db.Model):
     # Relaciones
     assignments = relationship("Assignment", back_populates="course")
 
+    reworks = relationship(
+    "CourseRework",
+    back_populates="course",
+    cascade="all, delete-orphan",
+    )
+
     responsible = relationship(
         "User",
         foreign_keys=[responsible_id],
@@ -473,3 +479,49 @@ class TemporaryCardLoan(db.Model):
     def __repr__(self):
         return f"<TemporaryCardLoan id={self.id} course_id={self.course_id} status={self.status}>"
 
+class CourseRework(db.Model):
+    __tablename__ = "course_reworks"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    course_id = db.Column(
+        db.Integer,
+        db.ForeignKey("courses.id", onupdate="CASCADE", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+
+    rework_date = db.Column(db.Date, nullable=False, index=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    created_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", onupdate="CASCADE", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    cancelled_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    course = db.relationship(
+        "Course",
+        back_populates="reworks",
+    )
+
+    creator = db.relationship(
+        "User",
+        foreign_keys=[created_by],
+        lazy="joined",
+    )
+
+    def __repr__(self):
+        return (
+            f"<CourseRework id={self.id} "
+            f"course_id={self.course_id} "
+            f"rework_date={self.rework_date}>"
+        )
