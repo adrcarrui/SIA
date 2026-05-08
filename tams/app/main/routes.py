@@ -9,7 +9,7 @@ from app.scripts.get_overdue_assignments import (
     get_cards_vs_trainees_alerts,
 )
 from app.models import User, Device, Course, Assignment, Movements, Notification
-from sqlalchemy import func, case
+from sqlalchemy import func, case, or_
 import app.models as models
 from app.scripts.alerts_service import get_alerts_for_user, build_alerts_summary
 from app.scripts.alert_filters import reason_counts_for_calendar
@@ -643,3 +643,115 @@ def dashboard_alerts_partial():
 @login_required
 def dashboard_calendar_partial():
     return render_template("partials/_calendar.html")
+
+
+@bp.get("/dashboard/api/itc-support-search")
+@login_required
+def dashboard_itc_support_search():
+    db = SessionLocal()
+    try:
+        actor_role = (getattr(current_user, "role", "") or "").strip().lower()
+        actor_dept = (getattr(current_user, "department", "") or "").strip().lower()
+
+        is_admin = "admin" in actor_role
+        is_itc = actor_dept == "itc support" or actor_role.startswith("itc")
+
+        if not (is_admin or is_itc):
+            return jsonify({
+                "ok": False,
+                "level": "danger",
+                "message": "Not allowed."
+            }), 403
+
+        q = (request.args.get("q") or "").strip()
+        search_type = (request.args.get("type") or "").strip().lower()
+
+        if not q:
+            return jsonify({
+                "ok": False,
+                "level": "warning",
+                "message": "Type something to search."
+            }), 400
+
+        q_lower = q.lower()
+
+        if search_type == "course":
+            course = (
+                db.query(Course)
+                .filter(func.lower(func.trim(Course.course)) == q_lower)
+                .first()
+            )
+
+            if not course:
+                return jsonify({
+                    "ok": False,
+                    "level": "warning",
+                    "message": f"Course '{q}' was not found."
+                }), 404
+
+            return jsonify({
+                "ok": True,
+                "level": "success",
+                "message": f"Course '{course.course}' found.",
+                "course_id": course.id,
+                "detail_url": url_for("courses.detail_fragment", course_id=course.id)
+            })
+
+        if search_type == "device":
+            devices = (
+                db.query(Device)
+                .filter(Device.active.is_(True))
+                .filter(
+                    or_(
+                        func.lower(func.coalesce(Device.uid, "")) == q_lower,
+                        func.lower(func.coalesce(Device.barcode, "")) == q_lower,
+                        func.lower(func.coalesce(Device.name, "")) == q_lower,
+                    )
+                )
+                .all()
+            )
+
+            if not devices:
+                return jsonify({
+                    "ok": False,
+                    "level": "danger",
+                    "message": f"Equipment '{q}' was not found."
+                }), 404
+
+            device_ids = [d.id for d in devices]
+
+            assignment = (
+                db.query(Assignment)
+                .join(Course, Course.id == Assignment.course_id)
+                .filter(Assignment.device_id.in_(device_ids))
+                .filter(Assignment.released_at.is_(None))
+                .filter(Assignment.status.in_(["active", "overdue_1", "overdue_2"]))
+                .order_by(Assignment.assigned_at.desc())
+                .first()
+            )
+
+            if not assignment:
+                return jsonify({
+                    "ok": False,
+                    "level": "info",
+                    "message": f"Equipment '{q}' exists, but it is not linked to any active course."
+                })
+
+            course = assignment.course
+
+            return jsonify({
+                "ok": True,
+                "level": "success",
+                "message": f"Equipment '{q}' is linked to course '{course.course}'.",
+                "course_id": course.id,
+                "detail_url": url_for("courses.detail_fragment", course_id=course.id)
+            })
+
+        return jsonify({
+            "ok": False,
+            "level": "warning",
+            "message": "Invalid search type."
+        }), 400
+
+    finally:
+        db.close()

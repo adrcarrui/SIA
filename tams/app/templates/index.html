@@ -18,8 +18,41 @@
     <div class="col-lg-8 mb-3">
       <div class="card">
 
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <h3 class="mb-0">Course calendar</h3>
+        {% set actor_role = (current_user.role or '')|lower|trim %}
+        {% set actor_dept = (current_user.department or '')|lower|trim %}
+
+        <div class="card-header d-flex justify-content-between align-items-center gap-3">
+          <div class="d-flex align-items-center gap-3 flex-wrap">
+            <h3 class="mb-0">Course calendar</h3>
+
+            {% if actor_role == 'admin' or actor_dept == 'itc support' or actor_role.startswith('itc') %}
+            <div class="d-flex align-items-center gap-2">
+              <div class="input-group input-group-sm" style="width: 420px;">
+                <select id="itc-support-search-type"
+                        class="form-select form-select-sm"
+                        style="max-width: 130px;">
+                  <option value="course">Course</option>
+                  <option value="device">Equipment</option>
+                </select>
+
+                <input
+                  type="text"
+                  id="itc-support-search-input"
+                  class="form-control form-control-sm"
+                  placeholder="Search course or equipment"
+                  autocomplete="off"
+                >
+
+                <button
+                  type="button"
+                  class="btn btn-tams-primary btn-sm"
+                  id="btn-itc-support-search">
+                  Search
+                </button>
+              </div>
+            </div>
+            {% endif %}
+          </div>
 
           <div class="d-flex align-items-center gap-2">
             <a href="{{ url_for('assignments.bulk_returns') }}"
@@ -27,8 +60,6 @@
               Return cards
             </a>
 
-            {% set actor_role = (current_user.role or '')|lower|trim %}
-            {% set actor_dept = (current_user.department or '')|lower|trim %}
             {% if actor_role == 'admin' or actor_dept == 'itc support' or actor_role.startswith('itc') %}
               <a href="{{ url_for('courses.return_pcs') }}"
                  class="btn btn-sm btn-tams-primary">
@@ -43,7 +74,7 @@
         </div>
       </div>
 
-      <!-- MODAL -->
+      <!-- MODAL COURSE -->
       <div class="modal fade" id="courseModal" tabindex="-1">
         <div class="modal-dialog modal-lg modal-dialog-centered">
           <div class="modal-content">
@@ -59,6 +90,29 @@
           </div>
         </div>
       </div>
+
+      <!-- MODAL ITC SEARCH MESSAGE -->
+      <div class="modal fade" id="itcSearchMessageModal" tabindex="-1">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header py-2">
+              <h6 class="modal-title" id="itcSearchMessageTitle">Search</h6>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+              <div id="itcSearchMessageBody" class="small"></div>
+            </div>
+
+            <div class="modal-footer py-2">
+              <button type="button" class="btn btn-sm btn-tams-primary" data-bs-dismiss="modal">
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- ================= RIGHT COLUMN ================= -->
@@ -660,6 +714,110 @@ document.addEventListener("DOMContentLoaded", function () {
     input.value = input.value.toUpperCase();
   });
 });
+
+/* ================= ITC SUPPORT SEARCH ================= */
+document.addEventListener("DOMContentLoaded", function () {
+  const input = document.getElementById("itc-support-search-input");
+  const typeSelect = document.getElementById("itc-support-search-type");
+  const searchBtn = document.getElementById("btn-itc-support-search");
+
+  const modalEl = document.getElementById("itcSearchMessageModal");
+  const titleEl = document.getElementById("itcSearchMessageTitle");
+  const bodyEl = document.getElementById("itcSearchMessageBody");
+
+  if (!input || !typeSelect || !searchBtn) return;
+
+  function showItcSearchModal(level, message) {
+    if (!modalEl || !titleEl || !bodyEl) {
+      alert(message || "Search failed.");
+      return;
+    }
+
+    const titles = {
+      danger: "Not found",
+      warning: "Warning",
+      info: "Information",
+      success: "Search"
+    };
+
+    const textClasses = {
+      danger: "text-danger",
+      warning: "text-warning",
+      info: "text-info",
+      success: "text-success"
+    };
+
+    titleEl.textContent = titles[level] || "Search";
+    bodyEl.className = "small fw-semibold";
+    bodyEl.classList.add(textClasses[level] || "text-muted");
+    bodyEl.textContent = message || "No details available.";
+
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  }
+
+  async function runItcSupportSearch() {
+    const value = (input.value || "").trim();
+    const searchType = typeSelect.value;
+
+    if (!value) {
+      showItcSearchModal("warning", "Please enter a value.");
+      input.focus();
+      return;
+    }
+
+    searchBtn.disabled = true;
+
+    try {
+      const url =
+        "{{ url_for('main.dashboard_itc_support_search') }}" +
+        "?type=" + encodeURIComponent(searchType) +
+        "&q=" + encodeURIComponent(value);
+
+      const response = await fetch(url, {
+        credentials: "same-origin",
+        headers: {
+          "Accept": "application/json",
+          "X-Requested-With": "fetch"
+        }
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok && data.ok && data.detail_url) {
+        loadCourseDetail(data.detail_url);
+        input.select();
+        return;
+      }
+
+      showItcSearchModal(
+        data.level || "warning",
+        data.message || "No matching course or equipment was found."
+      );
+
+      input.select();
+
+    } catch (error) {
+      console.error(error);
+      showItcSearchModal("danger", "Unexpected error while searching.");
+    } finally {
+      searchBtn.disabled = false;
+    }
+  }
+
+  searchBtn.addEventListener("click", runItcSupportSearch);
+
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      runItcSupportSearch();
+    }
+  });
+
+  input.addEventListener("input", function () {
+    input.value = input.value.toUpperCase();
+  });
+});
+
 /* ================= ITC STATUS IN DASHBOARD MODAL ================= */
 document.addEventListener("change", async function (e) {
   const sel = e.target.closest("#courseModalBody .itc-status-select");
