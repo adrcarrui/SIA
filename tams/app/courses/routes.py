@@ -1410,6 +1410,75 @@ def detail_fragment(course_id):
     )
 
 
+@bp.route("/<int:course_id>/reworks/new", methods=["POST"])
+@login_required
+def create_rework(course_id):
+    db = SessionLocal()
+    try:
+        actor_role = (getattr(current_user, "role", "") or "").strip().lower()
+        actor_dept = (getattr(current_user, "department", "") or "").strip().lower()
+
+        # Solo admin o ITC Support
+        if actor_role != "admin" and actor_dept != "itc support":
+            abort(403)
+
+        course = db.get(models.Course, course_id)
+        if not course:
+            abort(404)
+
+        raw_date = (request.form.get("rework_date") or "").strip()
+        notes = (request.form.get("notes") or "").strip()
+
+        if not raw_date:
+            flash("Rework date is required.", "danger")
+            return redirect(request.referrer or url_for("courses.detail", course_id=course.id))
+
+        try:
+            rework_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+        except ValueError:
+            flash("Invalid rework date.", "danger")
+            return redirect(request.referrer or url_for("courses.detail", course_id=course.id))
+
+        rw = models.CourseRework(
+            course_id=course.id,
+            rework_date=rework_date,
+            notes=notes or None,
+            created_by=current_user.id,
+        )
+
+        db.add(rw)
+        db.flush()
+
+        log_movement(
+            db,
+            user_id=current_user.id,
+            entity_type="course_rework",
+            entity_id=rw.id,
+            action="create",
+            before_data=None,
+            after_data={
+                "id": rw.id,
+                "course_id": course.id,
+                "course": course.course,
+                "rework_date": rework_date.isoformat(),
+                "notes": notes or None,
+            },
+            description=f"Created ITC rework for course {course.course}",
+            user_agent=request.headers.get("User-Agent", ""),
+            success=True,
+        )
+
+        db.commit()
+
+        flash("ITC rework created.", "success")
+        return redirect(request.referrer or url_for("courses.detail", course_id=course.id))
+
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
 OVERDUE_1_DAYS = 7
 
 
