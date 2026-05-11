@@ -148,6 +148,7 @@ def create_app():
     from .alerts import bp as alerts_bp
     from .api import bp as api_bp
     from .temporary_loans import bp as temporary_loans_bp
+    from .reworks import bp as reworks_bp
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(main_bp)
@@ -161,6 +162,7 @@ def create_app():
     app.register_blueprint(alerts_bp, url_prefix="/alerts")
     app.register_blueprint(api_bp, url_prefix="/api")
     app.register_blueprint(temporary_loans_bp, url_prefix="/temporary_loans")
+    app.register_blueprint(reworks_bp, url_prefix="/reworks")
 
     with app.app_context():
         print("\n== URL MAP ==")

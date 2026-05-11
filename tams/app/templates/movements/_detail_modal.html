@@ -1,0 +1,109 @@
+<!-- ================= DETAIL MODAL ================= -->
+<div class="modal fade" id="movementDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Movement detail</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Resumen principal -->
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <div class="small text-muted">Date</div>
+            <div class="fw-semibold" id="md-date">-</div>
+          </div>
+
+          <div class="col-md-4">
+            <div class="small text-muted">User</div>
+            <div class="fw-semibold" id="md-user">-</div>
+          </div>
+
+          <div class="col-md-4">
+            <div class="small text-muted">Result</div>
+            <div class="fw-semibold" id="md-success">-</div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="small text-muted">Action</div>
+            <div class="fw-semibold" id="md-action">-</div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="small text-muted">Item</div>
+            <div class="fw-semibold" id="md-entity">-</div>
+          </div>
+        </div>
+
+        <!-- Descripción principal -->
+        <div class="mb-3">
+          <div class="small text-muted">Description</div>
+          <div id="md-description" class="border rounded bg-body-tertiary p-3" style="white-space: pre-line;">-</div>
+        </div>
+
+        <!-- Lista de dispositivos si aplica -->
+        <div class="mb-3 d-none" id="md-devices-wrap">
+          <div class="small text-muted mb-1">Devices</div>
+          <ul class="mb-0" id="md-devices"></ul>
+        </div>
+
+        <!-- Detalle técnico plegable -->
+        <div class="mt-3">
+          <button
+            class="btn btn-outline-secondary btn-sm"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#md-technical"
+            aria-expanded="false"
+            aria-controls="md-technical"
+          >
+            Show technical details
+          </button>
+
+          <div class="collapse mt-3" id="md-technical">
+            <div class="row g-3 mb-3">
+              <div class="col-md-4">
+                <div class="small text-muted">Movement ID</div>
+                <div class="fw-semibold" id="md-id">-</div>
+              </div>
+
+              <div class="col-md-4">
+                <div class="small text-muted">Entity type</div>
+                <div class="fw-semibold" id="md-entity-type">-</div>
+              </div>
+
+              <div class="col-md-4">
+                <div class="small text-muted">Entity ID</div>
+                <div class="fw-semibold" id="md-entity-id">-</div>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <div class="small text-muted">User agent</div>
+              <div class="font-monospace small border rounded bg-body-tertiary p-2"
+                   style="white-space: pre-wrap;"
+                   id="md-user-agent">-</div>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <div class="small text-muted mb-1">Before</div>
+                <div class="bg-body-tertiary border rounded p-3 small mb-0" id="md-before"></div>
+              </div>
+
+              <div class="col-md-6">
+                <div class="small text-muted mb-1">After</div>
+                <div class="bg-body-tertiary border rounded p-3 small mb-0" id="md-after"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

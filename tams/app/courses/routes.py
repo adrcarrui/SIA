@@ -3,6 +3,7 @@ import re
 from math import ceil
 from io import StringIO, BytesIO
 import csv
+from turtle import title
 
 from flask import (
     render_template,
@@ -1386,7 +1387,16 @@ def detail_fragment(course_id):
 
     course = (
         db.query(Course)
-        .options(joinedload(Course.assignments).joinedload(Assignment.device))
+        .options(
+            joinedload(Course.assignments)
+            .joinedload(Assignment.device)
+            .joinedload(Device.asset_type)
+            .joinedload(AssetType.parent),
+
+            joinedload(Course.asset_requirements)
+            .joinedload(CourseAssetRequirement.asset_type)
+            .joinedload(AssetType.parent),
+        )
         .get(course_id)
     )
     if not course:
@@ -1398,7 +1408,24 @@ def detail_fragment(course_id):
         a for a in course.assignments
         if a.status in ("active", "overdue_1", "overdue_2") and a.device is not None
     ]
+    active_reworks = (
+        db.query(models.CourseRework)
+        .filter(
+            models.CourseRework.course_id == course.id,
+            models.CourseRework.cancelled_at.is_(None),
+        )
+        .order_by(
+            models.CourseRework.rework_date.desc(),
+            models.CourseRework.id.desc(),
+        )
+        .all()
+    )
 
+    active_assignments = [
+    a for a in course.assignments
+    if a.status in ("active", "overdue_1", "overdue_2") and a.device is not None
+    ]
+    itc_equipment_summary = _build_itc_equipment_summary(course)
     return render_template(
         "courses/_detail_fragment.html",
         course=course,
@@ -1407,8 +1434,179 @@ def detail_fragment(course_id):
         show_calendar_itc_status_editor=(
             modal_context == "calendar" and actor_dept == "itc support"
         ),
+        today_date=date.today().isoformat(),
+        active_reworks=active_reworks,
+        itc_equipment_summary=itc_equipment_summary,
     )
 
+@bp.route("/<int:course_id>/reworks/<int:rework_id>/edit", methods=["POST"])
+@login_required
+def edit_rework(course_id, rework_id):
+    db = SessionLocal()
+    try:
+        actor_role = (getattr(current_user, "role", "") or "").strip().lower()
+        actor_dept = (getattr(current_user, "department", "") or "").strip().lower()
+
+        # Solo admin o ITC Support
+        if actor_role != "admin" and actor_dept != "itc support":
+            abort(403)
+
+        rw = (
+            db.query(models.CourseRework)
+            .filter(
+                models.CourseRework.id == rework_id,
+                models.CourseRework.course_id == course_id,
+                models.CourseRework.cancelled_at.is_(None),
+            )
+            .first()
+        )
+
+        if not rw:
+            abort(404)
+
+        raw_date = (request.form.get("rework_date") or "").strip()
+        notes = (request.form.get("notes") or "").strip()
+
+        if not raw_date:
+            flash("Rework date is required.", "danger")
+            return redirect(request.referrer or url_for("courses.detail", course_id=course_id))
+
+        try:
+            rework_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+        except ValueError:
+            flash("Invalid rework date.", "danger")
+            return redirect(request.referrer or url_for("courses.detail", course_id=course_id))
+
+        before_data = {
+            "id": rw.id,
+            "course_id": rw.course_id,
+            "rework_date": rw.rework_date.isoformat() if rw.rework_date else None,
+            "notes": rw.notes,
+            "cancelled_at": rw.cancelled_at.isoformat() if rw.cancelled_at else None,
+        }
+
+        rw.rework_date = rework_date
+        rw.notes = notes or None
+
+        after_data = {
+            "id": rw.id,
+            "course_id": rw.course_id,
+            "rework_date": rw.rework_date.isoformat() if rw.rework_date else None,
+            "notes": rw.notes,
+            "cancelled_at": rw.cancelled_at.isoformat() if rw.cancelled_at else None,
+        }
+
+        log_movement(
+            db,
+            user_id=current_user.id,
+            entity_type="course_rework",
+            entity_id=rw.id,
+            action="edit",
+            before_data=before_data,
+            after_data=after_data,
+            description=f"Edited ITC rework for course_id={course_id}",
+            user_agent=request.headers.get("User-Agent", ""),
+            success=True,
+        )
+
+        db.commit()
+
+        flash("ITC rework updated.", "success")
+        return redirect(request.referrer or url_for("courses.detail", course_id=course_id))
+
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+def _itc_asset_bucket(asset_type):
+    """
+    Devuelve:
+    - 'pc' si el asset pertenece a COMPUTER
+    - 'usb' si el asset pertenece a USB
+    - None si no aplica
+    """
+    if not asset_type:
+        return None
+
+    code = ((asset_type.code or "") if hasattr(asset_type, "code") else "").strip().upper()
+    name = ((asset_type.name or "") if hasattr(asset_type, "name") else "").strip().upper()
+
+    parent = getattr(asset_type, "parent", None)
+    parent_code = ((parent.code or "") if parent else "").strip().upper()
+    parent_name = ((parent.name or "") if parent else "").strip().upper()
+
+    if code == "USB" or parent_code == "USB" or "USB" in name or "USB" in parent_name:
+        return "usb"
+
+    if (
+        code == "COMPUTER"
+        or parent_code == "COMPUTER"
+        or "COMPUTER" in name
+        or "COMPUTER" in parent_name
+        or "LAPTOP" in name
+        or "LAPTOP" in parent_name
+        or code == "PC"
+    ):
+        return "pc"
+
+    return None
+
+
+def _build_itc_equipment_summary(course):
+    summary = {
+        "pc": {
+            "required": 0,
+            "assigned": 0,
+            "returned": 0,
+            "pending": 0,
+            "total_assigned": 0,
+        },
+        "usb": {
+            "required": 0,
+            "assigned": 0,
+            "returned": 0,
+            "pending": 0,
+            "total_assigned": 0,
+        },
+    }
+
+    # Requeridos desde course_asset_requirements
+    for req in getattr(course, "asset_requirements", []) or []:
+        if getattr(req, "active", True) is False:
+            continue
+
+        bucket = _itc_asset_bucket(getattr(req, "asset_type", None))
+        if not bucket:
+            continue
+
+        summary[bucket]["required"] += int(getattr(req, "quantity", 0) or 0)
+
+    # Asignados / devueltos desde assignments
+    for assignment in getattr(course, "assignments", []) or []:
+        device = getattr(assignment, "device", None)
+        if not device:
+            continue
+
+        bucket = _itc_asset_bucket(getattr(device, "asset_type", None))
+        if not bucket:
+            continue
+
+        released_at = getattr(assignment, "released_at", None)
+        status = (getattr(assignment, "status", "") or "").strip().lower()
+
+        if released_at is not None:
+            summary[bucket]["returned"] += 1
+            summary[bucket]["total_assigned"] += 1
+            continue
+
+        if status in ("active", "overdue_1", "overdue_2"):
+            summary[bucket]["assigned"] += 1
+            summary[bucket]["pending"] += 1
+            summary[bucket]["total_assigned"] += 1
+
+    return summary
 
 @bp.route("/<int:course_id>/reworks/new", methods=["POST"])
 @login_required
@@ -1472,6 +1670,76 @@ def create_rework(course_id):
 
         flash("ITC rework created.", "success")
         return redirect(request.referrer or url_for("courses.detail", course_id=course.id))
+
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+@bp.route("/<int:course_id>/reworks/<int:rework_id>/cancel", methods=["POST"])
+@login_required
+def cancel_rework(course_id, rework_id):
+    db = SessionLocal()
+    try:
+        actor_role = (getattr(current_user, "role", "") or "").strip().lower()
+        actor_dept = (getattr(current_user, "department", "") or "").strip().lower()
+
+        # Solo admin o ITC Support
+        if actor_role != "admin" and actor_dept != "itc support":
+            abort(403)
+
+        rw = (
+            db.query(models.CourseRework)
+            .filter(
+                models.CourseRework.id == rework_id,
+                models.CourseRework.course_id == course_id,
+            )
+            .first()
+        )
+
+        if not rw:
+            abort(404)
+
+        if rw.cancelled_at is not None:
+            flash("This RT was already cancelled.", "warning")
+            return redirect(request.referrer or url_for("courses.detail", course_id=course_id))
+
+        before_data = {
+            "id": rw.id,
+            "course_id": rw.course_id,
+            "rework_date": rw.rework_date.isoformat() if rw.rework_date else None,
+            "notes": rw.notes,
+            "cancelled_at": rw.cancelled_at.isoformat() if rw.cancelled_at else None,
+        }
+
+        rw.cancelled_at = datetime.now(timezone.utc)
+
+        after_data = {
+            "id": rw.id,
+            "course_id": rw.course_id,
+            "rework_date": rw.rework_date.isoformat() if rw.rework_date else None,
+            "notes": rw.notes,
+            "cancelled_at": rw.cancelled_at.isoformat() if rw.cancelled_at else None,
+        }
+
+        log_movement(
+            db,
+            user_id=current_user.id,
+            entity_type="course_rework",
+            entity_id=rw.id,
+            action="cancel",
+            before_data=before_data,
+            after_data=after_data,
+            description=f"Cancelled ITC rework for course_id={course_id}",
+            user_agent=request.headers.get("User-Agent", ""),
+            success=True,
+        )
+
+        db.commit()
+
+        flash("ITC rework cancelled.", "success")
+        return redirect(request.referrer or url_for("courses.detail", course_id=course_id))
 
     except Exception:
         db.rollback()
@@ -1553,11 +1821,10 @@ def api_calendar_events():
                 severity_by_course[course_id] = sev
 
         # ------------------------------------------------------------
-        # NUEVO: severidad basada en alertas + estados (solo OPEN cuenta)
+        # Severidad basada en alertas + estados (solo OPEN cuenta)
         # ------------------------------------------------------------
         now_utc = _now_utc()
 
-        # Pedimos include_hidden=True para tener TODO y decidir nosotros qué cuenta para calendario
         alerts = get_alerts_for_user(db, current_user, include_hidden=True) or []
 
         for a in alerts:
@@ -1568,43 +1835,155 @@ def api_calendar_events():
 
             reasons = a.get("reasons") or []
 
-            # Si hay reasons, calculamos la severidad efectiva SOLO con las reasons que cuentan.
             if reasons:
                 visible_max = None
                 for r in reasons:
                     if not should_count_reason_for_calendar(r, now_utc):
                         continue
+
                     sev_r = (r.get("severity") or a.get("severity") or "notice").strip().lower()
                     if sev_r not in severity_order:
                         sev_r = "notice"
+
                     if (visible_max is None) or (severity_order[sev_r] > severity_order[visible_max]):
                         visible_max = sev_r
 
                 if not visible_max:
-                    continue  # todo ack/snooze/ignore => no pinta severidad en calendario
+                    continue
 
                 bump_severity(cid, visible_max)
+
             else:
-                # Alertas sin reasons: las contamos como visibles
                 sev = (a.get("severity") or "notice").strip().lower()
                 if sev not in severity_order:
                     sev = "notice"
                 bump_severity(cid, sev)
 
         # ------------------------------------------------------------
-        # Eventos de cursos (igual que antes) pero con title según perfil + sev filtrada
+        # Eventos de cursos
         # ------------------------------------------------------------
         courses = db.query(Course).all()
+
         def css_slug(s: str) -> str:
             s = (s or "").strip().lower()
-            s = re.sub(r"[^a-z0-9]+", "-", s)   # todo lo raro -> "-"
+            s = re.sub(r"[^a-z0-9]+", "-", s)
             return s.strip("-")
-        # ✅ Perfil para decidir title
+
         actor_role = (getattr(current_user, "role", "") or "").strip().lower()
         actor_dept = (getattr(current_user, "department", "") or "").strip().lower()
-        force_code_title = (actor_role == "admin") or (actor_dept == "itc support")
 
-        is_itc_view = (actor_role == "admin") or (actor_dept == "itc support") or actor_role.startswith("itc")
+        force_code_title = (actor_role == "admin") or (actor_dept == "itc support")
+        is_itc_view = (
+            actor_role == "admin"
+            or actor_dept == "itc support"
+            or actor_role.startswith("itc")
+        )
+
+        assigned_pc_count_by_course = {}
+        required_pc_count_by_course = {}
+        pending_pc_count_by_course = {}
+        returned_pc_on_end_count_by_course = {}
+
+        if is_itc_view:
+            # ------------------------------------------------------------
+            # PCs asignados históricamente al curso
+            # course_device_movements = histórico
+            # ------------------------------------------------------------
+            assigned_rows = (
+                db.query(
+                    models.CourseDeviceMovement.course_id.label("course_id"),
+                    func.count(models.CourseDeviceMovement.id).label("pc_count"),
+                )
+                .filter(
+                    models.CourseDeviceMovement.cancelled_at.is_(None),
+                    models.CourseDeviceMovement.asset_kind == "pc",
+                    models.CourseDeviceMovement.movement_type == "assigned",
+                )
+                .group_by(models.CourseDeviceMovement.course_id)
+                .all()
+            )
+
+            assigned_pc_count_by_course = {
+                int(row.course_id): int(row.pc_count or 0)
+                for row in assigned_rows
+            }
+
+            # ------------------------------------------------------------
+            # PCs requeridos por curso
+            # En TAMS actual: asset_type_id = 13 corresponde a PC/laptop
+            # ------------------------------------------------------------
+            required_rows = (
+                db.query(
+                    CourseAssetRequirement.course_id.label("course_id"),
+                    func.coalesce(
+                        func.sum(CourseAssetRequirement.quantity),
+                        0,
+                    ).label("required_pc_count"),
+                )
+                .filter(
+                    CourseAssetRequirement.active.is_(True),
+                    CourseAssetRequirement.asset_type_id == 13,
+                    CourseAssetRequirement.quantity > 0,
+                )
+                .group_by(CourseAssetRequirement.course_id)
+                .all()
+            )
+
+            required_pc_count_by_course = {
+                int(row.course_id): int(row.required_pc_count or 0)
+                for row in required_rows
+            }
+
+            # ------------------------------------------------------------
+            # PCs pendientes actualmente
+            # assignments = tabla viva
+            # Si un PC sigue aquí, sigue pendiente de devolución
+            # ------------------------------------------------------------
+            pending_rows = (
+                db.query(
+                    models.Assignment.course_id.label("course_id"),
+                    func.count(models.Assignment.id).label("pending_pc_count"),
+                )
+                .join(models.Device, models.Assignment.device_id == models.Device.id)
+                .filter(
+                    models.Assignment.status.in_(["active", "overdue_1", "overdue_2"]),
+                    models.Device.asset_type_id == 13,
+                )
+                .group_by(models.Assignment.course_id)
+                .all()
+            )
+
+            pending_pc_count_by_course = {
+                int(row.course_id): int(row.pending_pc_count or 0)
+                for row in pending_rows
+            }
+
+            # ------------------------------------------------------------
+            # PCs devueltos exactamente en el día de fin del curso
+            # Estos NO se pintarán como evento +X independiente.
+            # Se añadirán al evento de fin del curso.
+            # ------------------------------------------------------------
+            returned_on_end_rows = (
+                db.query(
+                    models.CourseDeviceMovement.course_id.label("course_id"),
+                    func.count(models.CourseDeviceMovement.id).label("returned_pc_count"),
+                )
+                .join(Course, models.CourseDeviceMovement.course_id == Course.id)
+                .filter(
+                    models.CourseDeviceMovement.cancelled_at.is_(None),
+                    models.CourseDeviceMovement.asset_kind == "pc",
+                    models.CourseDeviceMovement.movement_type == "returned",
+                    Course.end_date.isnot(None),
+                    func.date(models.CourseDeviceMovement.movement_at) == Course.end_date,
+                )
+                .group_by(models.CourseDeviceMovement.course_id)
+                .all()
+            )
+
+            returned_pc_on_end_count_by_course = {
+                int(row.course_id): int(row.returned_pc_count or 0)
+                for row in returned_on_end_rows
+            }
 
         valid_itc_course_ids = set()
         if actor_dept == "itc support":
@@ -1621,26 +2000,22 @@ def api_calendar_events():
             valid_itc_course_ids = {row[0] for row in rows}
 
         events = []
+
         for c in courses:
             if actor_dept == "itc support" and c.id not in valid_itc_course_ids:
                 continue
+
             itc_raw = getattr(c, "status_itc", None) or ""
-            itc_key = css_slug(itc_raw)  # <- css safe
+            itc_key = css_slug(itc_raw)
             itc_class = f"fc-itc-{itc_key}" if itc_key else None
+
             if not c.start_date and not c.end_date:
                 continue
 
             code = (c.course or "").strip()
             name = (c.name or "").strip()
 
-            # ✅ title según perfil:
-            # - admin / itc_support: siempre code
-            # - tco: name si existe, si no code
             title = code or name or f"Course #{c.id}"
-            #if force_code_title:
-            #    title = code or f"Course #{c.id}"
-            #else:
-            #    title = name or code or f"Course #{c.id}"
 
             detail_url = url_for(
                 "courses.detail_fragment",
@@ -1648,7 +2023,7 @@ def api_calendar_events():
                 modal_context="calendar",
             )
 
-            sev = severity_by_course.get(c.id)  # <- ahora solo si hay OPEN
+            sev = severity_by_course.get(c.id)
 
             base_extended = {
                 "course_id": c.id,
@@ -1660,45 +2035,249 @@ def api_calendar_events():
                 "course_code": c.course,
                 "course_url": f"/courses/{c.id}",
                 "detail_url": detail_url,
-                "severity": sev,  # None si no hay OPEN => curso se ve “normal”
+                "severity": sev,
             }
 
+            # ------------------------------------------------------------
+            # Course start
+            # ------------------------------------------------------------
             if c.start_date:
                 class_names = ["fc-course-start"]
+
                 if sev:
                     class_names.append(f"fc-sev-{sev}")
+
                 if is_itc_view and itc_class:
                     class_names.append(itc_class)
+
+                assigned_pc_count = assigned_pc_count_by_course.get(int(c.id), 0)
+                required_pc_count = required_pc_count_by_course.get(int(c.id), 0)
+
+                if is_itc_view and (assigned_pc_count > 0 or required_pc_count > 0):
+                    if required_pc_count > 0:
+                        start_title = f"{title} -{assigned_pc_count}/{required_pc_count}"
+                    else:
+                        start_title = f"{title} -{assigned_pc_count}"
+                else:
+                    start_title = title
+
                 events.append({
                     "id": f"{c.id}-start",
-                    "title": title,
+                    "title": start_title,
                     "start": c.start_date.isoformat(),
                     "allDay": True,
                     "classNames": class_names,
-                    "extendedProps": {**base_extended, "kind": "start"},
+                    "extendedProps": {
+                        **base_extended,
+                        "kind": "start",
+                        "assigned_pc_count": assigned_pc_count,
+                        "required_pc_count": required_pc_count,
+                    },
                 })
 
+            # ------------------------------------------------------------
+            # Course end
+            # ------------------------------------------------------------
             if c.end_date and (not c.start_date or c.end_date != c.start_date):
                 class_names = ["fc-course-end"]
+
                 if sev:
                     class_names.append(f"fc-sev-{sev}")
 
-                # ✅ SOLO si es vista ITC (ITC Support / admin / itc*)
                 if is_itc_view:
                     class_names.append("fc-itc-view")
+
+                pending_pc_count = pending_pc_count_by_course.get(int(c.id), 0)
+                returned_pc_on_end_count = returned_pc_on_end_count_by_course.get(int(c.id), 0)
+
+                end_title = title
+
+                if is_itc_view:
+                    end_parts = []
+
+                    if pending_pc_count > 0:
+                        end_parts.append(f"-{pending_pc_count} PC")
+
+                    if returned_pc_on_end_count > 0:
+                        end_parts.append(f"+{returned_pc_on_end_count} PC")
+
+                    if end_parts:
+                        end_title = f"{title} {' '.join(end_parts)}"
+
                 events.append({
                     "id": f"{c.id}-end",
-                    "title": title,
+                    "title": end_title,
                     "start": c.end_date.isoformat(),
                     "allDay": True,
                     "classNames": class_names,
-                    "extendedProps": {**base_extended, "kind": "end"},
+                    "extendedProps": {
+                        **base_extended,
+                        "kind": "end",
+                        "pending_pc_count": pending_pc_count,
+                        "returned_pc_on_end_count": returned_pc_on_end_count,
+                    },
+                })
+
+        # ------------------------------------------------------------
+        # ITC reworks / RT delivered
+        # ------------------------------------------------------------
+        if is_itc_view:
+            reworks_q = (
+                db.query(models.CourseRework, Course)
+                .join(Course, models.CourseRework.course_id == Course.id)
+                .filter(models.CourseRework.cancelled_at.is_(None))
+            )
+
+            if actor_dept == "itc support":
+                reworks_q = reworks_q.filter(Course.id.in_(valid_itc_course_ids))
+
+            reworks = reworks_q.all()
+
+            for rw, c in reworks:
+                if not rw.rework_date:
+                    continue
+
+                code = (c.course or "").strip()
+                name = (c.name or "").strip()
+                title_base = code or name or f"Course #{c.id}"
+
+                detail_url = url_for(
+                    "courses.detail_fragment",
+                    course_id=c.id,
+                    modal_context="calendar",
+                )
+
+                events.append({
+                    "id": f"rt-{rw.id}",
+                    "title": f"RT - {title_base}",
+                    "start": rw.rework_date.isoformat(),
+                    "allDay": True,
+                    "classNames": [
+                        "fc-course-start",
+                        "fc-itc-rt-delivered",
+                    ],
+                    "extendedProps": {
+                        "course_id": c.id,
+                        "course_code": c.course,
+                        "course_url": f"/courses/{c.id}",
+                        "detail_url": detail_url,
+                        "kind": "itc_rework",
+                        "event_type": "itc_rework",
+                        "rework_id": rw.id,
+                        "notes": rw.notes,
+                    },
+                })
+
+        # ------------------------------------------------------------
+        # PC movements: returned
+        # assigned NO se pinta aquí porque va en el evento start.
+        # returned se pinta salvo si coincide con end_date.
+        # ------------------------------------------------------------
+        if is_itc_view:
+            movements_q = (
+                db.query(models.CourseDeviceMovement, Course)
+                .join(Course, models.CourseDeviceMovement.course_id == Course.id)
+                .filter(
+                    models.CourseDeviceMovement.cancelled_at.is_(None),
+                    models.CourseDeviceMovement.asset_kind == "pc",
+                    models.CourseDeviceMovement.movement_type == "returned",
+                )
+            )
+
+            if actor_dept == "itc support":
+                movements_q = movements_q.filter(Course.id.in_(valid_itc_course_ids))
+
+            movements = movements_q.all()
+
+            grouped_movements = {}
+
+            for mv, c in movements:
+                if not mv.movement_at:
+                    continue
+
+                movement_day = mv.movement_at.date()
+
+                # Si la devolución cae justo en el día de fin del curso,
+                # no pintamos un evento +X independiente.
+                # Ese +X se añade al evento de fin.
+                if c.end_date and movement_day == c.end_date:
+                    continue
+
+                key = (
+                    c.id,
+                    movement_day,
+                    mv.movement_type,
+                    mv.asset_kind,
+                )
+
+                if key not in grouped_movements:
+                    grouped_movements[key] = {
+                        "course": c,
+                        "date": movement_day,
+                        "movement_type": mv.movement_type,
+                        "asset_kind": mv.asset_kind,
+                        "count": 0,
+                        "movement_ids": [],
+                    }
+
+                grouped_movements[key]["count"] += 1
+                grouped_movements[key]["movement_ids"].append(mv.id)
+                grouped_movements[key].setdefault("movement_dates", []).append(
+                    mv.movement_at.isoformat()
+                )
+
+            for item in grouped_movements.values():
+                c = item["course"]
+                movement_date = item["date"]
+                movement_type = item["movement_type"]
+                asset_kind = item["asset_kind"]
+                count = item["count"]
+
+                code = (c.course or "").strip()
+                name = (c.name or "").strip()
+                title_base = code or name or f"Course #{c.id}"
+
+                sign = "+"
+                class_name = "fc-itc-pc-returned"
+                kind = "pc_returned"
+
+                detail_url = url_for(
+                    "courses.detail_fragment",
+                    course_id=c.id,
+                    modal_context="calendar",
+                )
+
+                events.append({
+                    "id": (
+                        f"pc-movement-{movement_type}-"
+                        f"{c.id}-{movement_date.isoformat()}-{asset_kind}"
+                    ),
+                    "title": f"{title_base} {sign}{count} PC",
+                    "start": movement_date.isoformat(),
+                    "allDay": True,
+                    "classNames": [
+                        "fc-course-start",
+                        class_name,
+                    ],
+                    "extendedProps": {
+                        "course_id": c.id,
+                        "course_code": c.course,
+                        "course_url": f"/courses/{c.id}",
+                        "detail_url": detail_url,
+                        "kind": kind,
+                        "event_type": "pc_movement",
+                        "movement_type": movement_type,
+                        "asset_kind": asset_kind,
+                        "count": count,
+                        "movement_ids": item["movement_ids"],
+                        "movement_dates": item.get("movement_dates", []),
+                    },
                 })
 
         return jsonify(events)
+
     finally:
         db.close()
-
 # ===========================
 #   EXPORT: CSV / EXCEL / PDF
 # ===========================
@@ -2017,12 +2596,11 @@ def assign_pcs(course_id):
 
             now = datetime.now(timezone.utc)
 
-            # Solo asignamos devices available
+            # Solo asignamos devices disponibles
             devices = (
                 db.query(models.Device)
                 .filter(
                     models.Device.id.in_(device_ids),
-                    #models.Device.active.is_(True),
                     models.Device.status == "available",
                 )
                 .all()
@@ -2032,8 +2610,12 @@ def assign_pcs(course_id):
                 flash("No available PCs found in selection.", "danger")
                 return redirect(url_for("courses.assign_pcs", course_id=course_id))
 
+            created_assignments = []
+            created_devices = []
+
             for d in devices:
-                # evitar duplicados (si ya tiene assignment activo)
+                # Evitar duplicados si ya tiene assignment vivo.
+                # OJO: assignments es tabla viva, así que aquí miramos lo activo actual.
                 existing = (
                     db.query(models.Assignment.id)
                     .filter(
@@ -2042,10 +2624,11 @@ def assign_pcs(course_id):
                     )
                     .first()
                 )
+
                 if existing:
                     continue
 
-                db.add(models.Assignment(
+                assignment = models.Assignment(
                     device_id=d.id,
                     course_id=c.id,
                     status="active",
@@ -2053,18 +2636,37 @@ def assign_pcs(course_id):
                     created_at=now,
                     updated_at=now,
                     created_by=getattr(current_user, "id", None),
+                )
+
+                db.add(assignment)
+                db.flush()  # Necesario para tener assignment.id
+
+                # Movimiento histórico para calendario / trazabilidad.
+                # assignments sigue siendo tabla viva; esto es el histórico.
+                db.add(models.CourseDeviceMovement(
+                    course_id=c.id,
+                    device_id=d.id,
+                    movement_type="assigned",
+                    asset_kind="pc",
+                    movement_at=now,
+                    assignment_id=assignment.id,
+                    created_by=getattr(current_user, "id", None),
+                    notes=None,
                 ))
 
                 d.status = "assigned"
                 d.updated_at = now
 
-            db.flush()
-            # devices ya lo tienes (lista de Device)
-            device_ids = [d.id for d in devices]
+                created_assignments.append(assignment)
+                created_devices.append(d)
 
-            # intenta mostrar algo humano: name (barcode) si existe
+            if not created_assignments:
+                flash("No PCs were assigned. Selected devices may already be assigned.", "warning")
+                return redirect(url_for("courses.assign_pcs", course_id=course_id))
+
+            # Intentar mostrar algo humano: name (barcode)
             device_labels = []
-            for d in devices:
+            for d in created_devices:
                 name = (getattr(d, "name", None) or "").strip()
                 barcode = (getattr(d, "barcode", None) or "").strip()
 
@@ -2075,10 +2677,8 @@ def assign_pcs(course_id):
                 elif barcode:
                     device_labels.append(barcode)
                 else:
-                    # último recurso (si NO quieres IDs nunca, pon "Unknown device")
                     device_labels.append("Unknown device")
 
-            # evita descriptions kilométricas
             MAX_SHOW = 8
             shown = device_labels[:MAX_SHOW]
             extra_n = max(len(device_labels) - MAX_SHOW, 0)
@@ -2097,19 +2697,28 @@ def assign_pcs(course_id):
                 action="assign_pcs",
                 before_data=None,
                 after_data={
-                    # --- contexto humano ---
                     "user": getattr(current_user, "username", None),
                     "course": c.course or c.name,
-
-                    # --- devices ---
                     "devices": shown,
                     "devices_total": len(device_labels),
                     "devices_extra": extra_n,
+                    "course_device_movements": [
+                        {
+                            "assignment_id": a.id,
+                            "device_id": a.device_id,
+                            "course_id": a.course_id,
+                            "movement_type": "assigned",
+                            "asset_kind": "pc",
+                            "movement_at": now.isoformat(),
+                        }
+                        for a in created_assignments
+                    ],
                 },
                 description=description,
                 success=True,
                 user_agent=request.user_agent.string,
             )
+
             try:
                 db.commit()
             except IntegrityError:
@@ -2119,7 +2728,6 @@ def assign_pcs(course_id):
 
             flash("PC(s) assigned.", "success")
             return redirect(url_for("main.index"))
-            #return redirect(url_for("courses.detail", course_id=c.id))
 
         return render_template(
             "courses/assign_pcs.html",
@@ -2286,11 +2894,13 @@ def return_pcs():
             now = datetime.now(timezone.utc)
             returned = 0
             skipped = 0
+            movement_count = 0
 
             username = getattr(current_user, "username", None)
+            user_id = getattr(current_user, "id", None)
 
-            # Agrupación por curso (humano)
-            by_course = {}  # key: course_label -> data
+            # Agrupación por curso para log humano
+            by_course = {}
 
             def device_label(d):
                 name = (getattr(d, "name", "") or "").strip()
@@ -2306,10 +2916,13 @@ def return_pcs():
             def course_label(c):
                 if not c:
                     return "unassigned"
-                code = (getattr(c, "course", "") or "").strip()  # en tu modelo parece ser el code
+
+                code = (getattr(c, "course", "") or "").strip()
                 name = (getattr(c, "name", "") or "").strip()
+
                 if code and name:
                     return f"{code} - {name}"
+
                 return code or name or f"Course #{getattr(c, 'id', '?')}"
 
             for raw_id in device_ids:
@@ -2321,18 +2934,22 @@ def return_pcs():
 
                 d = (
                     db.query(models.Device)
-                    .options(joinedload(models.Device.asset_type).joinedload(models.AssetType.parent))
+                    .options(
+                        joinedload(models.Device.asset_type)
+                        .joinedload(models.AssetType.parent)
+                    )
                     .filter(models.Device.id == did)
                     .first()
                 )
+
                 if not d:
                     skipped += 1
                     continue
 
-                # Buscar assignment "vivo" y cargar el curso antes de borrarlo
+                # Buscar assignment vivo y cargar curso antes de borrarlo
                 a = (
                     db.query(models.Assignment)
-                    .options(joinedload(models.Assignment.course))  # <- importante para tener el objeto Course
+                    .options(joinedload(models.Assignment.course))
                     .filter(
                         models.Assignment.device_id == d.id,
                         models.Assignment.status.in_(["active", "overdue_1", "overdue_2"]),
@@ -2341,7 +2958,7 @@ def return_pcs():
                     .first()
                 )
 
-                # Siempre dejamos el PC como available (esté o no asignado)
+                # Siempre dejamos el PC como available, como ya hacía tu lógica
                 d.status = "available"
                 d.updated_at = now
 
@@ -2349,17 +2966,20 @@ def return_pcs():
                     skipped += 1
                     continue
 
-                # Capturar curso + device label ANTES del delete
+                # Capturar datos ANTES de borrar assignment
+                assignment_id = a.id
+                course_id = a.course_id
+                device_id = d.id
                 c = getattr(a, "course", None)
                 c_label = course_label(c)
 
                 bucket = by_course.get(c_label)
                 if bucket is None:
                     bucket = {
-                        "course": c_label,  # redundante pero cómodo
-                        "course_id": getattr(c, "id", None),  # opcional (trazabilidad)
+                        "course": c_label,
+                        "course_id": getattr(c, "id", None),
                         "devices": [],
-                        "device_ids": [],  # opcional (debug/trazabilidad)
+                        "device_ids": [],
                         "count": 0,
                     }
                     by_course[c_label] = bucket
@@ -2368,7 +2988,25 @@ def return_pcs():
                 bucket["device_ids"].append(d.id)
                 bucket["count"] += 1
 
-                # Borrar la asignación (tabla viva)
+                # --------------------------------------------------
+                # Histórico para calendario / trazabilidad.
+                # assignments sigue siendo tabla viva y se borra,
+                # pero antes registramos el retorno real.
+                # --------------------------------------------------
+                db.add(models.CourseDeviceMovement(
+                    course_id=course_id,
+                    device_id=device_id,
+                    movement_type="returned",
+                    asset_kind="pc",
+                    movement_at=now,
+                    assignment_id=assignment_id,
+                    created_by=user_id,
+                    notes=None,
+                ))
+
+                movement_count += 1
+
+                # Borrar la asignación viva
                 db.delete(a)
                 returned += 1
 
@@ -2376,10 +3014,9 @@ def return_pcs():
 
             courses_count = len(by_course)
 
-            # Log humano y útil
             log_movement(
                 db,
-                user_id=getattr(current_user, "id", None),
+                user_id=user_id,
                 entity_type="pc_return",
                 entity_id=None,
                 action="bulk_return",
@@ -2388,20 +3025,22 @@ def return_pcs():
                     "user": username,
                     "returned_count": returned,
                     "skipped_count": skipped,
+                    "movement_count": movement_count,
                     "courses_count": courses_count,
                     "by_course": by_course,
-                    # si quieres conservar lo que venía del form:
                     "barcodes": barcodes,
                 },
                 description=(
                     f"ITC bulk return by {username or 'unknown'} "
-                    f"(returned={returned}, skipped={skipped}, courses={courses_count})"
+                    f"(returned={returned}, skipped={skipped}, "
+                    f"movements={movement_count}, courses={courses_count})"
                 ),
                 success=True,
                 user_agent=request.user_agent.string,
             )
 
             db.commit()
+
             flash(f"Returned PCs: {returned}. Skipped: {skipped}.", "success")
             return redirect(url_for("main.index"))
 

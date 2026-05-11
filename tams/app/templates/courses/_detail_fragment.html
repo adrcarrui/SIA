@@ -1,89 +1,342 @@
-<div>
-  <div class="d-flex align-items-center mb-2">
-    <h5 class="mb-0">
-      Course:
-      <span class="text-muted">
-        {% set c1 = course.course|string|trim %}
-        {% set c2 = course.name|string|trim %}
-        {{ c1 if c1 not in ['', 'None'] else (c2 if c2 not in ['', 'None'] else 'Course #' ~ course.id) }}
-      </span>
-      {% set status_color = {
-        'active':'success',
-        'finished':'secondary',
-        'cancelled':'danger',
-        'planned':'dark'
-      }.get((course.auto_status or '')|lower, 'light') %}
-      <span class="badge text-bg-{{ status_color }}">{{ course.auto_status or '—' }}</span>
-      {% set itc = (course.status_itc or 'start')|lower %}
-{% set itc_color = 'secondary' %}
-{% if 'cancel' in itc or 'error' in itc %}
-  {% set itc_color = 'danger' %}
-{% elif itc in ['completed','end','collected'] %}
-  {% set itc_color = 'success' %}
-{% elif 'delivered' in itc %}
-  {% set itc_color = 'primary' %}
-{% endif %}
-      {% set dept_l = (current_user.department or '')|lower %}
-    {% if dept_l != 'tco' %}
-      Status ITC:
-      {% set current_itc = (course.status_itc if course.status_itc in (course_itc_statuses or []) else 'start') %}
-      {% if show_calendar_itc_status_editor %}
-        <span class="d-inline-flex align-items-center gap-2 ms-1">
-          <select class="form-select form-select-sm itc-status-select"
-                  data-course-id="{{ course.id }}"
-                  data-old-value="{{ current_itc }}"
-                  data-saving="0"
-                  style="min-width: 160px;">
-            {% for st in (course_itc_statuses or []) %}
-              <option value="{{ st }}" {% if current_itc == st %}selected{% endif %}>{{ st }}</option>
-            {% endfor %}
-          </select>
-          <span class="small text-muted itc-status-msg" data-course-id="{{ course.id }}"></span>
-        </span>
-      {% else %}
-        <span class="badge text-bg-{{ itc_color }}">{{ course.status_itc or 'start' }}</span>
-      {% endif %}
-    {% endif %}
-    </h5>
+<div class="course-detail">
 
-    <div class="ms-auto">
-      <a href="{{ url_for('courses.edit_course', course_id=course.id) }}"
-         class="btn btn-sm btn-secondary">
-        Edit course
-      </a>
-    </div>
-  </div>
+  {% set actor_role = (current_user.role or '')|lower|trim %}
+  {% set actor_dept = (current_user.department or '')|lower|trim %}
+  {% set can_manage_itc = (actor_role == 'admin' or actor_dept == 'itc support') %}
 
-  <p class="small text-muted mb-3">
-    {% if course.start_date %}{{ course.start_date }}{% else %}–{% endif %}
-    →
-    {% if course.end_date %}{{ course.end_date }}{% else %}–{% endif %}
-  </p>
+  {% set c1 = course.course|string|trim %}
+  {% set c2 = course.name|string|trim %}
+  {% set course_title = c1 if c1 not in ['', 'None'] else (c2 if c2 not in ['', 'None'] else 'Course #' ~ course.id) %}
 
-  Description:
-  {% if course.notes and course.notes|trim not in ['None', 'none', ''] %}
-    <p>{{ course.notes }}</p>
+  {% set status_color = {
+    'active':'success',
+    'finished':'secondary',
+    'cancelled':'danger',
+    'planned':'dark'
+  }.get((course.auto_status or '')|lower, 'light') %}
+
+  {% set itc = (course.status_itc or 'start')|lower %}
+  {% set itc_color = 'secondary' %}
+  {% if 'cancel' in itc or 'error' in itc %}
+    {% set itc_color = 'danger' %}
+  {% elif itc in ['completed','end','collected'] %}
+    {% set itc_color = 'success' %}
+  {% elif 'delivered' in itc %}
+    {% set itc_color = 'primary' %}
   {% endif %}
 
-  <hr>
+  <!-- ========================================================= -->
+  <!-- HEADER -->
+  <!-- ========================================================= -->
+  <div class="border-bottom pb-3 mb-3">
 
-  <div class="d-flex align-items-center mb-2">
-    <h6 class="mb-0">ASSIGNED DEVICES</h6>
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-2">
+      <div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <h5 class="mb-0">
+            Course:
+            <span class="text-muted">
+              {{ course_title }}
+            </span>
+          </h5>
 
-    <div class="ms-auto d-flex gap-2">
+          <span class="badge text-bg-{{ status_color }}">
+            {{ course.auto_status or '—' }}
+          </span>
+        </div>
+
+        <div class="small text-muted mt-1">
+          {% if course.start_date %}
+            {{ course.start_date.strftime("%d/%m/%Y") }}
+          {% else %}
+            –
+          {% endif %}
+          →
+          {% if course.end_date %}
+            {{ course.end_date.strftime("%d/%m/%Y") }}
+          {% else %}
+            –
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="flex-shrink-0">
+        <a href="{{ url_for('courses.edit_course', course_id=course.id) }}"
+           class="btn btn-sm btn-secondary">
+          Edit course
+        </a>
+      </div>
+    </div>
+
+    {% if actor_dept != 'tco' %}
+      <div class="d-flex align-items-center gap-2 flex-wrap mt-2">
+        <span class="small text-muted fw-semibold">
+          Status ITC:
+        </span>
+
+        {% set current_itc = (course.status_itc if course.status_itc in (course_itc_statuses or []) else 'start') %}
+
+        {% if show_calendar_itc_status_editor %}
+          <span class="d-inline-flex align-items-center gap-2">
+            <select class="form-select form-select-sm itc-status-select"
+                    data-course-id="{{ course.id }}"
+                    data-old-value="{{ current_itc }}"
+                    data-saving="0"
+                    style="min-width: 160px;">
+              {% for st in (course_itc_statuses or []) %}
+                <option value="{{ st }}" {% if current_itc == st %}selected{% endif %}>
+                  {{ st }}
+                </option>
+              {% endfor %}
+            </select>
+
+            <span class="small text-muted itc-status-msg"
+                  data-course-id="{{ course.id }}"></span>
+          </span>
+        {% else %}
+          <span class="badge text-bg-{{ itc_color }}">
+            {{ course.status_itc or 'start' }}
+          </span>
+        {% endif %}
+      </div>
+    {% endif %}
+
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- DESCRIPTION / COMMENTS -->
+  <!-- ========================================================= -->
+  <div class="mb-3">
+    <div class="small text-muted fw-semibold mb-1">
+      Description / Comments
+    </div>
+
+    {% if course.notes and course.notes|trim not in ['None', 'none', ''] %}
+      <div class="small border rounded px-2 py-2 bg-light">
+        {{ course.notes }}
+      </div>
+    {% else %}
+      <div class="small text-muted border rounded px-2 py-2 bg-light">
+        No comments added.
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- ITC SUPPORT AREA -->
+  <!-- ========================================================= -->
+  {% if can_manage_itc %}
+
+    {% set pc = itc_equipment_summary['pc'] %}
+    {% set usb = itc_equipment_summary['usb'] %}
+    {% set has_itc_equipment = (pc.required > 0 or usb.required > 0) %}
+
+    <div class="border rounded px-3 py-3 mb-4 bg-light">
+
+      <div class="row g-3 align-items-start">
+
+        <!-- ================= ITC EQUIPMENT ================= -->
+        {% if has_itc_equipment %}
+          <div class="col-md-4">
+            <div class="small text-muted fw-semibold mb-2">
+              ITC equipment
+            </div>
+
+            <div class="d-flex flex-column gap-2 small">
+
+              {% if pc.required > 0 %}
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <span class="fw-semibold" style="min-width: 38px;">
+                    PC
+                  </span>
+
+                  {% if pc.assigned < pc.required %}
+                    <span class="badge bg-warning text-dark">
+                      {{ pc.assigned }} / {{ pc.required }}
+                    </span>
+                  {% elif pc.assigned == pc.required %}
+                    <span class="badge bg-success">
+                      {{ pc.assigned }} / {{ pc.required }}
+                    </span>
+                  {% else %}
+                    <span class="badge bg-info text-dark">
+                      {{ pc.assigned }} / {{ pc.required }}
+                    </span>
+                  {% endif %}
+
+                  <span class="text-muted">
+                    assigned
+                  </span>
+                </div>
+              {% endif %}
+
+              {% if usb.required > 0 %}
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <span class="fw-semibold" style="min-width: 38px;">
+                    USB
+                  </span>
+
+                  <span class="badge bg-secondary">
+                    {{ usb.required }}
+                  </span>
+
+                  <span class="text-muted">
+                    required
+                  </span>
+                </div>
+              {% endif %}
+
+            </div>
+          </div>
+        {% endif %}
+
+        <!-- ================= ITC REWORK ================= -->
+        <div class="{% if has_itc_equipment %}col-md-8 border-start ps-3{% else %}col-12{% endif %}">
+          <div class="small text-muted fw-semibold mb-2">
+            ITC rework
+          </div>
+
+          <form method="post"
+                action="{{ url_for('courses.create_rework', course_id=course.id) }}"
+                class="d-flex align-items-center gap-2 flex-nowrap">
+
+            {% if csrf_token is defined %}
+              {{ csrf_token() }}
+            {% endif %}
+
+            <input type="date"
+                   name="rework_date"
+                   class="form-control form-control-sm flex-shrink-0"
+                   style="width: 160px;"
+                   value="{{ today_date }}"
+                   required>
+
+            <input type="text"
+                   name="notes"
+                   class="form-control form-control-sm"
+                   maxlength="255"
+                   placeholder="Optional notes">
+
+            <button type="submit"
+                    class="btn btn-sm btn-warning flex-shrink-0 px-3 fw-semibold">
+              Add RT
+            </button>
+          </form>
+
+          <!-- ================= ACTIVE RTS ================= -->
+          {% if active_reworks %}
+            <div class="d-flex flex-column gap-2 mt-3">
+              {% for rw in active_reworks %}
+                <div>
+
+                  <div class="rt-rework-pill d-flex align-items-center gap-2 px-2 py-1 small">
+                    <span class="fw-semibold">
+                      RT
+                    </span>
+
+                    <span class="flex-shrink-0">
+                      {{ rw.rework_date.strftime("%d/%m/%Y") if rw.rework_date else "—" }}
+                    </span>
+
+                    {% if rw.notes %}
+                      <span class="flex-grow-1 text-truncate">
+                        {{ rw.notes }}
+                      </span>
+                    {% else %}
+                      <span class="flex-grow-1 text-muted">
+                        No notes
+                      </span>
+                    {% endif %}
+
+                    <button type="button"
+                            class="btn btn-light btn-sm px-3 py-1 fw-semibold flex-shrink-0"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#editRework{{ rw.id }}"
+                            aria-expanded="false"
+                            aria-controls="editRework{{ rw.id }}">
+                      Edit
+                    </button>
+
+                    <form method="post"
+                          action="{{ url_for('courses.cancel_rework', course_id=course.id, rework_id=rw.id) }}"
+                          class="m-0 flex-shrink-0">
+
+                      {% if csrf_token is defined %}
+                        {{ csrf_token() }}
+                      {% endif %}
+
+                      <button type="submit"
+                              class="btn btn-light btn-sm px-3 py-1 fw-semibold"
+                              onclick="return confirm('Cancel this RT event?')">
+                        Cancel RT
+                      </button>
+                    </form>
+                  </div>
+
+                  <div class="collapse mt-1" id="editRework{{ rw.id }}">
+                    <form method="post"
+                          action="{{ url_for('courses.edit_rework', course_id=course.id, rework_id=rw.id) }}"
+                          class="d-flex align-items-center gap-2 flex-nowrap border rounded px-2 py-2 bg-white">
+
+                      {% if csrf_token is defined %}
+                        {{ csrf_token() }}
+                      {% endif %}
+
+                      <input type="date"
+                             name="rework_date"
+                             class="form-control form-control-sm flex-shrink-0"
+                             style="width: 160px;"
+                             value="{{ rw.rework_date.strftime('%Y-%m-%d') if rw.rework_date else today_date }}"
+                             required>
+
+                      <input type="text"
+                             name="notes"
+                             class="form-control form-control-sm"
+                             maxlength="255"
+                             value="{{ rw.notes or '' }}"
+                             placeholder="Optional notes">
+
+                      <button type="submit"
+                              class="btn btn-sm btn-warning px-3 fw-semibold flex-shrink-0">
+                        Save
+                      </button>
+                    </form>
+                  </div>
+
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- ========================================================= -->
+  <!-- ASSIGNED DEVICES -->
+  <!-- ========================================================= -->
+  <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+    <h6 class="mb-0">
+      ASSIGNED DEVICES
+    </h6>
+
+    <div class="d-flex gap-2 flex-wrap justify-content-end">
       <a href="{{ url_for('assignments.new_bulk', course_id=course.id) }}"
          class="btn btn-sm btn-primary">
         Associate
       </a>
-      {% set actor_role = (current_user.role or '')|lower %}
-      {% set actor_dept = (current_user.department or '')|trim %}
-      {% if actor_role == 'admin' or actor_dept == 'ITC support' %}
+
+      {% if can_manage_itc %}
         <a class="btn btn-sm btn-primary"
-          href="{{ url_for('courses.assign_pcs', course_id=course.id) }}">
+           href="{{ url_for('courses.assign_pcs', course_id=course.id) }}">
           Assign PCs
         </a>
       {% endif %}
-      <a href="{{ url_for('assignments.bulk_returns')}}"
+
+
+
+      <a href="{{ url_for('assignments.bulk_returns') }}"
          class="btn btn-sm btn-warning">
         Return
       </a>
@@ -103,308 +356,101 @@
           <th class="text-center">Actions</th>
         </tr>
       </thead>
+
       <tbody>
         {% for a in active_assignments %}
-        <tr
-          {% if a.status == 'overdue_1' %}
-            class="table-warning"
-          {% elif a.status == 'overdue_2' %}
-            class="table-danger"
-          {% endif %}
-        >
-          <td class="text-center">#{{ a.id }}</td>
-
-          <td class="text-center">
-            {{ a.device.name if a.device else "Device #" ~ a.device_id }}
-          </td>
-
-          <td class="text-center">
-            {% if a.status == 'active' %}
-              <span class="badge bg-success">Active</span>
-            {% elif a.status == 'overdue_1' %}
-              <span class="badge bg-warning text-dark">
-                Overdue_1 ({{ a.days_late }} days{% if a.days_late != 1 %}s{% endif %})
-              </span>
+          <tr
+            {% if a.status == 'overdue_1' %}
+              class="table-warning"
             {% elif a.status == 'overdue_2' %}
-              <span class="badge bg-danger">
-                Overdue_2 ({{ a.days_late }} day{% if a.days_late != 1 %}s{% endif %})
-              </span>
-            {% else %}
-              <span class="badge bg-secondary">{{ a.status }}</span>
+              class="table-danger"
             {% endif %}
-          </td>
-          <td class="text-center">{{ a.responsible.username if a.responsible else '-' }}</td>
-          <td class="text-center">
-            {% if a.assigned_at %}
-              {{ a.assigned_at.strftime("%Y-%m-%d %H:%M") }}
-            {% else %}
-              –
-            {% endif %}
-          </td>
+          >
+            <td class="text-center">
+              #{{ a.id }}
+            </td>
 
-          <td class="text-center">
-            {{ a.creator.username if a.creator else "—" }}
-          </td>
+            <td class="text-center">
+              {{ a.device.name if a.device else "Device #" ~ a.device_id }}
+            </td>
 
-          <td class="text-center">
-            <div class="d-flex justify-content-center align-items-center gap-2 w-100">
-              <a class="btn btn-secondary btn-sm"
-                 href="{{ url_for('assignments.edit', id=a.id) }}">
-                Edit
-              </a>
+            <td class="text-center">
+              {% if a.status == 'active' %}
+                <span class="badge bg-success">
+                  Active
+                </span>
+              {% elif a.status == 'overdue_1' %}
+                <span class="badge bg-warning text-dark">
+                  Overdue_1
+                  {% if a.days_late is defined %}
+                    ({{ a.days_late }} day{% if a.days_late != 1 %}s{% endif %})
+                  {% endif %}
+                </span>
+              {% elif a.status == 'overdue_2' %}
+                <span class="badge bg-danger">
+                  Overdue_2
+                  {% if a.days_late is defined %}
+                    ({{ a.days_late }} day{% if a.days_late != 1 %}s{% endif %})
+                  {% endif %}
+                </span>
+              {% else %}
+                <span class="badge bg-secondary">
+                  {{ a.status }}
+                </span>
+              {% endif %}
+            </td>
 
-              <form method="post"
-                    action="{{ url_for('assignments.delete', id=a.id) }}"
-                    class="d-inline">
-                <button type="submit"
-                        class="btn btn-sm btn-danger"
-                        onclick="return confirm('¿Delete assign #{{ a.id }}?')">
-                  Delete
-                </button>
-              </form>
-            </div>
-          </td>
-        </tr>
+            <td class="text-center">
+              {{ a.responsible.username if a.responsible else '-' }}
+            </td>
+
+            <td class="text-center">
+              {% if a.assigned_at %}
+                {{ a.assigned_at.strftime("%d/%m/%Y %H:%M") }}
+              {% else %}
+                –
+              {% endif %}
+            </td>
+
+            <td class="text-center">
+              {{ a.creator.username if a.creator else "—" }}
+            </td>
+
+            <td class="text-center">
+              <div class="d-flex justify-content-center align-items-center gap-2 w-100">
+                <a class="btn btn-secondary btn-sm"
+                   href="{{ url_for('assignments.edit', id=a.id) }}">
+                  Edit
+                </a>
+
+                <form method="post"
+                      action="{{ url_for('assignments.delete', id=a.id) }}"
+                      class="d-inline">
+
+                  {% if csrf_token is defined %}
+                    {{ csrf_token() }}
+                  {% endif %}
+
+                  <button type="submit"
+                          class="btn btn-sm btn-danger"
+                          onclick="return confirm('¿Delete assign #{{ a.id }}?')">
+                    Delete
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
         {% endfor %}
 
         {% if not active_assignments %}
-        <tr>
-          <td colspan="6" class="text-center text-muted">
-            There are no active assigned devices for this course.
-          </td>
-        </tr>
+          <tr>
+            <td colspan="7" class="text-center text-muted py-3">
+              There are no active assigned devices for this course.
+            </td>
+          </tr>
         {% endif %}
       </tbody>
     </table>
   </div>
+
 </div>
-<!--
-<hr class="my-4">
-
-<div class="d-flex align-items-center mb-2">
-  <h6 class="mb-0">TEMPORARY CARD LOANS</h6>
-  <div class="ms-auto">
-    <button class="btn btn-sm btn-outline-secondary" type="button" id="tcl-refresh">
-      Refresh
-    </button>
-  </div>
-</div>
-
-<div class="card mb-3">
-  <div class="card-body">
-    <form id="tcl-create-form" class="row g-2">
-      {% if csrf_token is defined %}
-        {{ csrf_token() }}
-      {% endif %}
-
-      <input type="hidden" name="course_id" value="{{ course.id }}">
-
-      <div class="col-md-2">
-        <select class="form-select form-select-sm" name="borrower_type" required>
-          <option value="student" selected>student</option>
-          <option value="instructor">instructor</option>
-        </select>
-      </div>
-
-      <div class="col-md-2">
-        <select class="form-select form-select-sm" name="card_scope" required>
-          <option value="vending" selected>vending</option>
-          <option value="canteen">canteen</option>
-          <option value="instructor">instructor</option>
-          <option value="other">other</option>
-        </select>
-      </div>
-
-      <div class="col-md-3">
-        <input class="form-control form-control-sm" name="borrower_ref" placeholder="Borrower ref (non-PII)">
-      </div>
-
-      <div class="col-md-3">
-        <input class="form-control form-control-sm" name="borrower_name" placeholder="Borrower name (optional)">
-      </div>
-
-      <div class="col-md-2">
-        <input class="form-control form-control-sm" name="temp_card_device_id" placeholder="Temp device ID" required>
-      </div>
-
-      <div class="col-md-3">
-        <input class="form-control form-control-sm" name="original_card_device_id" placeholder="Original device ID (optional)">
-      </div>
-
-      <div class="col-md-3">
-        <input class="form-control form-control-sm" name="due_at" placeholder="Due at (ISO, UTC)" required>
-        <div class="form-text">Example: 2026-02-20T12:00:00+00:00</div>
-      </div>
-
-      <div class="col-md-3">
-        <input class="form-control form-control-sm" name="reason" placeholder="reason (loss/damage/operational/other)">
-      </div>
-
-      <div class="col-md-12">
-        <input class="form-control form-control-sm" name="notes" placeholder="notes">
-      </div>
-
-      <div class="col-md-12 d-grid">
-        <button class="btn btn-sm btn-primary" type="submit">Create temporary loan</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<div class="table-responsive">
-  <table class="table table-sm align-middle mb-0" id="tcl-table">
-    <thead>
-      <tr>
-        <th class="text-center">Loan Nº</th>
-        <th class="text-center">Status</th>
-        <th class="text-center">Scope</th>
-        <th class="text-center">Borrower</th>
-        <th class="text-center">Temp device</th>
-        <th class="text-center">Due</th>
-        <th class="text-center">Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td colspan="7" class="text-center text-muted">Loading…</td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-
-<script>
-(function () {
-  const courseId = {{ course.id }};
-  const listUrl = `/temporary-loans/course/${courseId}`;
-  const createUrl = `/temporary-loans/create`;
-
-  const tableBody = document.querySelector("#tcl-table tbody");
-  const form = document.querySelector("#tcl-create-form");
-  const btnRefresh = document.querySelector("#tcl-refresh");
-
-  function badge(status) {
-    if (status === "overdue") return '<span class="badge bg-danger">overdue</span>';
-    if (status === "active") return '<span class="badge bg-success">active</span>';
-    if (status === "returned") return '<span class="badge bg-secondary">returned</span>';
-    if (status === "lost") return '<span class="badge bg-warning text-dark">lost</span>';
-    if (status === "cancelled") return '<span class="badge bg-dark">cancelled</span>';
-    return `<span class="badge bg-light text-dark">${status}</span>`;
-  }
-
-  function esc(s) {
-    return (s ?? "").toString()
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
-  async function loadLoans() {
-    const r = await fetch(listUrl, { headers: { "Accept": "application/json" } });
-    const data = await r.json();
-
-    if (!Array.isArray(data) || data.length === 0) {
-      tableBody.innerHTML = `
-        <tr>
-          <td colspan="7" class="text-center text-muted">
-            There are no temporary loans for this course.
-          </td>
-        </tr>`;
-      return;
-    }
-
-    tableBody.innerHTML = data.map(l => {
-      const borrower = esc(l.borrower_ref || l.borrower_name || "—");
-      const due = esc(l.due_at || "—");
-      const status = l.status;
-
-      const disableReturn = (status === "returned" || status === "cancelled");
-      const disableLost   = (status === "returned" || status === "lost" || status === "cancelled");
-
-      return `
-        <tr>
-          <td class="text-center">#${l.id}</td>
-          <td class="text-center">${badge(status)}</td>
-          <td class="text-center"><small>${esc(l.card_scope)}</small></td>
-          <td class="text-center"><small>${esc(l.borrower_type)}: ${borrower}</small></td>
-          <td class="text-center"><small>${esc(l.temp_card_device_id)}</small></td>
-          <td class="text-center"><small>${due}</small></td>
-          <td class="text-center">
-            <div class="d-flex justify-content-center gap-2">
-              <button class="btn btn-sm btn-outline-success"
-                      data-action="return"
-                      data-id="${l.id}"
-                      ${disableReturn ? "disabled" : ""}>
-                Return
-              </button>
-              <button class="btn btn-sm btn-outline-warning"
-                      data-action="lost"
-                      data-id="${l.id}"
-                      ${disableLost ? "disabled" : ""}>
-                Lost
-              </button>
-            </div>
-          </td>
-        </tr>
-      `;
-    }).join("");
-  }
-
-  async function postJson(url, payload) {
-    const headers = { "Content-Type": "application/json", "Accept": "application/json" };
-    return fetch(url, { method: "POST", headers, body: JSON.stringify(payload) });
-  }
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    const payload = Object.fromEntries(fd.entries());
-
-    payload.course_id = parseInt(payload.course_id, 10);
-    payload.temp_card_device_id = parseInt(payload.temp_card_device_id, 10);
-
-    if (payload.original_card_device_id) {
-      payload.original_card_device_id = parseInt(payload.original_card_device_id, 10);
-    } else {
-      delete payload.original_card_device_id;
-    }
-
-    const r = await postJson(createUrl, payload);
-    const j = await r.json();
-
-    if (!r.ok) {
-      alert(j.error || "Error creating temporary loan");
-      return;
-    }
-
-    form.reset();
-    form.querySelector('input[name="course_id"]').value = courseId;
-    await loadLoans();
-  });
-
-  document.addEventListener("click", async (e) => {
-    const btn = e.target.closest("button[data-action]");
-    if (!btn) return;
-
-    const loanId = btn.getAttribute("data-id");
-    const action = btn.getAttribute("data-action");
-    const url = `/temporary-loans/${loanId}/${action}`;
-
-    const r = await fetch(url, { method: "POST", headers: { "Accept": "application/json" } });
-    const j = await r.json();
-
-    if (!r.ok) {
-      alert(j.error || `Error: ${action}`);
-      return;
-    }
-
-    await loadLoans();
-  });
-
-  btnRefresh.addEventListener("click", loadLoans);
-
-  loadLoans();
-})();
-</script>-->
-

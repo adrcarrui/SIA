@@ -235,6 +235,17 @@
             </a>
           </li>
           {% endif %}
+
+          {% if dept_l != 'tco' and (('admin' in role_l or 'supervisor' in role_l) or dept_l.startswith('itc')) %}
+          <li class="nav-item">
+          <a href="{{ url_for('reworks.index') }}"
+            class="nav-link d-flex align-items-center gap-2 {{ 'active' if request.endpoint and request.endpoint.startswith('reworks.') else '' }}"
+            title="ITC Reworks">
+            <span class="icon" aria-hidden="true">🔁</span>
+            <span class="label">ITC Reworks</span>
+          </a>
+        </li>
+        {% endif %}
         {% endif %}
 
       </ul>

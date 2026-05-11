@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>ITC Reworks Report</title>
+
+  <style>
+    @page {
+      size: A4 landscape;
+      margin: 10mm;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+      color: #111111;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11px;
+    }
+
+    .report {
+      width: 100%;
+    }
+
+    .report-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #111111;
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+    }
+
+    .report-title {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.1;
+      font-weight: 700;
+    }
+
+    .report-subtitle {
+      margin-top: 4px;
+      color: #555555;
+      font-size: 11px;
+    }
+
+    .report-meta {
+      text-align: right;
+      color: #555555;
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .filters {
+      border: 1px solid #cccccc;
+      background: #f7f7f7;
+      padding: 6px 8px;
+      margin-bottom: 10px;
+      font-size: 10px;
+    }
+
+    .section {
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin: 14px 0 6px 0;
+      padding-bottom: 3px;
+      border-bottom: 1px solid #cccccc;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .kpi-card {
+      border: 1px solid #cccccc;
+      padding: 8px;
+      min-height: 55px;
+      background: #ffffff;
+    }
+
+    .kpi-label {
+      color: #555555;
+      font-size: 10px;
+      margin-bottom: 5px;
+    }
+
+    .kpi-value {
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .svg-chart-box {
+      border: 1px solid #cccccc;
+      padding: 8px 10px;
+      margin-bottom: 12px;
+      background: #ffffff;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .svg-chart {
+      display: block;
+      width: 100%;
+      height: 210px;
+    }
+
+    .chart-note {
+      margin-top: 4px;
+      font-size: 9px;
+      color: #666666;
+    }
+
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    .history-table th,
+    .history-table td {
+      border: 1px solid #cccccc;
+      padding: 4px 5px;
+      vertical-align: top;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+
+    .history-table th {
+      background: #eeeeee;
+      font-weight: 700;
+      text-align: left;
+    }
+
+    .history-table .col-num {
+      width: 4%;
+      text-align: center;
+    }
+
+    .history-table .col-date {
+      width: 9%;
+    }
+
+    .history-table .col-course {
+      width: 12%;
+    }
+
+    .history-table .col-name {
+      width: 17%;
+    }
+
+    .history-table .col-client {
+      width: 12%;
+    }
+
+    .history-table .col-user {
+      width: 12%;
+    }
+
+    .history-table .col-status {
+      width: 9%;
+    }
+
+    .history-table .col-notes {
+      width: 25%;
+    }
+
+    .badge {
+      display: inline-block;
+      border: 1px solid #777777;
+      border-radius: 3px;
+      padding: 1px 4px;
+      font-size: 9px;
+      font-weight: 700;
+      background: #ffffff;
+      color: #111111;
+    }
+
+    .muted {
+      color: #666666;
+    }
+
+    .text-center {
+      text-align: center;
+    }
+
+    .empty {
+      text-align: center;
+      color: #666666;
+      padding: 14px;
+    }
+
+    .print-actions {
+      margin-bottom: 10px;
+      text-align: right;
+    }
+
+    .print-btn {
+      border: 1px solid #777777;
+      background: #ffffff;
+      color: #111111;
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    @media print {
+      .print-actions {
+        display: none !important;
+      }
+
+      body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      thead {
+        display: table-header-group;
+      }
+
+      tr {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+
+      .section,
+      .kpi-card,
+      .svg-chart-box {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="print-actions">
+    <button type="button" class="print-btn" onclick="window.print()">
+      Print / Save as PDF
+    </button>
+  </div>
+
+  <main class="report">
+
+    <header class="report-header">
+      <div>
+        <h1 class="report-title">ITC Reworks Report</h1>
+        <div class="report-subtitle">
+          Historical report of ITC reworks registered in TAMS
+        </div>
+      </div>
+
+      <div class="report-meta">
+        <div><strong>Generated:</strong> {{ generated_at.strftime("%Y-%m-%d %H:%M") }}</div>
+        <div><strong>System:</strong> TAMS</div>
+      </div>
+    </header>
+
+    <div class="filters">
+      <strong>Filters:</strong>
+
+      {% if q %}
+        Search: {{ q }};
+      {% endif %}
+
+      {% if filter_status %}
+        Status: {{ filter_status }};
+      {% endif %}
+
+      {% if filter_date_from %}
+        From: {{ filter_date_from }};
+      {% endif %}
+
+      {% if filter_date_to %}
+        To: {{ filter_date_to }};
+      {% endif %}
+
+      {% if not q and not filter_status and not filter_date_from and not filter_date_to %}
+        None
+      {% endif %}
+    </div>
+
+    <section class="section">
+      <div class="kpi-grid">
+
+        <div class="kpi-card">
+          <div class="kpi-label">Active reworks</div>
+          <div class="kpi-value">{{ active_count }}</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">Cancelled reworks</div>
+          <div class="kpi-value">{{ cancelled_count }}</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">Affected courses</div>
+          <div class="kpi-value">{{ affected_courses_count }}</div>
+        </div>
+
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Reworks by month</h2>
+
+      {% if monthly_data %}
+        <div class="svg-chart-box">
+
+          <svg class="svg-chart"
+               viewBox="0 0 1000 260"
+               preserveAspectRatio="none"
+               xmlns="http://www.w3.org/2000/svg">
+
+            <rect x="0" y="0" width="1000" height="260" fill="#ffffff"></rect>
+
+            <line x1="55" y1="25" x2="55" y2="195" stroke="#333333" stroke-width="1"></line>
+            <line x1="55" y1="195" x2="970" y2="195" stroke="#333333" stroke-width="1"></line>
+
+            <line x1="55" y1="110" x2="970" y2="110" stroke="#dddddd" stroke-width="1" stroke-dasharray="4 4"></line>
+
+            <text x="20" y="30" font-size="12" fill="#333333">{{ max_monthly_value }}</text>
+            <text x="25" y="199" font-size="12" fill="#333333">0</text>
+
+            {% set chart_left = 70 %}
+            {% set chart_bottom = 195 %}
+            {% set chart_height = 165 %}
+            {% set chart_width = 880 %}
+            {% set n = monthly_data|length %}
+            {% set slot_width = chart_width / n %}
+
+            {% for item in monthly_data %}
+              {% set value = item.value %}
+              {% set bar_height = ((value / max_monthly_value) * chart_height) if max_monthly_value else 0 %}
+              {% set bar_width = slot_width * 0.55 %}
+              {% set x = chart_left + (loop.index0 * slot_width) + ((slot_width - bar_width) / 2) %}
+              {% set y = chart_bottom - bar_height %}
+
+              <rect x="{{ x }}"
+                    y="{{ y }}"
+                    width="{{ bar_width }}"
+                    height="{{ bar_height }}"
+                    fill="#555555"
+                    stroke="#222222"
+                    stroke-width="1"></rect>
+
+              <text x="{{ x + (bar_width / 2) }}"
+                    y="{{ y - 6 }}"
+                    font-size="13"
+                    font-weight="700"
+                    text-anchor="middle"
+                    fill="#111111">
+                {{ value }}
+              </text>
+
+              <text x="{{ x + (bar_width / 2) }}"
+                    y="220"
+                    font-size="12"
+                    text-anchor="middle"
+                    fill="#333333">
+                {{ item.label }}
+              </text>
+            {% endfor %}
+          </svg>
+
+          <div class="chart-note">
+            Monthly active reworks. Cancelled reworks are not included in this chart.
+          </div>
+
+        </div>
+      {% else %}
+        <div class="empty">
+          No monthly data available for the selected filters.
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Rework history</h2>
+
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th class="col-num">#</th>
+            <th class="col-date">Date</th>
+            <th class="col-course">Course</th>
+            <th class="col-name">Name</th>
+            <th class="col-client">Client</th>
+            <th class="col-user">Created by</th>
+            <th class="col-status">Status</th>
+            <th class="col-notes">Notes</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for rework, course, user in rows %}
+            <tr>
+              <td class="text-center">{{ loop.index }}</td>
+
+              <td>
+                {{ rework.rework_date.strftime("%Y-%m-%d") if rework.rework_date else "—" }}
+              </td>
+
+              <td>
+                {{ course.course or "—" }}
+              </td>
+
+              <td>
+                {{ course.name or "—" }}
+              </td>
+
+              <td>
+                {{ course.client or "—" }}
+              </td>
+
+              <td>
+                {% if user %}
+                  {{ user.username or user.email or "—" }}
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if rework.cancelled_at %}
+                  <span class="badge">Cancelled</span>
+                {% else %}
+                  <span class="badge">Active</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {{ rework.notes or "" }}
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="8" class="empty">
+                No reworks found.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+  </main>
+
+</body>
+</html>

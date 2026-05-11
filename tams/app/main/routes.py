@@ -10,6 +10,7 @@ from app.scripts.get_overdue_assignments import (
 )
 from app.models import User, Device, Course, Assignment, Movements, Notification
 from sqlalchemy import func, case, or_
+from sqlalchemy.orm import joinedload
 import app.models as models
 from app.scripts.alerts_service import get_alerts_for_user, build_alerts_summary
 from app.scripts.alert_filters import reason_counts_for_calendar
@@ -359,6 +360,17 @@ def index():
         # =====================================================
         # ITC: aviso rápido de "pickup needed" (si existe)
         # =====================================================
+        latest_movements = []
+
+        if is_itc or is_admin:
+            latest_movements = (
+                db.query(Movements)
+                .options(joinedload(Movements.user))
+                .filter(Movements.success.is_(True))
+                .order_by(Movements.created_at.desc())
+                .limit(5)
+                .all()
+            )
         pickup_cards = []
         if is_itc or is_admin:
             pickup_notifs = (
@@ -401,6 +413,7 @@ def index():
             alerts=alerts,
             alerts_summary=alerts_summary,
             pickup_cards=pickup_cards,
+            latest_movements=latest_movements,
         )
 
     finally:

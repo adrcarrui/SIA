@@ -1,0 +1,277 @@
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  if (document.querySelector(".movements-page")) {
+    document.body.classList.add("no-page-scroll");
+  }
+
+  const modal = document.getElementById("movementDetailModal");
+  if (!modal) return;
+
+  function safeParse(jsonStr) {
+    try {
+      return JSON.parse(jsonStr || "{}");
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function humanizeAction(action) {
+    const map = {
+      create: "Created",
+      update: "Updated",
+      delete: "Deleted",
+      assign: "Assigned",
+      assign_pcs: "Assigned PCs",
+      pickup_notify: "Pickup notified",
+      update_itc_status: "Updated ITC status",
+      auto_lost: "Marked as lost",
+      bulk_return: "Bulk return",
+      return: "Returned",
+      pc_return: "PC return",
+      create_rework: "Created RT",
+      edit_rework: "Edited RT",
+      cancel_rework: "Cancelled RT"
+    };
+
+    return map[action] || action || "-";
+  }
+
+  function humanizeEntity(entityType, entityLabel, entityId) {
+    const typeMap = {
+      course: "Course",
+      device: "Device",
+      user: "User",
+      assignment: "Assignment",
+      asset_type: "Asset type",
+      notification: "Notification",
+      course_rework: "Course rework",
+      pc_return: "PC return"
+    };
+
+    const typeText = typeMap[entityType] || entityType || "";
+
+    if (entityLabel) {
+      return typeText ? `${typeText} ${entityLabel}` : entityLabel;
+    }
+
+    if (entityId) {
+      return typeText ? `${typeText} #${entityId}` : `#${entityId}`;
+    }
+
+    return typeText || "-";
+  }
+
+  function prettyLabel(key) {
+    const map = {
+      id: "ID",
+      course: "Course code",
+      name: "Name",
+      client: "Client",
+      trainees: "Trainees",
+      start_date: "Start date",
+      end_date: "End date",
+      status_tco: "TCO status",
+      status_itc: "ITC status",
+      responsible_id: "Responsible user",
+      responsible: "Responsible",
+      notes: "Notes",
+      note: "Note",
+      pickup_type: "Pickup type",
+      device_name: "Device name",
+      barcode: "Barcode",
+      uid: "UID",
+      email: "Email",
+      username: "Username",
+      role: "Role",
+      department: "Department",
+      active: "Active",
+      success: "Success",
+      description: "Description",
+      entity_type: "Entity type",
+      entity_id: "Entity ID",
+      created_at: "Created at",
+      updated_at: "Updated at",
+      released_at: "Released at",
+      devices: "Devices",
+      returned_count: "Returned count",
+      skipped_count: "Skipped count",
+      courses_count: "Courses count",
+      by_course: "By course",
+      movement_count: "Movement count"
+    };
+
+    if (map[key]) return map[key];
+
+    return String(key)
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
+  function formatDateString(value) {
+    if (typeof value !== "string") return null;
+
+    const isoLike = /^\d{4}-\d{2}-\d{2}/.test(value);
+    if (!isoLike) return null;
+
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return null;
+
+    return d.toLocaleString("en-GB", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+  }
+
+  function escapeHtml(text) {
+    return String(text)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function formatValue(value) {
+    if (value === null || value === undefined || value === "") {
+      return '<span class="text-muted">-</span>';
+    }
+
+    if (typeof value === "boolean") {
+      return value
+        ? '<span class="badge bg-success">Yes</span>'
+        : '<span class="badge bg-secondary">No</span>';
+    }
+
+    if (typeof value === "number") {
+      return String(value);
+    }
+
+    if (typeof value === "string") {
+      const formattedDate = formatDateString(value);
+      if (formattedDate) return formattedDate;
+      return escapeHtml(value);
+    }
+
+    if (Array.isArray(value)) {
+      if (!value.length) {
+        return '<span class="text-muted">-</span>';
+      }
+
+      const items = value.map(function (item) {
+        if (typeof item === "object" && item !== null) {
+          return `<li>${escapeHtml(JSON.stringify(item))}</li>`;
+        }
+        return `<li>${escapeHtml(String(item))}</li>`;
+      }).join("");
+
+      return `<ul class="mb-0 ps-3">${items}</ul>`;
+    }
+
+    if (typeof value === "object") {
+      return `<pre class="mb-0">${escapeHtml(JSON.stringify(value, null, 2))}</pre>`;
+    }
+
+    return escapeHtml(String(value));
+  }
+
+  function renderDataBlock(targetEl, dataObj) {
+    if (!targetEl) return;
+
+    const obj = (dataObj && typeof dataObj === "object" && !Array.isArray(dataObj))
+      ? dataObj
+      : {};
+
+    const entries = Object.entries(obj);
+
+    if (!entries.length) {
+      targetEl.innerHTML = '<span class="text-muted">No data</span>';
+      return;
+    }
+
+    const html = entries.map(function ([key, value]) {
+      return `
+        <div class="border-bottom py-2">
+          <div class="text-muted small">${prettyLabel(key)}</div>
+          <div>${formatValue(value)}</div>
+        </div>
+      `;
+    }).join("");
+
+    targetEl.innerHTML = html;
+  }
+
+  modal.addEventListener("show.bs.modal", function (ev) {
+    const btn = ev.relatedTarget;
+    if (!btn) return;
+
+    const id = btn.getAttribute("data-id") || "";
+    const date = btn.getAttribute("data-date") || "";
+    const user = btn.getAttribute("data-user") || "";
+    const action = btn.getAttribute("data-action") || "";
+    const entityType = btn.getAttribute("data-entity-type") || "";
+    const entityId = btn.getAttribute("data-entity-id") || "";
+    const entityLabel = btn.getAttribute("data-entity-label") || "";
+    const success = btn.getAttribute("data-success") || "";
+    const userAgent = btn.getAttribute("data-user-agent") || "";
+    const before = btn.getAttribute("data-before") || "{}";
+    const after = btn.getAttribute("data-after") || "{}";
+    const desc = btn.getAttribute("data-description") || "";
+
+    const beforeObj = safeParse(before);
+    const afterObj = safeParse(after);
+
+    modal.querySelector("#md-id").textContent = id || "-";
+    modal.querySelector("#md-date").textContent = date || "-";
+    modal.querySelector("#md-user").textContent = user || "-";
+    modal.querySelector("#md-action").textContent = humanizeAction(action);
+    modal.querySelector("#md-entity").textContent = humanizeEntity(entityType, entityLabel, entityId);
+    modal.querySelector("#md-entity-type").textContent = entityType || "-";
+    modal.querySelector("#md-entity-id").textContent = entityId || "-";
+    modal.querySelector("#md-user-agent").textContent = userAgent || "-";
+    modal.querySelector("#md-description").textContent = desc || "-";
+
+    renderDataBlock(modal.querySelector("#md-before"), beforeObj);
+    renderDataBlock(modal.querySelector("#md-after"), afterObj);
+
+    const successEl = modal.querySelector("#md-success");
+    if (success === "Yes") {
+      successEl.innerHTML = '<span class="badge bg-success">Success</span>';
+    } else if (success === "No") {
+      successEl.innerHTML = '<span class="badge bg-danger">Failed</span>';
+    } else {
+      successEl.textContent = "-";
+    }
+
+    const devWrap = modal.querySelector("#md-devices-wrap");
+    const devUl = modal.querySelector("#md-devices");
+
+    if (devWrap && devUl) {
+      devUl.innerHTML = "";
+
+      if (afterObj && Array.isArray(afterObj.devices) && afterObj.devices.length) {
+        afterObj.devices.forEach((d) => {
+          const li = document.createElement("li");
+          li.textContent = String(d);
+          devUl.appendChild(li);
+        });
+
+        devWrap.classList.remove("d-none");
+      } else {
+        devWrap.classList.add("d-none");
+      }
+    }
+
+    const techCollapseEl = modal.querySelector("#md-technical");
+    if (techCollapseEl && typeof bootstrap !== "undefined" && bootstrap.Collapse) {
+      const instance = bootstrap.Collapse.getOrCreateInstance(techCollapseEl, {
+        toggle: false
+      });
+      instance.hide();
+    }
+  });
+});
+</script>

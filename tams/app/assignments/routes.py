@@ -4,8 +4,8 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy import or_, cast, String
 from . import bp
 from app.db import SessionLocal
-from app.models import Assignment, Device, Course, User, Movements
-from datetime import date, datetime, timedelta
+from app.models import Assignment, Device, Course, User, Movements, CourseDeviceMovement, AssetType
+from datetime import date, datetime, timedelta, timezone
 from app.scripts import get_overdue_assignments, log_movement
 
 def log_bulk_return_movement(db, *, user_id, items, action="return", success=True):
@@ -1070,3 +1070,46 @@ def check_cards_vs_trainees(db, course_id: int):
             f"(assigned {assigned} / trainees {course.trainees}).",
             "warning",
         )
+
+def _movement_asset_kind_from_device(device):
+    """
+    Devuelve:
+    - 'pc' si el device pertenece a PC / LAPTOP / COMPUTER
+    - 'usb' si pertenece a USB
+    - None si no debe registrarse en course_device_movements
+
+    Ojo: ahora mismo nos interesa sobre todo PC.
+    Las tarjetas/cards no deben entrar aquí.
+    """
+    if not device or not getattr(device, "asset_type", None):
+        return None
+
+    asset_type = device.asset_type
+
+    code = (getattr(asset_type, "code", "") or "").strip().upper()
+    name = (getattr(asset_type, "name", "") or "").strip().upper()
+
+    parent = getattr(asset_type, "parent", None)
+    parent_code = (getattr(parent, "code", "") or "").strip().upper() if parent else ""
+    parent_name = (getattr(parent, "name", "") or "").strip().upper() if parent else ""
+
+    values = {
+        code,
+        name,
+        parent_code,
+        parent_name,
+    }
+
+    joined_values = " ".join(v for v in values if v)
+
+    if "USB" in joined_values:
+        return "usb"
+
+    if (
+        "PC" in values
+        or "LAPTOP" in joined_values
+        or "COMPUTER" in joined_values
+    ):
+        return "pc"
+
+    return None

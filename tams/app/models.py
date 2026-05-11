@@ -525,3 +525,79 @@ class CourseRework(db.Model):
             f"course_id={self.course_id} "
             f"rework_date={self.rework_date}>"
         )
+    
+class CourseDeviceMovement(db.Model):
+    __tablename__ = "course_device_movements"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    course_id = db.Column(
+        db.Integer,
+        db.ForeignKey("courses.id", onupdate="CASCADE", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+
+    device_id = db.Column(
+        db.Integer,
+        db.ForeignKey("devices.id", onupdate="CASCADE", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+
+    # assigned | returned
+    movement_type = db.Column(db.String(20), nullable=False, index=True)
+
+    # pc | usb
+    asset_kind = db.Column(db.String(20), nullable=False, index=True)
+
+    movement_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+    )
+
+    # Guardamos el id de assignment como referencia histórica,
+    # pero NO debe bloquear el borrado de assignments.
+    assignment_id = db.Column(db.Integer, nullable=True)
+
+    created_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", onupdate="CASCADE", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    notes = db.Column(db.String(255), nullable=True)
+
+    cancelled_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    course = db.relationship("Course", foreign_keys=[course_id], lazy="joined")
+    device = db.relationship("Device", foreign_keys=[device_id], lazy="joined")
+    creator = db.relationship("User", foreign_keys=[created_by], lazy="joined")
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "movement_type IN ('assigned', 'returned')",
+            name="chk_course_device_movements_type",
+        ),
+        db.CheckConstraint(
+            "asset_kind IN ('pc', 'usb')",
+            name="chk_course_device_movements_asset_kind",
+        ),
+    )
+
+    def __repr__(self):
+        return (
+            f"<CourseDeviceMovement id={self.id} "
+            f"course_id={self.course_id} "
+            f"device_id={self.device_id} "
+            f"type={self.movement_type} "
+            f"asset_kind={self.asset_kind}>"
+        )

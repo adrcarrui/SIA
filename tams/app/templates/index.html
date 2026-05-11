@@ -247,6 +247,120 @@
         </div>
       </div>
 
+<!-- LATEST MOVEMENTS -->
+{% set actor_role_l = (current_user.role or '')|lower|trim %}
+      <!-- LATEST MOVEMENTS -->
+      {% set actor_role_l = (current_user.role or '')|lower|trim %}
+      {% set actor_dept_l = (current_user.department or '')|lower|trim %}
+
+      {% if actor_role_l == 'admin' or actor_dept_l == 'itc support' or actor_role_l.startswith('itc') %}
+      <div class="mb-3 dashboard-side-card">
+        <div class="accordion" id="latestMovementsAccordion">
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button bg-devices fw-semibold"
+                      type="button"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#latestMovementsCollapse"
+                      aria-expanded="true"
+                      aria-controls="latestMovementsCollapse">
+                Latest movements
+              </button>
+            </h2>
+
+            <div id="latestMovementsCollapse"
+                 class="accordion-collapse collapse show"
+                 data-bs-parent="#latestMovementsAccordion">
+              <div class="accordion-body p-2">
+
+                {% if latest_movements is defined and latest_movements %}
+                  <div class="list-group list-group-flush">
+
+                    {% for m in latest_movements %}
+                      {% set action_l = (m.action or '')|lower %}
+                      {% set badge_class = 'text-bg-secondary' %}
+
+                      {% if 'create' in action_l or 'assign' in action_l %}
+                        {% set badge_class = 'text-bg-primary' %}
+                      {% elif 'return' in action_l %}
+                        {% set badge_class = 'text-bg-success' %}
+                      {% elif 'edit' in action_l or 'update' in action_l %}
+                        {% set badge_class = 'text-bg-warning' %}
+                      {% elif 'delete' in action_l or 'cancel' in action_l %}
+                        {% set badge_class = 'text-bg-danger' %}
+                      {% endif %}
+
+                      {% set et = (m.entity_type or '') %}
+                      {% set desc = (m.description or '') %}
+
+                      {% set entity_label = '' %}
+                      {% if et == 'course' and desc and "course '" in desc %}
+                        {% set entity_label = desc.split("course '")[1].split("'")[0] %}
+                      {% endif %}
+
+                      <button
+                        type="button"
+                        class="list-group-item list-group-item-action px-2 py-2 latest-movement-item"
+                        data-bs-toggle="modal"
+                        data-bs-target="#movementDetailModal"
+
+                        data-id="{{ m.id }}"
+                        data-date="{{ m.created_at.strftime('%Y-%m-%d %H:%M:%S') if m.created_at else '' }}"
+                        data-user="{{ (m.user.username or m.user.email) if m.user else ('User #' ~ (m.user_id or '')) }}"
+                        data-action="{{ m.action or '' }}"
+                        data-entity-type="{{ et }}"
+                        data-entity-id="{{ m.entity_id if m.entity_id is not none else '' }}"
+                        data-entity-label="{{ entity_label }}"
+                        data-success="{{ 'Yes' if m.success else 'No' }}"
+                        data-user-agent="{{ m.user_agent or '' }}"
+                        data-before='{{ (m.before_data or {})|tojson }}'
+                        data-after='{{ (m.after_data or {})|tojson }}'
+                        data-description="{{ m.description or '' }}"
+                      >
+                        <div class="d-flex align-items-start justify-content-between gap-2">
+                          <div style="min-width: 0;">
+                            <div class="small fw-semibold text-truncate">
+                              {% if m.created_at %}
+                                {{ m.created_at.strftime("%d/%m") }}
+                              {% else %}
+                                —
+                              {% endif %}
+                              ·
+                              {{ m.user.username if m.user else 'system' }}
+                            </div>
+
+
+                          </div>
+
+                          <span class="badge {{ badge_class }} flex-shrink-0">
+                            {{ m.action or '—' }}
+                          </span>
+                        </div>
+                      </button>
+                    {% endfor %}
+
+                  </div>
+
+                  <div class="text-center mt-3">
+                    <a href="{{ url_for('movements.index') }}" class="small">
+                      View all movements
+                    </a>
+                  </div>
+                {% else %}
+                  <p class="text-muted text-center mb-0">
+                    No recent movements.
+                  </p>
+                {% endif %}
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% include "movements/_detail_modal.html" %}
+      {% endif %}
+
       <!-- ALERTS -->
       <div class="mb-3 dashboard-side-card">
         <div id="alerts-accordion-container">
@@ -375,6 +489,22 @@
 
 {% block scripts %}
 {{ super() }}
+{% include "movements/_detail_modal_script.html" %}
+
+<style>
+.tams-pc-count-inline {
+  display: inline-block !important;
+  margin-left: 4px !important;
+  padding: 1px 5px !important;
+  border-radius: 4px !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  color: #000 !important;
+  border: 1px solid rgba(0, 0, 0, 0.25) !important;
+  font-weight: 800 !important;
+  white-space: nowrap !important;
+  line-height: 1.1 !important;
+}
+</style>
 
 <script>
 /* ================= MODAL ================= */
@@ -913,6 +1043,124 @@ document.addEventListener('DOMContentLoaded', function () {
 
     events: "{{ url_for('courses.api_calendar_events') }}",
 
+eventDidMount: function (info) {
+  const props = info.event.extendedProps || {};
+
+  let badges = [];
+  let courseLabelText = props.course_code || info.event.title || "";
+
+  /*
+    Caso 1:
+    Inicio de curso.
+    Muestra PCs asignados / requeridos:
+    COURSE        -0/5 PC
+    COURSE        -4/5 PC
+  */
+  if (
+    props.kind === "start" &&
+    (
+      Number(props.assigned_pc_count || 0) > 0 ||
+      Number(props.required_pc_count || 0) > 0
+    )
+  ) {
+    const assignedPcCount = Number(props.assigned_pc_count || 0);
+    const requiredPcCount = Number(props.required_pc_count || 0);
+
+    if (requiredPcCount > 0) {
+      badges.push(`-${assignedPcCount}/${requiredPcCount}`);
+    } else {
+      badges.push(`-${assignedPcCount}`);
+    }
+
+    courseLabelText =
+      props.course_code ||
+      (info.event.title || "").replace(/\s-\d+(\/\d+)?\sPC\s*$/i, "");
+  }
+
+  /*
+    Caso 2:
+    Devolución normal en un día distinto al fin de curso.
+    COURSE        +X PC
+  */
+  if (
+    props.event_type === "pc_movement" &&
+    props.movement_type === "returned" &&
+    Number(props.count || 0) > 0
+  ) {
+    const returnedPcCount = Number(props.count || 0);
+    badges.push(`+${returnedPcCount}`);
+
+    courseLabelText =
+      props.course_code ||
+      (info.event.title || "").replace(/\s[+-]\d+\sPC\s*$/i, "");
+  }
+
+  /*
+    Caso 3:
+    Fin de curso.
+    Puede mostrar:
+    COURSE        -Y PC
+    COURSE        +X PC
+    COURSE        -Y PC +X PC
+  */
+  if (props.kind === "end") {
+    const pendingPcCount = Number(props.pending_pc_count || 0);
+    const returnedPcOnEndCount = Number(props.returned_pc_on_end_count || 0);
+
+    if (pendingPcCount > 0) {
+      badges.push(`-${pendingPcCount}`);
+    }
+
+    if (returnedPcOnEndCount > 0) {
+      badges.push(`+${returnedPcOnEndCount}`);
+    }
+
+    courseLabelText =
+      props.course_code ||
+      (info.event.title || "")
+        .replace(/\s-\d+\sPC\s*/i, "")
+        .replace(/\s\+\d+\sPC\s*/i, "");
+  }
+
+  /*
+    Si no hay nada que formatear, no tocamos el evento:
+    RT, loan, eventos normales, etc.
+  */
+  if (!badges.length) return;
+
+  // Evitar duplicados si FullCalendar re-renderiza.
+  if (info.el.querySelector(".tams-calendar-delta-row")) return;
+
+  const titleEl =
+    info.el.querySelector(".fc-event-title") ||
+    info.el.querySelector(".fc-list-event-title") ||
+    info.el.querySelector(".fc-event-main") ||
+    info.el;
+
+  titleEl.textContent = "";
+
+  const row = document.createElement("span");
+  row.className = "tams-calendar-delta-row";
+
+  const label = document.createElement("span");
+  label.className = "tams-calendar-delta-label";
+  label.textContent = courseLabelText;
+
+  const badgeGroup = document.createElement("span");
+  badgeGroup.className = "tams-calendar-delta-badges";
+
+  badges.forEach(function (text) {
+    const badge = document.createElement("span");
+    badge.className = "tams-calendar-delta-badge";
+    badge.textContent = text;
+    badgeGroup.appendChild(badge);
+  });
+
+  row.appendChild(label);
+  row.appendChild(badgeGroup);
+
+  titleEl.appendChild(row);
+},
     eventClick: function (info) {
       const detailUrl = info.event.extendedProps.detail_url;
       if (detailUrl) {
