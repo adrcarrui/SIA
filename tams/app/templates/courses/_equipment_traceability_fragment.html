@@ -1,0 +1,125 @@
+<div class="equipment-traceability">
+
+  <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+    <div>
+      <h5 class="mb-1">
+        Equipment traceability
+      </h5>
+      <div class="text-muted small">
+        {{ course.course or course.name or ('Course #' ~ course.id) }}
+      </div>
+    </div>
+
+    <div class="text-end small text-muted">
+      {% if course.start_date %}{{ course.start_date }}{% else %}—{% endif %}
+      →
+      {% if course.end_date %}{{ course.end_date }}{% else %}—{% endif %}
+    </div>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-md-4">
+      <div class="border rounded p-2 text-center">
+        <div class="small text-muted">Assigned PCs</div>
+        <div class="fs-5 fw-bold">{{ assigned_pc_count }}</div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="border rounded p-2 text-center">
+        <div class="small text-muted">Returned PCs</div>
+        <div class="fs-5 fw-bold">{{ returned_pc_count }}</div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="border rounded p-2 text-center">
+        <div class="small text-muted">Pending PCs</div>
+        <div class="fs-5 fw-bold">{{ pending_pc_count }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th class="text-center">Date</th>
+          <th class="text-center">Action</th>
+          <th class="text-center">Device</th>
+          <th class="text-center">Identifier</th>
+          <th class="text-center">Assignment</th>
+          <th class="text-center">User</th>
+          <th class="text-center">Notes</th>
+          <th class="text-center">Actions</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for row in movement_rows %}
+          <tr>
+            <td class="text-center">
+              {% if row.movement_at %}
+                {{ row.movement_at.strftime("%Y-%m-%d %H:%M") }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+
+            <td class="text-center">
+              {% if row.movement_type == 'assigned' %}
+                <span class="badge bg-primary">Assigned</span>
+              {% elif row.movement_type == 'returned' %}
+                <span class="badge bg-success">Returned</span>
+              {% else %}
+                <span class="badge bg-secondary">{{ row.movement_type }}</span>
+              {% endif %}
+            </td>
+
+            <td class="text-center">
+              {{ row.device_name or '—' }}
+            </td>
+
+            <td class="text-center small">
+              {{ row.device_identifier or '—' }}
+            </td>
+
+            <td class="text-center">
+              {% if row.assignment_id %}
+                #{{ row.assignment_id }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+
+            <td class="text-center">
+              {{ row.created_by or '—' }}
+            </td>
+
+            <td class="text-center">
+              {{ row.notes or '—' }}
+            </td>
+
+            <td class="text-center">
+              <button type="button"
+                      class="btn btn-sm btn-outline-danger equipment-movement-delete-btn"
+                      data-movement-id="{{ row.id }}"
+                      data-course-id="{{ course.id }}"
+                      data-movement-type="{{ row.movement_type }}"
+                      data-device-name="{{ row.device_name or 'device' }}">
+                Delete
+              </button>
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="8" class="text-center text-muted py-4">
+              No equipment movements registered for this course.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>

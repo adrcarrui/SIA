@@ -82,7 +82,28 @@
               <h5 class="modal-title">Course details</h5>
               <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
+
             <div class="modal-body" id="courseModalBody">
+              <div class="text-center py-5">
+                <div class="spinner-border"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL EQUIPMENT TRACEABILITY -->
+      <div class="modal fade" id="equipmentTraceabilityModal" tabindex="-1">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="equipmentTraceabilityModalTitle">
+                Equipment traceability
+              </h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body" id="equipmentTraceabilityModalBody">
               <div class="text-center py-5">
                 <div class="spinner-border"></div>
               </div>
@@ -105,7 +126,9 @@
             </div>
 
             <div class="modal-footer py-2">
-              <button type="button" class="btn btn-sm btn-tams-primary" data-bs-dismiss="modal">
+              <button type="button"
+                      class="btn btn-sm btn-tams-primary"
+                      data-bs-dismiss="modal">
                 OK
               </button>
             </div>
@@ -118,63 +141,59 @@
     <!-- ================= RIGHT COLUMN ================= -->
     <div class="col-lg-3 mb-3">
 
-<!-- CARD / BARCODE LOOKUP -->
- {% if actor_dept != 'itc support' %}
-<div class="mb-3 dashboard-side-card">
-  <div class="accordion" id="lookupAccordion">
-    <div class="accordion-item">
-      <h2 class="accordion-header">
-        <button class="accordion-button bg-devices fw-semibold"
-                data-bs-toggle="collapse"
-                data-bs-target="#lookupCollapse">
-          Card / barcode lookup
-        </button>
-      </h2>
+      <!-- CARD / BARCODE LOOKUP -->
+      {% if actor_dept != 'itc support' %}
+      <div class="mb-3 dashboard-side-card">
+        <div class="accordion" id="lookupAccordion">
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button bg-devices fw-semibold"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#lookupCollapse">
+                Card / barcode lookup
+              </button>
+            </h2>
 
-      <div id="lookupCollapse" class="accordion-collapse collapse show">
-        <div class="accordion-body">
+            <div id="lookupCollapse" class="accordion-collapse collapse show">
+              <div class="accordion-body">
 
-          <!-- input + read -->
-          <div class="input-group input-group-sm mb-2">
-            <input
-              type="text"
-              id="card-course-code"
-              class="form-control"
-              placeholder="Scan UID or barcode"
-              autocomplete="off"
-            >
+                <div class="input-group input-group-sm mb-2">
+                  <input
+                    type="text"
+                    id="card-course-code"
+                    class="form-control"
+                    placeholder="Scan UID or barcode"
+                    autocomplete="off"
+                  >
 
-            <button
-              class="btn btn-outline-primary"
-              type="button"
-              id="btn-read-card-dashboard">
-              <span id="btn-read-card-dashboard-icon">📡</span>
-              Read card
-            </button>
+                  <button
+                    class="btn btn-outline-primary"
+                    type="button"
+                    id="btn-read-card-dashboard">
+                    <span id="btn-read-card-dashboard-icon">📡</span>
+                    Read card
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary mb-2"
+                  id="btn-card-course-lookup">
+                  Search
+                </button>
+
+                <div id="card-course-status" class="form-text text-muted">
+                  Bring the card close and press <strong>Read card</strong>, or scan/type a barcode and press <strong>Enter</strong>.
+                </div>
+
+                <div id="card-course-result" class="mt-3"></div>
+
+              </div>
+            </div>
           </div>
-
-          <!-- search -->
-          <button
-            type="button"
-            class="btn btn-sm btn-primary mb-2"
-            id="btn-card-course-lookup">
-            Search
-          </button>
-
-          <!-- info -->
-          <div id="card-course-status" class="form-text text-muted">
-            Bring the card close and press <strong>Read card</strong>, or scan/type a barcode and press <strong>Enter</strong>.
-          </div>
-
-          <!-- result -->
-          <div id="card-course-result" class="mt-3"></div>
-
         </div>
       </div>
-    </div>
-  </div>
-</div>
-{% endif %}
+      {% endif %}
 
       <!-- DEVICES -->
       <div class="mb-3 dashboard-side-card">
@@ -187,6 +206,7 @@
                 Devices
               </button>
             </h2>
+
             <div id="devicesCollapse" class="accordion-collapse collapse show">
               <div class="accordion-body">
 
@@ -200,6 +220,7 @@
                           <th class="text-center">% Use</th>
                         </tr>
                       </thead>
+
                       <tbody>
                         {% for row in device_stats %}
                           {% set raw = row.type or "unknown" %}
@@ -223,7 +244,11 @@
                             }.get(raw, 'light') %}
 
                             <tr>
-                              <td><span class="badge text-bg-{{ color }}">{{ label }}</span></td>
+                              <td>
+                                <span class="badge text-bg-{{ color }}">
+                                  {{ label }}
+                                </span>
+                              </td>
                               <td class="text-center">{{ row.assigned }}/{{ row.total }}</td>
                               <td class="text-center">{{ row.ratio|round(0) }}%</td>
                             </tr>
@@ -234,11 +259,15 @@
                     </table>
                   </div>
                 {% else %}
-                  <p class="text-muted text-center mb-0">No devices registered.</p>
+                  <p class="text-muted text-center mb-0">
+                    No devices registered.
+                  </p>
                 {% endif %}
 
                 <div class="text-center mt-3">
-                  <a href="{{ url_for('devices.index') }}" class="small">View all</a>
+                  <a href="{{ url_for('devices.index') }}" class="small">
+                    View all
+                  </a>
                 </div>
 
               </div>
@@ -247,8 +276,6 @@
         </div>
       </div>
 
-<!-- LATEST MOVEMENTS -->
-{% set actor_role_l = (current_user.role or '')|lower|trim %}
       <!-- LATEST MOVEMENTS -->
       {% set actor_role_l = (current_user.role or '')|lower|trim %}
       {% set actor_dept_l = (current_user.department or '')|lower|trim %}
@@ -328,8 +355,6 @@
                               ·
                               {{ m.user.username if m.user else 'system' }}
                             </div>
-
-
                           </div>
 
                           <span class="badge {{ badge_class }} flex-shrink-0">
@@ -410,6 +435,7 @@
                           <th class="text-center">Info</th>
                         </tr>
                       </thead>
+
                       <tbody>
                         {% for row in legend_rows %}
                           <tr>
@@ -424,7 +450,6 @@
                             </td>
 
                             <td class="text-center align-middle text-muted fw-semibold">
-                              <span class="fw-semibold">{{ row.label }}</span>
                               <div>{{ row.info }}</div>
                             </td>
                           </tr>
@@ -453,6 +478,7 @@
                 ITC pickup
               </button>
             </h2>
+
             <div id="pickupCollapse" class="accordion-collapse collapse show">
               <div class="accordion-body">
                 <form method="post" action="{{ url_for('courses.notify_itc_pickup') }}">
@@ -460,6 +486,7 @@
                          class="form-control form-control-sm"
                          name="pickup_note"
                          placeholder="Equipment ready for pickup">
+
                   <div class="d-flex gap-2 mt-3">
                     <button class="btn btn-sm btn-primary flex-fill"
                             type="submit"
@@ -467,6 +494,7 @@
                             value="devices">
                       💻 Device pickup
                     </button>
+
                     <button class="btn btn-sm btn-primary flex-fill"
                             type="submit"
                             name="pickup_type"
@@ -492,31 +520,349 @@
 {% include "movements/_detail_modal_script.html" %}
 
 <style>
-.tams-pc-count-inline {
-  display: inline-block !important;
-  margin-left: 4px !important;
-  padding: 1px 5px !important;
-  border-radius: 4px !important;
-  background: rgba(255, 255, 255, 0.95) !important;
-  color: #000 !important;
-  border: 1px solid rgba(0, 0, 0, 0.25) !important;
-  font-weight: 800 !important;
-  white-space: nowrap !important;
-  line-height: 1.1 !important;
+.fc .fc-daygrid-event-harness,
+.fc .fc-daygrid-event,
+.fc .fc-daygrid-event .fc-event-main,
+.fc .fc-daygrid-event .fc-event-main-frame,
+.fc .fc-daygrid-event .fc-event-title-container,
+.fc .fc-daygrid-event .fc-event-title {
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.fc .fc-daygrid-event .fc-event-main,
+.fc .fc-daygrid-event .fc-event-main-frame,
+.fc .fc-daygrid-event .fc-event-title-container,
+.fc .fc-daygrid-event .fc-event-title {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.tams-calendar-click-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 4px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tams-calendar-click-title {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tams-calendar-click-title:hover {
+  text-decoration: underline;
+}
+
+.tams-calendar-click-metric {
+  justify-self: end;
+  max-width: 48px;
+  min-width: 28px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #000000;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  font-weight: 800;
+  font-size: 11px;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.tams-calendar-click-metric:hover {
+  background: #ffffff;
+  text-decoration: underline;
+}
+
+.equipment-traceability .table td,
+.equipment-traceability .table th,
+.equipment-movement-detail .table td,
+.equipment-movement-detail .table th {
+  vertical-align: middle;
 }
 </style>
 
 <script>
 /* ================= MODAL ================= */
 function loadCourseDetail(url) {
-  fetch(url, { credentials: "same-origin" })
-    .then(r => r.text())
-    .then(html => {
+  fetch(url, {
+    credentials: "same-origin"
+  })
+    .then((r) => r.text())
+    .then((html) => {
       document.getElementById("courseModalBody").innerHTML = html;
       bootstrap.Modal.getOrCreateInstance(
         document.getElementById("courseModal")
       ).show();
     });
+}
+
+/* ================= EQUIPMENT TRACEABILITY MODAL ================= */
+function openEquipmentTraceabilityModal(titleText) {
+  const modalEl = document.getElementById("equipmentTraceabilityModal");
+  const titleEl = document.getElementById("equipmentTraceabilityModalTitle");
+  const bodyEl = document.getElementById("equipmentTraceabilityModalBody");
+
+  if (!modalEl || !titleEl || !bodyEl) {
+    console.error("Equipment traceability modal not found.");
+    return null;
+  }
+
+  titleEl.textContent = titleText || "Equipment traceability";
+
+  bodyEl.innerHTML = `
+    <div class="text-center py-5">
+      <div class="spinner-border"></div>
+    </div>
+  `;
+
+  bootstrap.Modal.getOrCreateInstance(modalEl).show();
+
+  return bodyEl;
+}
+
+function loadEquipmentTraceability(courseId) {
+  const bodyEl = openEquipmentTraceabilityModal("Equipment traceability");
+  if (!bodyEl) return;
+
+  fetch(`/courses/${courseId}/equipment-traceability`, {
+    credentials: "same-origin",
+    headers: {
+      "X-Requested-With": "fetch"
+    }
+  })
+    .then((r) => {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.text();
+    })
+    .then((html) => {
+      bodyEl.innerHTML = html;
+    })
+    .catch((err) => {
+      console.error("Equipment traceability load failed:", err);
+      bodyEl.innerHTML = `
+        <div class="alert alert-danger mb-0">
+          Could not load equipment traceability.
+        </div>
+      `;
+    });
+}
+
+function loadEquipmentMovementDetail(movementIds) {
+  const ids = Array.isArray(movementIds)
+    ? movementIds.join(",")
+    : String(movementIds || "");
+
+  const bodyEl = openEquipmentTraceabilityModal("Equipment movement detail");
+  if (!bodyEl) return;
+
+  fetch(`/courses/equipment-movement-detail?ids=${encodeURIComponent(ids)}`, {
+    credentials: "same-origin",
+    headers: {
+      "X-Requested-With": "fetch"
+    }
+  })
+    .then((r) => {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.text();
+    })
+    .then((html) => {
+      bodyEl.innerHTML = html;
+    })
+    .catch((err) => {
+      console.error("Equipment movement detail load failed:", err);
+      bodyEl.innerHTML = `
+        <div class="alert alert-danger mb-0">
+          Could not load equipment movement detail.
+        </div>
+      `;
+    });
+}
+
+async function deleteEquipmentMovement(
+  movementId,
+  courseId,
+  movementType,
+  deviceName,
+  reloadMode,
+  movementIds
+) {
+  const cleanType = String(movementType || "movement").toLowerCase();
+  const cleanDevice = String(deviceName || "this device");
+
+  const ok = window.confirm(
+    `Delete this ${cleanType} movement for ${cleanDevice}?\n\n` +
+    "This will permanently remove the movement from the database."
+  );
+
+  if (!ok) return;
+
+  try {
+    const response = await fetch(`/courses/equipment-movement/${movementId}/delete`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Accept": "application/json",
+        "X-Requested-With": "XMLHttpRequest"
+      }
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !data.success) {
+      alert(data.error || "Could not delete movement.");
+      return;
+    }
+
+    if (reloadMode === "movement-detail") {
+      const remainingIds = String(movementIds || "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean)
+        .filter((id) => String(id) !== String(movementId));
+
+      if (remainingIds.length > 0) {
+        loadEquipmentMovementDetail(remainingIds);
+      } else {
+        const bodyEl = document.getElementById("equipmentTraceabilityModalBody");
+        const titleEl = document.getElementById("equipmentTraceabilityModalTitle");
+
+        if (titleEl) {
+          titleEl.textContent = "Equipment movement detail";
+        }
+
+        if (bodyEl) {
+          bodyEl.innerHTML = `
+            <div class="equipment-movement-detail">
+              <div class="alert alert-light border mb-0 text-center text-muted">
+                No movement detail found.
+              </div>
+            </div>
+          `;
+        }
+      }
+    } else if (courseId) {
+      loadEquipmentTraceability(courseId);
+    }
+
+    if (window.dashboardCalendar) {
+      window.dashboardCalendar.refetchEvents();
+    }
+
+    if (typeof window.refreshSidebarCounters === "function") {
+      window.refreshSidebarCounters();
+    }
+  } catch (error) {
+    console.error("Delete equipment movement failed:", error);
+    alert("Unexpected error deleting movement.");
+  }
+}
+
+document.addEventListener("click", function (e) {
+  const btn = e.target.closest(".equipment-movement-delete-btn");
+  if (!btn) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const movementId = btn.dataset.movementId;
+  const courseId = btn.dataset.courseId;
+  const movementType = btn.dataset.movementType;
+  const deviceName = btn.dataset.deviceName;
+  const reloadMode = btn.dataset.reloadMode || "traceability";
+  const movementIds = btn.dataset.movementIds || "";
+
+  if (!movementId) return;
+
+  deleteEquipmentMovement(
+    movementId,
+    courseId,
+    movementType,
+    deviceName,
+    reloadMode,
+    movementIds
+  );
+});
+
+function getCalendarMetricText(event) {
+  const props = event.extendedProps || {};
+
+  if (props.metric_text) {
+    return String(props.metric_text)
+      .replace(/\+/g, "")
+      .replace(/-/g, "")
+      .replace(/\s*PC\s*/gi, "")
+      .trim();
+  }
+
+  if (props.kind === "start") {
+    const assignedPcCount = Number(props.assigned_pc_count || 0);
+    const requiredPcCount = Number(props.required_pc_count || 0);
+
+    if (assignedPcCount > 0 || requiredPcCount > 0) {
+      if (requiredPcCount > 0) {
+        return `${assignedPcCount}/${requiredPcCount}`;
+      }
+
+      return `${assignedPcCount}`;
+    }
+  }
+
+  if (props.kind === "end") {
+    const parts = [];
+
+    const pendingPcCount = Number(props.pending_pc_count || 0);
+    const returnedPcOnEndCount = Number(props.returned_pc_on_end_count || 0);
+
+    if (pendingPcCount > 0) {
+      parts.push(`${pendingPcCount}`);
+    }
+
+    if (returnedPcOnEndCount > 0) {
+      parts.push(`${returnedPcOnEndCount}`);
+    }
+
+    return parts.join(" ");
+  }
+
+  if (
+    props.event_type === "pc_movement" &&
+    props.movement_type === "returned" &&
+    Number(props.count || 0) > 0
+  ) {
+    return `${Number(props.count || 0)}`;
+  }
+
+  return "";
+}
+
+function getCalendarTitleBase(event) {
+  const props = event.extendedProps || {};
+
+  if (props.title_base) {
+    return String(props.title_base);
+  }
+
+  if (props.course_code) {
+    return String(props.course_code);
+  }
+
+  return String(event.title || "Course")
+    .replace(/\s+[+-]?\d+(\/\d+)?(\sPC)?\s*$/i, "")
+    .replace(/\s+[+-]?\d+\s+[+-]?\d+\s*$/i, "")
+    .trim();
 }
 
 function setCourseModalItcMsg(selectEl, text, isError = false) {
@@ -526,6 +872,7 @@ function setCourseModalItcMsg(selectEl, text, isError = false) {
   const msgEl = document.querySelector(
     '#courseModalBody .itc-status-msg[data-course-id="' + courseId + '"]'
   );
+
   if (!msgEl) return;
 
   msgEl.textContent = text || "";
@@ -555,8 +902,11 @@ function buildCalendarEventClassNames(event, newStatus) {
     classNames.push("fc-course-end", "fc-itc-view");
   } else {
     classNames.push("fc-course-start");
+
     const itcClass = getItcStatusClass(newStatus);
-    if (itcClass) classNames.push(itcClass);
+    if (itcClass) {
+      classNames.push(itcClass);
+    }
   }
 
   if (severity) {
@@ -590,6 +940,7 @@ function applyItcStatusUi(courseId, newStatus) {
 const pickupReminderManager = (() => {
   const soundUrl = "{{ url_for('static', filename='sounds/device-pickup.wav') }}";
   const audio = new Audio(soundUrl);
+
   audio.preload = "auto";
 
   let intervalId = null;
@@ -609,6 +960,7 @@ const pickupReminderManager = (() => {
 
   function ensureInteractionRetryHooks() {
     if (retryHooksInstalled) return;
+
     retryHooksInstalled = true;
 
     const retry = () => {
@@ -627,8 +979,10 @@ const pickupReminderManager = (() => {
 
   function startGlobalPickupReminder() {
     if (intervalId !== null) return;
+
     ensureInteractionRetryHooks();
     playReminderAudio();
+
     intervalId = window.setInterval(() => {
       playReminderAudio();
     }, 10000);
@@ -636,14 +990,17 @@ const pickupReminderManager = (() => {
 
   function stopGlobalPickupReminder() {
     if (intervalId === null) return;
+
     window.clearInterval(intervalId);
     intervalId = null;
+
     try {
       audio.pause();
       audio.currentTime = 0;
     } catch (err) {
       console.warn("Failed to stop global pickup reminder:", err);
     }
+
     pendingAutoplayRetry = false;
   }
 
@@ -658,7 +1015,7 @@ const pickupReminderManager = (() => {
   return {
     startGlobalPickupReminder,
     stopGlobalPickupReminder,
-    syncGlobalPickupReminder,
+    syncGlobalPickupReminder
   };
 })();
 
@@ -667,7 +1024,7 @@ function collectActivePickupNotifications() {
     document.querySelectorAll("#itc-pickup-container [data-pickup-notification='1']")
   ).map((node) => ({
     notificationId: node.dataset.notificationId,
-    pickupType: node.dataset.pickupType,
+    pickupType: node.dataset.pickupType
   }));
 }
 
@@ -686,7 +1043,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
   const AGENT_UID_URL = "http://127.0.0.1:8765/uid";
 
-  if (!input || !searchBtn || !readBtn || !readIcon || !statusEl || !result) return;
+  if (!input || !searchBtn || !readBtn || !readIcon || !statusEl || !result) {
+    return;
+  }
 
   function setLookupStatus(text, kind) {
     statusEl.textContent = text || "";
@@ -722,6 +1081,7 @@ document.addEventListener("DOMContentLoaded", function () {
       });
 
       let data = {};
+
       try {
         data = await response.json();
       } catch (e) {
@@ -750,6 +1110,7 @@ document.addEventListener("DOMContentLoaded", function () {
             <div class="mt-2">${data.message || "Device found, but it is not assigned to any active course."}</div>
           `
         );
+
         input.select();
         return;
       }
@@ -786,6 +1147,7 @@ document.addEventListener("DOMContentLoaded", function () {
         method: "GET",
         cache: "no-store"
       });
+
       const aData = await aResp.json().catch(() => ({}));
 
       if (!aData || aData.success !== true || !aData.uid) {
@@ -793,10 +1155,13 @@ document.addEventListener("DOMContentLoaded", function () {
           setLookupStatus("No card detected. Bring it closer and try again.", "danger");
         } else {
           setLookupStatus(
-            (aData && aData.error) ? aData.error : "NFC agent not running on this PC (localhost:8765).",
+            (aData && aData.error)
+              ? aData.error
+              : "NFC agent not running on this PC (localhost:8765).",
             "danger"
           );
         }
+
         return;
       }
 
@@ -806,7 +1171,9 @@ document.addEventListener("DOMContentLoaded", function () {
           "X-Requested-With": "XMLHttpRequest",
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ uid: aData.uid })
+        body: JSON.stringify({
+          uid: aData.uid
+        })
       });
 
       const data = await resp.json().catch(() => ({}));
@@ -820,7 +1187,6 @@ document.addEventListener("DOMContentLoaded", function () {
       setLookupStatus("UID read: " + data.uid + ". Searching…", "success");
 
       await lookupCardCourse();
-
     } catch (e) {
       console.error(e);
       setLookupStatus("Communication error.", "danger");
@@ -855,7 +1221,9 @@ document.addEventListener("DOMContentLoaded", function () {
   const titleEl = document.getElementById("itcSearchMessageTitle");
   const bodyEl = document.getElementById("itcSearchMessageBody");
 
-  if (!input || !typeSelect || !searchBtn) return;
+  if (!input || !typeSelect || !searchBtn) {
+    return;
+  }
 
   function showItcSearchModal(level, message) {
     if (!modalEl || !titleEl || !bodyEl) {
@@ -925,7 +1293,6 @@ document.addEventListener("DOMContentLoaded", function () {
       );
 
       input.select();
-
     } catch (error) {
       console.error(error);
       showItcSearchModal("danger", "Unexpected error while searching.");
@@ -982,7 +1349,9 @@ document.addEventListener("change", async function (e) {
         "X-Requested-With": "XMLHttpRequest",
         "Accept": "application/json"
       },
-      body: JSON.stringify({ status_itc: newVal })
+      body: JSON.stringify({
+        status_itc: newVal
+      })
     });
 
     const data = await resp.json().catch(() => ({}));
@@ -1006,7 +1375,6 @@ document.addEventListener("change", async function (e) {
     setTimeout(() => {
       setCourseModalItcMsg(sel, "");
     }, 1200);
-
   } catch (err) {
     console.error(err);
     setCourseModalItcMsg(sel, "Network error", true);
@@ -1018,151 +1386,100 @@ document.addEventListener("change", async function (e) {
 });
 
 /* ================= CALENDAR ================= */
-document.addEventListener('DOMContentLoaded', function () {
-  const calendarEl = document.getElementById('calendar');
+document.addEventListener("DOMContentLoaded", function () {
+  const calendarEl = document.getElementById("calendar");
   if (!calendarEl) return;
 
   const calendar = new FullCalendar.Calendar(calendarEl, {
-    initialView: 'dayGridMonth',
-    locale: 'en',
+    initialView: "dayGridMonth",
+    locale: "en",
     firstDay: 1,
-    height: 'auto',
+    height: "auto",
 
     headerToolbar: {
-      left: 'prev,next today',
-      center: 'title',
-      right: 'dayGridMonth,timeGridWeek,listWeek'
+      left: "prev,next today",
+      center: "title",
+      right: "dayGridMonth,timeGridWeek,listWeek"
     },
 
     buttonText: {
-      today: 'Today',
-      month: 'Month',
-      week: 'Week',
-      list: 'List'
+      today: "Today",
+      month: "Month",
+      week: "Week",
+      list: "List"
     },
 
     events: "{{ url_for('courses.api_calendar_events') }}",
 
-eventDidMount: function (info) {
-  const props = info.event.extendedProps || {};
+    eventContent: function (arg) {
+      const event = arg.event;
+      const props = event.extendedProps || {};
 
-  let badges = [];
-  let courseLabelText = props.course_code || info.event.title || "";
+      const metricText = getCalendarMetricText(event);
+      const titleText = getCalendarTitleBase(event);
 
-  /*
-    Caso 1:
-    Inicio de curso.
-    Muestra PCs asignados / requeridos:
-    COURSE        -0/5 PC
-    COURSE        -4/5 PC
-  */
-  if (
-    props.kind === "start" &&
-    (
-      Number(props.assigned_pc_count || 0) > 0 ||
-      Number(props.required_pc_count || 0) > 0
-    )
-  ) {
-    const assignedPcCount = Number(props.assigned_pc_count || 0);
-    const requiredPcCount = Number(props.required_pc_count || 0);
+      const wrapper = document.createElement("div");
+      wrapper.className = "tams-calendar-click-row";
 
-    if (requiredPcCount > 0) {
-      badges.push(`-${assignedPcCount}/${requiredPcCount}`);
-    } else {
-      badges.push(`-${assignedPcCount}`);
-    }
+      const titleSpan = document.createElement("span");
+      titleSpan.className = "tams-calendar-click-title";
+      titleSpan.textContent = titleText;
 
-    courseLabelText =
-      props.course_code ||
-      (info.event.title || "").replace(/\s-\d+(\/\d+)?\sPC\s*$/i, "");
-  }
+      titleSpan.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
 
-  /*
-    Caso 2:
-    Devolución normal en un día distinto al fin de curso.
-    COURSE        +X PC
-  */
-  if (
-    props.event_type === "pc_movement" &&
-    props.movement_type === "returned" &&
-    Number(props.count || 0) > 0
-  ) {
-    const returnedPcCount = Number(props.count || 0);
-    badges.push(`+${returnedPcCount}`);
+        if (props.detail_url) {
+          loadCourseDetail(props.detail_url);
+        }
+      });
 
-    courseLabelText =
-      props.course_code ||
-      (info.event.title || "").replace(/\s[+-]\d+\sPC\s*$/i, "");
-  }
+      wrapper.appendChild(titleSpan);
 
-  /*
-    Caso 3:
-    Fin de curso.
-    Puede mostrar:
-    COURSE        -Y PC
-    COURSE        +X PC
-    COURSE        -Y PC +X PC
-  */
-  if (props.kind === "end") {
-    const pendingPcCount = Number(props.pending_pc_count || 0);
-    const returnedPcOnEndCount = Number(props.returned_pc_on_end_count || 0);
+      if (metricText) {
+        const metricSpan = document.createElement("span");
+        metricSpan.className = "tams-calendar-click-metric";
+        metricSpan.textContent = metricText;
 
-    if (pendingPcCount > 0) {
-      badges.push(`-${pendingPcCount}`);
-    }
+        metricSpan.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
 
-    if (returnedPcOnEndCount > 0) {
-      badges.push(`+${returnedPcOnEndCount}`);
-    }
+          if (
+            props.event_type === "pc_movement" &&
+            props.movement_type === "returned" &&
+            props.movement_ids
+          ) {
+            loadEquipmentMovementDetail(props.movement_ids);
+            return;
+          }
 
-    courseLabelText =
-      props.course_code ||
-      (info.event.title || "")
-        .replace(/\s-\d+\sPC\s*/i, "")
-        .replace(/\s\+\d+\sPC\s*/i, "");
-  }
+          if (props.course_id) {
+            loadEquipmentTraceability(props.course_id);
+          }
+        });
 
-  /*
-    Si no hay nada que formatear, no tocamos el evento:
-    RT, loan, eventos normales, etc.
-  */
-  if (!badges.length) return;
+        wrapper.appendChild(metricSpan);
+      }
 
-  // Evitar duplicados si FullCalendar re-renderiza.
-  if (info.el.querySelector(".tams-calendar-delta-row")) return;
+      return {
+        domNodes: [wrapper]
+      };
+    },
 
-  const titleEl =
-    info.el.querySelector(".fc-event-title") ||
-    info.el.querySelector(".fc-list-event-title") ||
-    info.el.querySelector(".fc-event-main") ||
-    info.el;
-
-  titleEl.textContent = "";
-
-  const row = document.createElement("span");
-  row.className = "tams-calendar-delta-row";
-
-  const label = document.createElement("span");
-  label.className = "tams-calendar-delta-label";
-  label.textContent = courseLabelText;
-
-  const badgeGroup = document.createElement("span");
-  badgeGroup.className = "tams-calendar-delta-badges";
-
-  badges.forEach(function (text) {
-    const badge = document.createElement("span");
-    badge.className = "tams-calendar-delta-badge";
-    badge.textContent = text;
-    badgeGroup.appendChild(badge);
-  });
-
-  row.appendChild(label);
-  row.appendChild(badgeGroup);
-
-  titleEl.appendChild(row);
-},
     eventClick: function (info) {
+      const target = info.jsEvent.target;
+
+      if (
+        target.closest(".tams-calendar-click-title") ||
+        target.closest(".tams-calendar-click-metric")
+      ) {
+        info.jsEvent.preventDefault();
+        return;
+      }
+
       const detailUrl = info.event.extendedProps.detail_url;
+
       if (detailUrl) {
         info.jsEvent.preventDefault();
         loadCourseDetail(detailUrl);
@@ -1183,24 +1500,26 @@ eventDidMount: function (info) {
   setTimeout(refreshCalendarSize, 200);
   setTimeout(refreshCalendarSize, 500);
 
-  window.addEventListener('resize', refreshCalendarSize);
+  window.addEventListener("resize", refreshCalendarSize);
 
-  document.addEventListener('fullscreenchange', function () {
+  document.addEventListener("fullscreenchange", function () {
     setTimeout(refreshCalendarSize, 50);
     setTimeout(refreshCalendarSize, 200);
     setTimeout(refreshCalendarSize, 500);
   });
 
-  window.addEventListener('load', function () {
+  window.addEventListener("load", function () {
     setTimeout(refreshCalendarSize, 50);
     setTimeout(refreshCalendarSize, 200);
   });
 
   const calendarContainer = calendarEl.parentElement;
-  if (calendarContainer && typeof ResizeObserver !== 'undefined') {
+
+  if (calendarContainer && typeof ResizeObserver !== "undefined") {
     const ro = new ResizeObserver(function () {
       refreshCalendarSize();
     });
+
     ro.observe(calendarContainer);
   }
 });
@@ -1216,23 +1535,35 @@ eventDidMount: function (info) {
 
     const r = await fetch("/dashboard/partials/alerts", {
       credentials: "same-origin",
-      headers: { "Accept": "text/html", "X-Requested-With": "fetch" }
+      headers: {
+        "Accept": "text/html",
+        "X-Requested-With": "fetch"
+      }
     });
 
-    if (!r.ok) throw new Error("alerts HTTP " + r.status);
+    if (!r.ok) {
+      throw new Error("alerts HTTP " + r.status);
+    }
 
     const html = await r.text();
-    if (html.includes("<html")) throw new Error("alerts returned full page");
+
+    if (html.includes("<html")) {
+      throw new Error("alerts returned full page");
+    }
 
     host.innerHTML = html;
   }
 
   async function tick() {
-    if (busy) return schedule();
+    if (busy) {
+      return schedule();
+    }
+
     busy = true;
 
     try {
       await refreshAlerts();
+
       if (window.dashboardCalendar) {
         window.dashboardCalendar.refetchEvents();
       }
@@ -1260,10 +1591,13 @@ eventDidMount: function (info) {
 
   async function tick() {
     try {
-      const r = await fetch("{{ url_for('main.dashboard_itc_pickup_fragment') }}",
-        { credentials: "same-origin" });
+      const r = await fetch("{{ url_for('main.dashboard_itc_pickup_fragment') }}", {
+        credentials: "same-origin"
+      });
+
       if (r.ok) {
         const html = await r.text();
+
         if (!html.includes("<html")) {
           el.innerHTML = html;
           syncPickupSoundsFromDom();
@@ -1305,6 +1639,7 @@ document.addEventListener("submit", async function (e) {
     });
 
     const data = await resp.json().catch(() => ({}));
+
     if (!resp.ok || !data.success) {
       throw new Error(data.error || "Error marking pickup as done");
     }
@@ -1319,13 +1654,16 @@ document.addEventListener("submit", async function (e) {
     }
   } catch (err) {
     console.error(err);
+
     if (submitBtn) {
       submitBtn.textContent = "Error";
+
       setTimeout(() => {
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
       }, 1200);
     }
+
     return;
   }
 

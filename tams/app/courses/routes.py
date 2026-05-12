@@ -1805,6 +1805,189 @@ def should_count_reason_for_calendar(reason: dict, now_utc: datetime) -> bool:
     # Compat wrapper: la lógica real vive en app/scripts/alert_filters.py
     return reason_counts_for_calendar(reason, now_utc)
 
+def _is_itc_equipment_viewer():
+    actor_role = (getattr(current_user, "role", "") or "").strip().lower()
+    actor_dept = (getattr(current_user, "department", "") or "").strip().lower()
+
+    return (
+        actor_role == "admin"
+        or actor_dept == "itc support"
+        or actor_role.startswith("itc")
+    )
+
+
+def _device_identifier(device):
+    if not device:
+        return "—"
+
+    barcode = (getattr(device, "barcode", None) or "").strip()
+    uid = (getattr(device, "uid", None) or "").strip()
+
+    if barcode:
+        return f"BARCODE: {barcode}"
+
+    if uid:
+        return f"UID: {uid}"
+
+    return "—"
+
+
+def _movement_row_dict(mv, device=None, assignment=None, user=None):
+    movement_at = (
+        getattr(mv, "movement_at", None)
+        or getattr(mv, "created_at", None)
+    )
+
+    return {
+        "id": mv.id,
+        "course_id": mv.course_id,
+        "device_id": mv.device_id,
+        "device_name": getattr(device, "name", None) if device else f"Device #{mv.device_id}",
+        "device_identifier": _device_identifier(device),
+        "movement_type": mv.movement_type,
+        "asset_kind": getattr(mv, "asset_kind", None) or "pc",
+        "movement_at": movement_at,
+        "assignment_id": getattr(mv, "assignment_id", None),
+        "assignment_status": getattr(assignment, "status", None) if assignment else None,
+        "created_by": getattr(user, "username", None) if user else "—",
+        "notes": getattr(mv, "notes", None),
+        "cancelled_at": getattr(mv, "cancelled_at", None),
+    }
+
+
+@bp.route("/<int:course_id>/equipment-traceability")
+@login_required
+def equipment_traceability(course_id):
+    if not _is_itc_equipment_viewer():
+        abort(403)
+
+    db = SessionLocal()
+    try:
+        course = db.query(Course).get(course_id)
+        if not course:
+            abort(404)
+
+        rows = (
+            db.query(
+                models.CourseDeviceMovement,
+                models.Device,
+                models.Assignment,
+                models.User,
+            )
+            .outerjoin(models.Device, models.CourseDeviceMovement.device_id == models.Device.id)
+            .outerjoin(models.Assignment, models.CourseDeviceMovement.assignment_id == models.Assignment.id)
+            .outerjoin(models.User, models.CourseDeviceMovement.created_by == models.User.id)
+            .filter(models.CourseDeviceMovement.course_id == course_id)
+            .order_by(
+                models.CourseDeviceMovement.movement_at.desc(),
+                models.CourseDeviceMovement.id.desc(),
+            )
+            .all()
+        )
+
+        movement_rows = [
+            _movement_row_dict(mv, device, assignment, user)
+            for mv, device, assignment, user in rows
+        ]
+
+        active_rows = [
+            row for row in movement_rows
+            if row["cancelled_at"] is None
+        ]
+
+        assigned_pc_count = sum(
+            1 for row in active_rows
+            if row["asset_kind"] == "pc" and row["movement_type"] == "assigned"
+        )
+
+        returned_pc_count = sum(
+            1 for row in active_rows
+            if row["asset_kind"] == "pc" and row["movement_type"] == "returned"
+        )
+
+        pending_pc_count = max(assigned_pc_count - returned_pc_count, 0)
+
+        return render_template(
+            "courses/_equipment_traceability_fragment.html",
+            course=course,
+            movement_rows=movement_rows,
+            assigned_pc_count=assigned_pc_count,
+            returned_pc_count=returned_pc_count,
+            pending_pc_count=pending_pc_count,
+        )
+
+    finally:
+        db.close()
+
+
+@bp.route("/equipment-movement-detail")
+@login_required
+def equipment_movement_detail():
+    if not _is_itc_equipment_viewer():
+        abort(403)
+
+    raw_ids = (request.args.get("ids") or "").strip()
+
+    movement_ids = []
+    for part in raw_ids.split(","):
+        part = part.strip()
+        if part.isdigit():
+            movement_ids.append(int(part))
+
+    movement_ids = list(dict.fromkeys(movement_ids))
+
+    if not movement_ids:
+        abort(400)
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(
+                models.CourseDeviceMovement,
+                Course,
+                models.Device,
+                models.Assignment,
+                models.User,
+            )
+            .join(Course, models.CourseDeviceMovement.course_id == Course.id)
+            .outerjoin(models.Device, models.CourseDeviceMovement.device_id == models.Device.id)
+            .outerjoin(models.Assignment, models.CourseDeviceMovement.assignment_id == models.Assignment.id)
+            .outerjoin(models.User, models.CourseDeviceMovement.created_by == models.User.id)
+            .filter(models.CourseDeviceMovement.id.in_(movement_ids))
+            .order_by(
+                models.CourseDeviceMovement.movement_at.desc(),
+                models.CourseDeviceMovement.id.desc(),
+            )
+            .all()
+        )
+
+        if not rows:
+            abort(404)
+
+        first_course = rows[0][1]
+
+        movement_rows = [
+            _movement_row_dict(mv, device, assignment, user)
+            for mv, course, device, assignment, user in rows
+        ]
+
+        movement_type = movement_rows[0]["movement_type"] if movement_rows else None
+        movement_day = None
+
+        if movement_rows and movement_rows[0]["movement_at"]:
+            movement_day = movement_rows[0]["movement_at"].date()
+
+        return render_template(
+            "courses/_equipment_movement_detail_fragment.html",
+            course=first_course,
+            movement_rows=movement_rows,
+            movement_type=movement_type,
+            movement_day=movement_day,
+        )
+
+    finally:
+        db.close()
+
 @bp.route("/api/calendar-events")
 @login_required
 def api_calendar_events():
@@ -2055,9 +2238,9 @@ def api_calendar_events():
 
                 if is_itc_view and (assigned_pc_count > 0 or required_pc_count > 0):
                     if required_pc_count > 0:
-                        start_title = f"{title} -{assigned_pc_count}/{required_pc_count}"
+                        start_title = f"{title} {assigned_pc_count}/{required_pc_count}"
                     else:
-                        start_title = f"{title} -{assigned_pc_count}"
+                        start_title = f"{title} {assigned_pc_count}"
                 else:
                     start_title = title
 
@@ -2096,10 +2279,10 @@ def api_calendar_events():
                     end_parts = []
 
                     if pending_pc_count > 0:
-                        end_parts.append(f"-{pending_pc_count} PC")
+                        end_parts.append(f"{pending_pc_count} PC")
 
                     if returned_pc_on_end_count > 0:
-                        end_parts.append(f"+{returned_pc_on_end_count} PC")
+                        end_parts.append(f"{returned_pc_on_end_count} PC")
 
                     if end_parts:
                         end_title = f"{title} {' '.join(end_parts)}"
@@ -3332,5 +3515,187 @@ def api_card_lookup():
             },
             "active_loan": active_loan,
         })
+    finally:
+        db.close()
+
+@bp.route("/equipment-movement/<int:movement_id>/delete", methods=["POST"])
+@login_required
+def delete_equipment_movement(movement_id):
+    if not _is_itc_equipment_viewer():
+        return jsonify({"success": False, "error": "Forbidden"}), 403
+
+    db = SessionLocal()
+
+    try:
+        now = datetime.now(timezone.utc)
+
+        mv = (
+            db.query(models.CourseDeviceMovement)
+            .filter(models.CourseDeviceMovement.id == movement_id)
+            .first()
+        )
+
+        if not mv:
+            return jsonify({"success": False, "error": "Movement not found."}), 404
+
+        course = db.query(models.Course).get(mv.course_id)
+        device = db.query(models.Device).get(mv.device_id)
+
+        if not course:
+            return jsonify({"success": False, "error": "Course not found."}), 404
+
+        if not device:
+            return jsonify({"success": False, "error": "Device not found."}), 404
+
+        movement_type = (mv.movement_type or "").strip().lower()
+
+        if movement_type not in ("assigned", "returned"):
+            return jsonify({
+                "success": False,
+                "error": f"Unsupported movement type: {mv.movement_type}",
+            }), 400
+
+        course_label = course.course or course.name or f"Course #{course.id}"
+
+        before_data = {
+            "movement_id": mv.id,
+            "course_id": mv.course_id,
+            "course": course_label,
+            "device_id": mv.device_id,
+            "device_name": getattr(device, "name", None),
+            "movement_type": mv.movement_type,
+            "asset_kind": getattr(mv, "asset_kind", None),
+            "movement_at": mv.movement_at.isoformat() if getattr(mv, "movement_at", None) else None,
+            "assignment_id": getattr(mv, "assignment_id", None),
+            "device_status": getattr(device, "status", None),
+            "notes": getattr(mv, "notes", None),
+        }
+
+        if movement_type == "assigned":
+            active_return = (
+                db.query(models.CourseDeviceMovement)
+                .filter(
+                    models.CourseDeviceMovement.course_id == mv.course_id,
+                    models.CourseDeviceMovement.device_id == mv.device_id,
+                    models.CourseDeviceMovement.movement_type == "returned",
+                    models.CourseDeviceMovement.cancelled_at.is_(None),
+                )
+                .first()
+            )
+
+            if active_return:
+                return jsonify({
+                    "success": False,
+                    "error": "This assignment already has a return movement. Delete the return movement first.",
+                }), 409
+
+            assignment = None
+
+            if getattr(mv, "assignment_id", None):
+                assignment = (
+                    db.query(models.Assignment)
+                    .filter(models.Assignment.id == mv.assignment_id)
+                    .first()
+                )
+
+            if not assignment:
+                assignment = (
+                    db.query(models.Assignment)
+                    .filter(
+                        models.Assignment.course_id == mv.course_id,
+                        models.Assignment.device_id == mv.device_id,
+                        models.Assignment.status.in_(["active", "overdue_1", "overdue_2"]),
+                    )
+                    .order_by(models.Assignment.assigned_at.desc())
+                    .first()
+                )
+
+            if assignment:
+                db.delete(assignment)
+
+            device.status = "available"
+
+            if hasattr(device, "updated_at"):
+                device.updated_at = now
+
+            action_label = "delete_pc_assignment"
+            description = f"Deleted PC assignment movement for course '{course_label}'"
+
+        elif movement_type == "returned":
+            active_assignment = (
+                db.query(models.Assignment)
+                .filter(
+                    models.Assignment.course_id == mv.course_id,
+                    models.Assignment.device_id == mv.device_id,
+                    models.Assignment.status.in_(["active", "overdue_1", "overdue_2"]),
+                )
+                .first()
+            )
+
+            if not active_assignment:
+                restored_assignment = models.Assignment(
+                    device_id=mv.device_id,
+                    course_id=mv.course_id,
+                    status="active",
+                    assigned_at=now,
+                    created_at=now,
+                    updated_at=now,
+                    created_by=getattr(current_user, "id", None),
+                    notes=f"Restored after deleting return movement #{mv.id}",
+                )
+                db.add(restored_assignment)
+
+            device.status = "assigned"
+            if hasattr(device, "updated_at"):
+                device.updated_at = now
+
+            action_label = "delete_pc_return"
+            description = f"Deleted PC return movement for course '{course_label}'"
+
+        deleted_movement_id = mv.id
+        affected_course_id = mv.course_id
+        affected_device_id = device.id
+
+        db.delete(mv)
+
+        log_movement(
+            db,
+            user_id=getattr(current_user, "id", None),
+            entity_type="course_device_movement",
+            entity_id=deleted_movement_id,
+            action=action_label,
+            before_data=before_data,
+            after_data={
+                "deleted": True,
+                "movement_id": deleted_movement_id,
+                "course_id": affected_course_id,
+                "device_id": affected_device_id,
+                "device_status": getattr(device, "status", None),
+            },
+            description=description,
+            success=True,
+            user_agent=request.user_agent.string,
+        )
+
+        db.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "Movement deleted.",
+            "course_id": affected_course_id,
+            "movement_id": deleted_movement_id,
+            "movement_type": movement_type,
+        })
+
+    except Exception as e:
+        db.rollback()
+        print("=== delete_equipment_movement ERROR ===")
+        print(str(e))
+
+        return jsonify({
+            "success": False,
+            "error": str(e),
+        }), 500
+
     finally:
         db.close()

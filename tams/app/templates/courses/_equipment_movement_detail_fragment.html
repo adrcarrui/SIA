@@ -1,0 +1,127 @@
+<div class="equipment-movement-detail">
+
+  <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+    <div>
+      <h5 class="mb-1">
+        {% if movement_type == 'returned' %}
+          Returned equipment
+        {% elif movement_type == 'assigned' %}
+          Assigned equipment
+        {% else %}
+          Equipment movement
+        {% endif %}
+      </h5>
+
+      <div class="text-muted small">
+        {{ course.course or course.name or ('Course #' ~ course.id) }}
+      </div>
+    </div>
+
+    <div class="text-end">
+      {% if movement_day %}
+        <span class="badge bg-light text-dark border">{{ movement_day }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="alert alert-light border d-flex justify-content-between align-items-center">
+    <div>
+      <strong>Total devices:</strong> {{ movement_rows|length }}
+    </div>
+
+    <div>
+      {% if movement_type == 'returned' %}
+        <span class="badge bg-success">{{ movement_rows|length }} PC</span>
+      {% elif movement_type == 'assigned' %}
+        <span class="badge bg-primary">{{ movement_rows|length }} PC</span>
+      {% else %}
+        <span class="badge bg-secondary">{{ movement_rows|length }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th class="text-center">Date</th>
+          <th class="text-center">Action</th>
+          <th class="text-center">Device</th>
+          <th class="text-center">Identifier</th>
+          <th class="text-center">Assignment</th>
+          <th class="text-center">User</th>
+          <th class="text-center">Notes</th>
+          <th class="text-center">Actions</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for row in movement_rows %}
+          <tr>
+            <td class="text-center">
+              {% if row.movement_at %}
+                {{ row.movement_at.strftime("%Y-%m-%d %H:%M") }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+
+            <td class="text-center">
+              {% if row.movement_type == 'assigned' %}
+                <span class="badge bg-primary">Assigned</span>
+              {% elif row.movement_type == 'returned' %}
+                <span class="badge bg-success">Returned</span>
+              {% else %}
+                <span class="badge bg-secondary">{{ row.movement_type or '—' }}</span>
+              {% endif %}
+            </td>
+
+            <td class="text-center">
+              {{ row.device_name or '—' }}
+            </td>
+
+            <td class="text-center small">
+              {{ row.device_identifier or '—' }}
+            </td>
+
+            <td class="text-center">
+              {% if row.assignment_id %}
+                #{{ row.assignment_id }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+
+            <td class="text-center">
+              {{ row.created_by or '—' }}
+            </td>
+
+            <td class="text-center">
+              {{ row.notes or '—' }}
+            </td>
+
+            <td class="text-center">
+              <button type="button"
+                      class="btn btn-sm btn-outline-danger equipment-movement-delete-btn"
+                      data-movement-id="{{ row.id }}"
+                      data-course-id="{{ course.id }}"
+                      data-movement-type="{{ row.movement_type }}"
+                      data-device-name="{{ row.device_name or 'device' }}"
+                      data-reload-mode="movement-detail"
+                      data-movement-ids="{% for r in movement_rows %}{{ r.id }}{% if not loop.last %},{% endif %}{% endfor %}">
+                Delete
+              </button>
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="8" class="text-center text-muted py-4">
+              No movement detail found.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>

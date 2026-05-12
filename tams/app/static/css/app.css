@@ -1390,3 +1390,153 @@ main.bg-content > section {
     color: #666666;
   }
 </style>
+
+.tams-calendar-click-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  gap: 6px;
+}
+
+.tams-calendar-click-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tams-calendar-click-title:hover {
+  text-decoration: underline;
+}
+
+.tams-calendar-click-metric {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #000;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  font-weight: 800;
+  white-space: nowrap;
+  line-height: 1.1;
+  cursor: pointer;
+  text-align: right;
+}
+
+.tams-calendar-click-metric:hover {
+  background: #ffffff;
+  text-decoration: underline;
+}
+.fc .fc-daygrid-event .fc-event-main {
+  width: 100%;
+}
+
+.fc .fc-daygrid-event .fc-event-main-frame {
+  width: 100%;
+}
+
+.fc .fc-daygrid-event .fc-event-title-container {
+  width: 100%;
+}
+
+/* ================= CALENDAR CLICKABLE COURSE + METRIC ================= */
+
+.fc .fc-daygrid-event-harness {
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.fc .fc-daygrid-event {
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.fc .fc-daygrid-event .fc-event-main {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.fc .fc-daygrid-event .fc-event-main-frame {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.fc .fc-daygrid-event .fc-event-title-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.fc .fc-daygrid-event .fc-event-title {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.tams-calendar-click-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 4px;
+
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+
+  overflow: hidden;
+}
+
+.tams-calendar-click-title {
+  min-width: 0;
+  max-width: 100%;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  cursor: pointer;
+}
+
+.tams-calendar-click-title:hover {
+  text-decoration: underline;
+}
+
+.tams-calendar-click-metric {
+  justify-self: end;
+
+  max-width: 48px;
+  min-width: 28px;
+
+  padding: 1px 4px;
+  border-radius: 4px;
+
+  background: rgba(255, 255, 255, 0.96);
+  color: #000000;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+
+  font-weight: 800;
+  font-size: 11px;
+  line-height: 1.1;
+  text-align: center;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  cursor: pointer;
+}
+
+.tams-calendar-click-metric:hover {
+  background: #ffffff;
+  text-decoration: underline;
+}
